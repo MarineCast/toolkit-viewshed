@@ -1,0 +1,290 @@
+{
+  "schema_version": 1,
+  "checksum_algorithm": "sha256",
+  "artifact_roots": [
+    "data/processed/domain/human/viewshed/RES7",
+    "outputs/effort/viewshed"
+  ],
+  "files": [
+    {
+      "path": "data/processed/domain/human/viewshed/RES7/LAND_STATIC_WEIGHTS_R7.parquet",
+      "bytes": 17705011,
+      "sha256": "3ed7a5cca353dc8c2ecd5e5f8a32b3f5bc1906ad18b73567359afb821c1876f3"
+    },
+    {
+      "path": "data/processed/domain/human/viewshed/RES7/LAND_STATIC_WEIGHTS_R7_metadata.json",
+      "bytes": 14305,
+      "sha256": "9cc59c978123ee0713ddab55c0d5fa065c424c253420f076c147883f4a7ab41d"
+    },
+    {
+      "path": "data/processed/domain/human/viewshed/RES7/WATER_STATIC_WEIGHTS_R7.parquet",
+      "bytes": 24228076,
+      "sha256": "5bc57d46e77d587977a471cb50207d91f2b88188ea3faf02f86abbf5df38b461"
+    },
+    {
+      "path": "data/processed/domain/human/viewshed/RES7/WATER_STATIC_WEIGHTS_R7_metadata.json",
+      "bytes": 13434,
+      "sha256": "45137d198c9d694f1815ea605d4b9d84d2a05daa9223085d85664a7cc5376d2b"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/manifests/viewshed.json",
+      "bytes": 18153,
+      "sha256": "e9c0cd7a5de987f5786343a165377c6116efb16822a4884cc1620e6fc0cc93cd"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_combined.png",
+      "bytes": 28260,
+      "sha256": "df56222f28c2fddf9f2a8ba4ecf0b5548f4173e89e35725d319c155970057dc5"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_combined.tif",
+      "bytes": 198981,
+      "sha256": "d28ea5f61c43502e663e58726205a062b6841fd4b072d2a87749673280783fa6"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_distance.png",
+      "bytes": 60506,
+      "sha256": "cea893f7529b6b57b2022dea04d373efad2bdd92d05e546348ea90f7b65b8d0a"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_distance.tif",
+      "bytes": 1423378,
+      "sha256": "c1a3783f17a2c9610267f7d9155157735b3ed5765725a943d41fef313f9ee725"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_terrain.png",
+      "bytes": 43165,
+      "sha256": "50aa83807cdf8d237c8fc12a8588caf5cf4f2dfe70644a5315bbc267bbd22ec8"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_terrain.tif",
+      "bytes": 665759,
+      "sha256": "ab8e6e7c795706d74ccb18e13168220b3ca39d7ce3b3e6efc18cb631ab1c09b7"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_vegetation.png",
+      "bytes": 27183,
+      "sha256": "20495fca5b6fe5297d4f17fdbdf8f24fffc5d01e417db72968842ea84de2cddb"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_vegetation.tif",
+      "bytes": 198922,
+      "sha256": "2ad22fe87a8da398c92631f39c6ed2b5fae649d874bdfaa34b9725d424683240"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_combined.png",
+      "bytes": 2087158,
+      "sha256": "a81e82f2f0668d8fd84e5b3bf0eef0b41697f7afc0fef33af1b40586a5dbf7c9"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_combined.tif",
+      "bytes": 11385779,
+      "sha256": "5014d159ab30fb1335f1fa70458dc4b1c567a339c0280b09b9d668e906360702"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_distance.png",
+      "bytes": 2131520,
+      "sha256": "98272600c9e9cd3bc643398ba4b3e46bad6eba6bd95a0b1db86f1a52a0a963da"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_distance.tif",
+      "bytes": 21748645,
+      "sha256": "1ccd260d629cbca67455683c5430e3194ed37365c6bf6fcb5c6dd1867c2eb501"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_terrain.png",
+      "bytes": 3095753,
+      "sha256": "6b94a53b76b517f7c320766733aece8f494c26621ffb04ee6321a7ba678c5468"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_terrain.tif",
+      "bytes": 20858486,
+      "sha256": "3f1c53865b358afa4892b4758dd474dc2955c164de0159f6c9cd54172dc6ee7c"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_vegetation.png",
+      "bytes": 1748229,
+      "sha256": "f3d40b61212ec0018cf7f95172f4136140e5314c5f39455befadf73d4305fc53"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_vegetation.tif",
+      "bytes": 11348520,
+      "sha256": "03d761d2dd0beb5eb2e3f080fe5233f4e1d059717431cf29b67536acfb98a161"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_combined.png",
+      "bytes": 2206078,
+      "sha256": "03e55d7e6e93850ee9a8636b9cb798736ff246a5f5fc71b73b838c898a8a60f4"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_combined.tif",
+      "bytes": 21451093,
+      "sha256": "948a1dbc20e0b584d01c64e79ec09368510dbc7a1b87beb1a8fcc5d1fb76a823"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_distance.png",
+      "bytes": 1605668,
+      "sha256": "81c41fc4e866d3f404057e494eaac18fd84a10d9fefb38cc25482a90b9a02e95"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_distance.tif",
+      "bytes": 23364462,
+      "sha256": "656387854eb9060a753cbd6f5e6f72c770621b8feda4c48539174285fac27530"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_terrain.png",
+      "bytes": 2194889,
+      "sha256": "eeb488377d3952f818a60f5d76fb6ffcfc76336a22521f0992cc3382853a4fbc"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_terrain.tif",
+      "bytes": 22000455,
+      "sha256": "e7235f52d68438df6a5a1a04da15b0da59dcdf104682129b13a226c3dc97a0eb"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_vegetation.png",
+      "bytes": 2000962,
+      "sha256": "9ad77bfd315a17fcf95a7261330a540b7cc0b612e5ff2704f18bf8abd42b55e0"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_vegetation.tif",
+      "bytes": 21003659,
+      "sha256": "11c691201f8f2291c5c9f37be9fb5cff3d731306ce1742d3b29b88de5a09983f"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_combined.png",
+      "bytes": 2862801,
+      "sha256": "7145edade9fe22406c3af2ba9575703c6607dc462da54605bad154d869326ee6"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_combined.tif",
+      "bytes": 25504288,
+      "sha256": "607feaa3bd07899def66bbfbcab7b0462d4fc749c38720a79e227ba2fe114414"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_distance.png",
+      "bytes": 2030791,
+      "sha256": "74a08c998da5308f3ad724f54cec1040b81c8fb7e46854f9d1d935052e9dc2e4"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_distance.tif",
+      "bytes": 24545562,
+      "sha256": "4298cd4b6ce2a9346a17d4a76742dec66797eb98eba1ae9d9b11932826110540"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_terrain.png",
+      "bytes": 2862801,
+      "sha256": "7145edade9fe22406c3af2ba9575703c6607dc462da54605bad154d869326ee6"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_terrain.tif",
+      "bytes": 25504275,
+      "sha256": "bfc06912d67d1d9f9145393510bec4a368168ddf45e95d2674f29773637fa858"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_vegetation.png",
+      "bytes": 2565970,
+      "sha256": "608a78933a49d811941dac12bb883a1d7d49b62dd4d42362d6ffe736dc801635"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_vegetation.tif",
+      "bytes": 25148509,
+      "sha256": "74bb5f8a1c2d01454ed2cc2116dc176bab9c3142a23d5583e129056ba6310307"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_combined.png",
+      "bytes": 2176038,
+      "sha256": "d481814c04978e171430cb1ac785972e48c4e277d4ebdcadb4a0f137fff02314"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_combined.tif",
+      "bytes": 21113046,
+      "sha256": "5dc3dcdff934331572b4a8a0614f54b841e14229d3ae554fb6b1e8500a124845"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_distance.png",
+      "bytes": 1612368,
+      "sha256": "56a722c4b9346094cd42b0e6512d40562913d25daec6ab573bbda6dff57689cd"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_distance.tif",
+      "bytes": 21958429,
+      "sha256": "6657576e4cc446d6d003e6b166335fc5e0e6f518fab4b49d009c64308820fb3f"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_terrain.png",
+      "bytes": 2176038,
+      "sha256": "d481814c04978e171430cb1ac785972e48c4e277d4ebdcadb4a0f137fff02314"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_terrain.tif",
+      "bytes": 21112996,
+      "sha256": "6059504143319dd4e166a9aeca1f85630763845f9af96bd4c465938311eb21e4"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_vegetation.png",
+      "bytes": 1996772,
+      "sha256": "58000d2b76a31ce4a2d6368c49e14fa7dea5610a10fea9c8d9ac7bd0387ecd06"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_vegetation.tif",
+      "bytes": 20857690,
+      "sha256": "b8a5f096a1e0bd9cf295c2ad89556ea1c26d1dd3dc7ef3f4797da210a4a2bffe"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/land_source_aggregate_source_weights.parquet",
+      "bytes": 148463,
+      "sha256": "2c0f8b560d1107d93727b81dcab5d5502e01e07f055791d196f6762cbc0895d4"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/land_source_aggregate_static_weights.html",
+      "bytes": 33161785,
+      "sha256": "06ab334a22b6dcf7da0d2b97690862ed8c601f2ad108cd205e8daca78fae418b"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/land_source_aggregate_target_weights.parquet",
+      "bytes": 225318,
+      "sha256": "c9fbc52e965bd752e02594eab503fb095f51ffa9808d1a6f969df6bd55dd70ad"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/land_source_selected_location_static_weights.html",
+      "bytes": 1303554,
+      "sha256": "a202015d8630298141f73140c74346fcec73498c9868199833dc83aa7709f739"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/land_source_selected_location_weights.parquet",
+      "bytes": 8176,
+      "sha256": "1b95ec0f645b67c8f4ed0ef5ed6358d8c962dc4ae73a4a2f53a94e1ca1f9aa5a"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/land_source_static_weight_map_manifest.json",
+      "bytes": 6513,
+      "sha256": "b1fc6b1dcd7582e274a1be4f3dcd81469dc40aec13233a17a165c2084c0cf9fb"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/static_weight_map_manifest.json",
+      "bytes": 14761,
+      "sha256": "5e49c62380235556f9b719f48839fd33c25803a072ea38a923ea17f2be6826b3"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/water_source_aggregate_source_weights.parquet",
+      "bytes": 164046,
+      "sha256": "ab68572e00a00a01be008057d7f47d4aa22456524799d84095a700b2d8656bd3"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/water_source_aggregate_static_weights.html",
+      "bytes": 35527854,
+      "sha256": "66018e3fe98345b6da517239a48265f9efe4d81f52b21b5019efcae6d905c235"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/water_source_aggregate_target_weights.parquet",
+      "bytes": 177674,
+      "sha256": "778cd5e74af372b3969ef770e540bee00fd3cfbd78ecf1517a666c6638b965f4"
+    },
+    {
+      "path": "outputs/effort/viewshed/h3r7/static/water_source_static_weight_map_manifest.json",
+      "bytes": 6543,
+      "sha256": "160cbc10f8fc61a9bdc0dfbb490455f561f1c5f3b3da32a452c9c452ad3ab981"
+    }
+  ]
+}

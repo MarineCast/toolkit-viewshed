@@ -1,0 +1,131 @@
+{
+  "config": {
+    "aligned_with_kernel_metadata": true,
+    "config_hash": "afcd5eef",
+    "path": "configs/salish_sea.yaml",
+    "scientific_config_hash": "77f2f9c6e4f67951"
+  },
+  "kernels": [
+    {
+      "artifact_checksum": "64f2e9c6099f0645a4256781613ab863146a83b286b9716b50f0dae87f9cfee1",
+      "config_hash": "afcd5eef",
+      "max_weight": 1.0,
+      "metadata_checksum_matches": true,
+      "metadata_path": "data/processed/domain/human/viewshed/RES7/LAND_STATIC_WEIGHTS_R7_metadata.json",
+      "min_weight": 0.0,
+      "nonfinite_weights": 0,
+      "null_source_keys": 0,
+      "null_target_keys": 0,
+      "null_weights": 0,
+      "path": "data/processed/domain/human/viewshed/RES7/LAND_STATIC_WEIGHTS_R7.parquet",
+      "rows": 2081219,
+      "scientific_config_hash": "77f2f9c6e4f67951",
+      "source_type": "land",
+      "unique_pairs": 2081219,
+      "valid": true
+    },
+    {
+      "artifact_checksum": "aa24d23c943bcf7b69e641a7db2139402613af83396d539b57171289215ce123",
+      "config_hash": "afcd5eef",
+      "max_weight": 0.9990793466567993,
+      "metadata_checksum_matches": true,
+      "metadata_path": "data/processed/domain/human/viewshed/RES7/WATER_STATIC_WEIGHTS_R7_metadata.json",
+      "min_weight": 0.0,
+      "nonfinite_weights": 0,
+      "null_source_keys": 0,
+      "null_target_keys": 0,
+      "null_weights": 0,
+      "path": "data/processed/domain/human/viewshed/RES7/WATER_STATIC_WEIGHTS_R7.parquet",
+      "rows": 3208581,
+      "scientific_config_hash": "77f2f9c6e4f67951",
+      "source_type": "water",
+      "unique_pairs": 3208581,
+      "valid": true
+    }
+  ],
+  "limitations": [
+    "Notebooks were parsed but not executed because their upstream analysis inputs were not copied.",
+    "The full terrain pipeline was not rebuilt because DEM, canopy, land, and water inputs are absent.",
+    "Static kernels measure physical source-target viewability, not observer effort or whale occurrence."
+  ],
+  "map_outputs": {
+    "bytes": 0,
+    "file_count": 0,
+    "root": "outputs/effort/viewshed"
+  },
+  "notebooks": [
+    {
+      "code_cells": 16,
+      "embedded_error_outputs": 0,
+      "executed_cell_markers": 0,
+      "path": "analysis/case_studies/orcacast/notebooks/01_STATIC_VIEWABILITY.ipynb",
+      "valid_json": true
+    },
+    {
+      "code_cells": 36,
+      "embedded_error_outputs": 0,
+      "executed_cell_markers": 0,
+      "path": "analysis/case_studies/orcacast/notebooks/02_LAND_REPORTING_OPPORTUNITY.ipynb",
+      "valid_json": true
+    }
+  ],
+  "portable_artifact_manifest": {
+    "errors": [
+      "missing: outputs/effort/viewshed/h3r7/manifests/viewshed.json",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_combined.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_combined.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_distance.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_distance.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_terrain.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_terrain.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_vegetation.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_selected_8728d1d6cffffff_vegetation.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_combined.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_combined.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_distance.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_distance.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_terrain.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_terrain.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_vegetation.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_source_vegetation.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_combined.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_combined.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_distance.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_distance.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_terrain.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_terrain.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_vegetation.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/land_source_target_vegetation.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_combined.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_combined.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_distance.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_distance.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_terrain.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_terrain.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_vegetation.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_source_vegetation.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_combined.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_combined.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_distance.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_distance.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_terrain.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_terrain.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_vegetation.png",
+      "missing: outputs/effort/viewshed/h3r7/static/assets/smoothed/water_source_target_vegetation.tif",
+      "missing: outputs/effort/viewshed/h3r7/static/land_source_aggregate_source_weights.parquet",
+      "missing: outputs/effort/viewshed/h3r7/static/land_source_aggregate_static_weights.html",
+      "missing: outputs/effort/viewshed/h3r7/static/land_source_aggregate_target_weights.parquet",
+      "missing: outputs/effort/viewshed/h3r7/static/land_source_selected_location_static_weights.html",
+      "missing: outputs/effort/viewshed/h3r7/static/land_source_selected_location_weights.parquet",
+      "missing: outputs/effort/viewshed/h3r7/static/land_source_static_weight_map_manifest.json",
+      "missing: outputs/effort/viewshed/h3r7/static/static_weight_map_manifest.json",
+      "missing: outputs/effort/viewshed/h3r7/static/water_source_aggregate_source_weights.parquet",
+      "missing: outputs/effort/viewshed/h3r7/static/water_source_aggregate_static_weights.html",
+      "missing: outputs/effort/viewshed/h3r7/static/water_source_aggregate_target_weights.parquet",
+      "missing: outputs/effort/viewshed/h3r7/static/water_source_static_weight_map_manifest.json"
+    ],
+    "file_count": 56,
+    "path": "analysis/case_studies/orcacast/manifests/artifacts.json"
+  },
+  "valid": false
+}

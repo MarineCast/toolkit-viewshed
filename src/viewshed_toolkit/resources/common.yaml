@@ -1,0 +1,10 @@
+# Shared named areas used by the standalone viewshed configuration.
+areas:
+  model_area:
+    description: Model area copied for the Salish Sea case study.
+    bbox_wgs84:
+      min_lon: -125.80
+      min_lat: 46.85
+      max_lon: -121.60
+      max_lat: 50.00
+

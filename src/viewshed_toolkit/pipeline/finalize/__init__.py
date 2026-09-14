@@ -1,0 +1,1 @@
+"""Viewshed finalization helpers."""
