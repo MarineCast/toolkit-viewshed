@@ -1,5 +1,7 @@
 # Supported API
 
+## Public package facade
+
 The stable public API is the package root plus packaged configuration resources:
 
 ```python
@@ -18,23 +20,89 @@ from viewshed_toolkit import (
     run_viewshed,
     validate,
 )
+from viewshed_toolkit.resources import default_config_path
 ```
 
-Load a configuration before calling the typed workflow:
+`load_app_config` reads and validates configuration without creating output directories:
 
 ```python
-from viewshed_toolkit import load_app_config, run_viewshed
+from viewshed_toolkit import load_app_config
 from viewshed_toolkit.resources import default_config_path
 
 config = load_app_config(default_config_path())
-# result = run_viewshed(config)  # Executes all configured stages and writes artifacts.
+print(config.config_hash)
 ```
 
-`ViewshedRequest` accepts an optional `WorkflowIdentity`. If it is omitted, the service reads
-the config's `provenance` section and otherwise uses reusable toolkit defaults.
+The main calls have distinct scopes:
 
-Advanced code should import directly from the canonical implementation module rather than a
-pass-through facade. Examples include:
+| Call | Behavior |
+| --- | --- |
+| `load_app_config(path)` | Read-only configuration loading and normalization. |
+| `run_stage(config, invocation)` | Execute one registered stage; writes that stage's outputs. |
+| `run_viewshed(config)` | Execute every canonical stage and retain the durable static outputs. |
+| `process(request)` | Execute selected stages, validate expected paths, and write a run manifest. |
+| `validate(artifacts)` | Check that referenced artifact paths exist; it is not a schema or scientific validation. |
+
+Both `run_viewshed` and a complete `process` request clean the viewshed directory down to its
+durable static-output contract after successful stage execution. Use a dedicated output directory
+when experimenting.
+
+## Running selected stages
+
+`StageInvocation` is the typed, parser-free way to call one stage:
+
+```python
+from viewshed_toolkit import StageInvocation, load_app_config, run_stage
+
+config = load_app_config("configs/salish_sea.yaml")
+result = run_stage(
+    config,
+    StageInvocation(
+        "build-distance-weights",
+        source_type="land",
+        overwrite=False,
+    ),
+)
+```
+
+The canonical stage order is:
+
+1. `download-data`
+2. `build-land-cells`
+3. `prepare-source-target-lookup`
+4. `build-distance-weights` for land and water
+5. `build-dual-surface-canopy-weights`
+6. `terrain-weight` for water
+7. `build-vegetation-path-weights` for water
+8. `finalize-viewshed-lookups`
+9. `export-static-maps`
+
+`STAGES` and `DEFAULT_STAGES` expose these canonical stage names. Some stages expand into separate
+land and water invocations through the registry.
+
+For resumable, manifest-backed orchestration:
+
+```python
+from pathlib import Path
+
+from viewshed_toolkit import ViewshedRequest, process
+
+result = process(
+    ViewshedRequest(
+        config=Path("configs/salish_sea.yaml"),
+        stages=("build-land-cells",),
+        run_id="land-cells-local",
+        resume=True,
+    )
+)
+```
+
+`ViewshedRequest` accepts an optional `WorkflowIdentity`. Without one, the service reads the
+configuration's `provenance` section and otherwise uses toolkit-generic defaults.
+
+## Canonical advanced imports
+
+Advanced code should import directly from the module that owns the implementation:
 
 ```python
 from viewshed_toolkit.pipeline.prepare.area.observers import build_observers_from_sample_points
@@ -42,10 +110,31 @@ from viewshed_toolkit.pipeline.visualization.data import aggregate_target_weight
 from viewshed_toolkit.pipeline.weights.terrain.runner import run_source_cells
 ```
 
-The `viewshed_toolkit.pipeline` layout remains available for advanced stage-level use, but only
-the package-root API is covered by the public compatibility contract. Anything under
-`viewshed_toolkit._internal` is implementation support.
+The old pass-through modules are intentionally absent:
 
-The equivalent command-line interfaces are `viewshed-toolkit` and
-`python -m viewshed_toolkit`. Run `--help` to inspect stages and arguments without starting a
-pipeline.
+```text
+viewshed_toolkit.aggregation
+viewshed_toolkit.observers
+viewshed_toolkit.raster
+viewshed_toolkit.terrain
+viewshed_toolkit.validation
+viewshed_toolkit.viewshed
+viewshed_toolkit.visualization
+```
+
+Only the package-root facade is covered by the public compatibility contract. The
+`viewshed_toolkit.pipeline` tree is available for advanced stage-level use, while anything under
+`viewshed_toolkit._internal` is private implementation support.
+
+## Command line
+
+The following entry points are equivalent:
+
+```bash
+viewshed-toolkit --help
+python -m viewshed_toolkit --help
+```
+
+Use `<command> --help` to inspect a stage without running it. CLI commands are presentation layers
+over the same canonical stage functions; registered compatibility command names may appear in
+`--help`, but they are not additional Python APIs.

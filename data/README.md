@@ -27,6 +27,11 @@ artifact checksums. These files are generated research artifacts and remain igno
 They are physical source-to-target viewability kernels, not observer effort, detection
 probabilities, or whale-occurrence estimates.
 
-The complete ignored payload is tracked by relative path, byte size, and SHA-256 in
-`analysis/case_studies/orcacast/manifests/artifacts.json`. Use
-`scripts/sync_case_study_artifacts.py` to verify it or copy it from a matching source bundle.
+The expected ignored payload is tracked by relative path, byte size, and SHA-256 in
+`analysis/case_studies/orcacast/manifests/artifacts.json`. Restore files from a matching source
+bundle at the exact recorded paths and verify both size and checksum. This checkout does not
+contain an automated artifact-sync helper.
+
+The manifest expects generated map products under `outputs/effort/viewshed`. A local copy under
+`data/outputs/effort/viewshed` does not satisfy that contract and is reported as missing by the
+checked-in migration-validation snapshot.

@@ -1,14 +1,18 @@
 # Documentation
 
-Viewshed Toolkit exposes a compact supported API over a staged geospatial pipeline. Start with
-the repository `README.md`, then use:
+Viewshed Toolkit exposes a small supported API over a staged geospatial pipeline.
 
-- `api.md` for supported imports and entry points.
-- `methodology.md` for the scientific model and interpretation limits.
-- `../analysis/case_studies/orcacast/README.md` for the migrated Salish Sea example and its data needs.
-- `../MIGRATION.md` for source provenance and validation boundaries.
-- `reports/repository-organization.md` for the current structure review and deferred work.
+- [Project overview](../README.md): installation, repository layout, case-study scope, and checks.
+- [Supported API](api.md): stable imports, stage-level imports, and execution behavior.
+- [Methodology](methodology.md): scientific model, artifact grain, and interpretation limits.
+- [OrcaCast case study](../analysis/case_studies/orcacast/README.md): migrated notebooks,
+  application-specific contracts, and artifact inventory.
+- [Salish Sea snapshot](reports/case-study-salish-sea.md): current copied-kernel evidence.
+- [Validation status](reports/validation.md): what was checked and what remains unverified.
+- [Repository organization](reports/repository-organization.md): current source boundaries and
+  deferred maintainability work.
 
 Implementation modules are grouped by phase under `viewshed_toolkit.pipeline`: `prepare`,
-`weights`, `finalize`, and `visualization`. Shared configuration, persistence, geometry, and
-raster primitives live under the private `viewshed_toolkit._internal` namespace.
+`weights`, `finalize`, and `visualization`, with `api`, `cli`, `config`, `contracts`, and
+`diagnostics` supporting those phases. Shared persistence, geometry, raster, and configuration
+primitives live under the private `viewshed_toolkit._internal` namespace.

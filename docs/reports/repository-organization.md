@@ -4,7 +4,8 @@
 
 The repository now has three explicit boundaries:
 
-1. A supported package facade in `src/viewshed_toolkit/*.py`.
+1. A supported package facade in `src/viewshed_toolkit/__init__.py`, with
+   `src/viewshed_toolkit/__main__.py` as the module CLI entry point.
 2. The staged scientific implementation in `src/viewshed_toolkit/pipeline/`, with shared private
    infrastructure in `src/viewshed_toolkit/_internal/`.
 3. Application-specific notebooks, research contracts, provenance, and artifact inventory in
@@ -24,6 +25,8 @@ to obtain those definitions.
 
 - Redundant top-level re-export modules were removed; the package root is the single supported
   workflow facade and advanced imports point at canonical pipeline modules.
+- Documentation no longer advertises missing artifact-sync or validation scripts, and its links
+  point only to files present in the checkout.
 - Previously empty documentation and report placeholders now have defined roles and usable
   content.
 - OrcaCast notebooks and its broad observation/reporting contract no longer sit in the reusable
@@ -44,11 +47,10 @@ to obtain those definitions.
 
 ## Deliberately deferred
 
-Six implementation modules remain large: `runner.py`
-(1,522), `los.py` (1,396), `gdal.py` (1,342), `interactive_maps.py` (1,334), and
-`summarize.py` (1,128), plus `final_artifacts.py` (1,234 lines after the first extraction).
-They combine multiple internal responsibilities and are the main remaining maintainability
-concern.
+Five implementation modules remain large: `runner.py` (1,522), `los.py` (1,396), `gdal.py`
+(1,342), `interactive_maps.py` (1,334), and `final_artifacts.py` (1,234 lines after the first
+extraction). They combine multiple internal responsibilities and are the main remaining
+maintainability concern.
 
 They were not split during migration because they implement tightly coupled scientific and
 artifact contracts. A future refactor should first add characterization fixtures for artifact
@@ -58,10 +60,9 @@ extract one responsibility at a time without changing persisted outputs.
 The pipeline also retains `orcacast.*` Parquet metadata keys for compatibility with copied
 artifacts. Those keys should only be versioned or renamed through an explicit schema migration.
 
-The case-study documentation references `scripts/sync_case_study_artifacts.py` and
-`scripts/validate_copied_outputs.py`, but those helpers are not present in the current checkout.
-Restoring them or removing the stale commands is a remaining repository-level cleanup item,
-separate from the `src` package boundaries reviewed here.
+The case-study artifact manifest has no automated restore or validation helper in the current
+checkout. Documentation now describes that limitation directly. Restoring or reimplementing the
+helper remains separate tooling work.
 
 ## Validation boundary
 

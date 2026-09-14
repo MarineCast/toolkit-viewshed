@@ -17,7 +17,7 @@ The staged calculation is:
 
 The default Salish Sea run uses H3 resolution 7, full-pixel aggregation, a 30 km hard range,
 bare-earth terrain plus a matched canopy surface, and deterministic source sampling. Exact
-parameters and version names live in `configs/salish_sea.yaml`.
+parameters and version names live in [`configs/salish_sea.yaml`](../configs/salish_sea.yaml).
 
 ## Interpretation
 
