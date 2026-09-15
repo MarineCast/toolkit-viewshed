@@ -1443,7 +1443,7 @@ def save_source_cell_map(
     out_html.parent.mkdir(parents=True, exist_ok=True)
 
     center = source_polygon.geometry.iloc[0].centroid
-    m = folium.Map(location=[center.y, center.x], zoom_start=11, tiles="CartoDB positron")
+    m = folium.Map(location=[center.y, center.x], zoom_start=11, tiles="OpenStreetMap")
 
     folium.GeoJson(
         source_polygon,
