@@ -5,6 +5,11 @@ The case study uses `configs/salish_sea_case_study.yaml`, with bounds 128.6Â°Wâ€
 This intentionally extends beyond the separate OrcaCast `model_area` default; the packaged default
 and `configs/salish_sea.yaml` remain identical.
 
+![Conceptual Salish Sea viewshed workflow with land and water source cells and water targets](assets/viewshed-methodology-overview.png)
+
+This illustration shows the spatial workflow, not a reconstructed case-study result. Target icons
+do not add animal activity, observer effort, or detection probability to the model.
+
 ## Run from acquisition through analysis
 
 ```bash

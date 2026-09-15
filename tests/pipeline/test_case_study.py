@@ -86,7 +86,7 @@ def test_aggregates_keep_denominators_and_conditional_canopy():
     )
 
 
-def test_vectorized_sampling_exactly_matches_scalar_reference():
+def test_vectorized_sampling_matches_scalar_reference_within_projection_precision():
     import json
 
     import numpy as np
@@ -105,8 +105,14 @@ def test_vectorized_sampling_exactly_matches_scalar_reference():
             projected_crs=32610,
             max_design_points=10,
         )
-        np.testing.assert_array_equal(
-            [[point.x, point.y] for point in result.geometry], reference["coordinates"]
+        # PROJ builds can differ by a few final binary digits when converting the
+        # identical projected design to WGS84. This tolerance is below a micrometer
+        # and still verifies the selected points and their deterministic order.
+        np.testing.assert_allclose(
+            [[point.x, point.y] for point in result.geometry],
+            reference["coordinates"],
+            rtol=0.0,
+            atol=1e-12,
         )
 
 

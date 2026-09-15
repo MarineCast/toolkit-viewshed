@@ -517,7 +517,7 @@ def write_target_h3_weight_map(
 
     map_ = folium.Map(
         location=[context.center_lat, context.center_lon],
-        tiles="CartoDB positron",
+        tiles="OpenStreetMap",
         control_scale=True,
         prefer_canvas=True,
     )
@@ -588,7 +588,7 @@ def write_selected_h3_viewshed_map(
     source_lat, source_lon = h3.cell_to_latlng(source_h3)
     map_ = folium.Map(
         location=[source_lat, source_lon],
-        tiles="CartoDB positron",
+        tiles="OpenStreetMap",
         control_scale=True,
         prefer_canvas=True,
     )
@@ -780,7 +780,7 @@ def write_smoothed_weight_map(
     colors = bcm.LinearColormap(_map_colors(config), vmin=0.0, vmax=vmax, caption=caption)
     map_ = folium.Map(
         location=[context.center_lat, context.center_lon],
-        tiles="CartoDB positron",
+        tiles="OpenStreetMap",
         control_scale=True,
         prefer_canvas=True,
     )
@@ -845,7 +845,7 @@ def write_selected_source_smoothed_map(
     colors = bcm.LinearColormap(_map_colors(config), vmin=0.0, vmax=vmax, caption=caption)
     map_ = folium.Map(
         location=[source_lat, source_lon],
-        tiles="CartoDB positron",
+        tiles="OpenStreetMap",
         control_scale=True,
         prefer_canvas=True,
     )
@@ -903,7 +903,7 @@ def write_selected_source_generalized_map(
     source_lat, source_lon = h3.cell_to_latlng(str(source_h3))
     map_ = folium.Map(
         location=[source_lat, source_lon],
-        tiles="CartoDB positron",
+        tiles="OpenStreetMap",
         control_scale=True,
         prefer_canvas=True,
     )
@@ -1096,7 +1096,7 @@ def _write_selected_map(
             settings.selected_location.latitude,
             settings.selected_location.longitude,
         ],
-        tiles="CartoDB positron",
+        tiles="OpenStreetMap",
         control_scale=True,
         prefer_canvas=True,
     )
@@ -1236,7 +1236,7 @@ def _write_aggregate_map(
             settings.selected_location.latitude,
             settings.selected_location.longitude,
         ],
-        tiles="CartoDB positron",
+        tiles="OpenStreetMap",
         control_scale=True,
         prefer_canvas=True,
     )
