@@ -155,14 +155,32 @@ def test_component_config_rejects_unknown():
         DatasetConfig(provider="typo", version="test", resolution_m=30)
 
 
-def test_distance_pipeline_independent_of_rasters(tmp_path):
+def test_distance_pipeline_independent_of_rasters(tmp_path, monkeypatch):
+    from viewshed_toolkit.pipeline.api import components
+
     config = coastal_fixture(tmp_path)
     (tmp_path / "dem.tif").unlink()
     (tmp_path / "chm.tif").unlink()
-    outputs = run_components(config, target="distance")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("distance-only run touched a raster/LOS stage")
+
+    with monkeypatch.context() as raster_guard:
+        for name in (
+            "download_dataset",
+            "prepare_dataset",
+            "build_dem_component",
+            "build_chm_component",
+            "compose_components",
+        ):
+            raster_guard.setattr(components, name, forbidden)
+        outputs = run_components(config, target="distance")
+    assert outputs["build-pair-distances"].exists()
     assert outputs["build-distance-weights"].exists()
     assert "prepare-dem" not in outputs
     assert "prepare-chm" not in outputs
+    assert "compose-static-weights" not in outputs
+    assert "export-maps" not in outputs
     run_component_stage(config, "build-dem-weights", source_type="water")
 
 

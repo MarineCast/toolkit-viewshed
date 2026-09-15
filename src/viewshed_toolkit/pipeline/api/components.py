@@ -24,6 +24,7 @@ from ..finalize.composition import compose_components
 from ..prepare.datasets import prepare_dataset
 from ..providers import get_provider
 from ..weights.components import build_chm_component, build_dem_component, build_distance_component
+from ..weights.distance.products import build_pair_distances
 from .acquisition import download_dataset
 from .registry import COMPONENT_STAGES, component_plan
 from .stages import build_land_cells, prepare_source_target_lookup
@@ -108,6 +109,7 @@ def run_component_stage(
             export_component_map(app, source_type=source_type, factor=factor)
         return export_component_map(app, source_type=source_type)
     functions = {
+        "build-pair-distances": build_pair_distances,
         "build-dem-weights": build_dem_component,
         "build-chm-weights": build_chm_component,
         "build-distance-weights": build_distance_component,
@@ -214,8 +216,8 @@ def run_components(
                     import pyarrow.parquet as pq
 
                     frame = pl.scan_parquet(output)
-                    metrics["rows"] = pq.read_metadata(output).num_rows  # type: ignore[no-untyped-call]
-                    if "source_h3" in pq.read_schema(output).names:  # type: ignore[no-untyped-call]
+                    metrics["rows"] = pq.read_metadata(output).num_rows  # type: ignore[no-untyped-call, unused-ignore]
+                    if "source_h3" in pq.read_schema(output).names:  # type: ignore[no-untyped-call, unused-ignore]
                         metrics["source_cells"] = (
                             frame.select(pl.col("source_h3").n_unique()).collect().item()
                         )

@@ -9,16 +9,20 @@ from viewshed_toolkit import (
     DEFAULT_STAGES,
     STAGES,
     AppConfig,
+    DistanceProfile,
     StageInvocation,
     StageSpec,
     ViewshedRequest,
     ViewshedRunResult,
     WorkflowIdentity,
+    build_distance_profile,
+    build_pair_distances,
     load_app_config,
     process,
     run_stage,
     run_viewshed,
     validate,
+    validate_distance_product,
 )
 from viewshed_toolkit.resources import default_config_path
 ```
@@ -138,6 +142,41 @@ python -m viewshed_toolkit --help
 Use `<command> --help` to inspect a stage without running it. CLI commands are presentation layers
 over the same canonical stage functions; registered compatibility command names may appear in
 `--help`, but they are not additional Python APIs.
+
+## Standalone distance-product API
+
+The package root exports a small typed interface for raster-free distance reuse:
+
+```python
+from viewshed_toolkit import (
+    DistanceProfile,
+    build_distance_profile,
+    build_pair_distances,
+    validate_distance_product,
+)
+
+pair_path = build_pair_distances("configs/salish_sea.yaml", source_type="land")
+profile_path = build_distance_profile(
+    pair_path,
+    DistanceProfile(
+        "sensitivity-5km",
+        selected_model="exponential",
+        exponential_lambda_km=5.0,
+        hard_cutoff_km=20.0,
+    ),
+)
+record = validate_distance_product(profile_path)
+```
+
+`build_pair_distances` consumes the validated canonical pair lookup and vector provenance.
+`build_distance_profile` consumes only a validated pair-distance Parquet artifact and its sidecar.
+`validate_distance_product` checks either product without a complete static workflow. The CLI
+equivalents are `build-pair-distances`, `build-distance-profile`, and
+`validate-distance-product`; see [distance products](distance-products.md).
+
+The profile object is deliberately separate from the integrated `distance_weight` configuration.
+Creating a profile cannot change terrain/canopy LOS. `run_components(..., target="distance")`
+continues to build the raw product and the default compatibility `distance_weights.parquet`.
 
 ## Explicit component API
 

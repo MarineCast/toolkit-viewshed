@@ -1,6 +1,9 @@
 # Validation status
 
-## Current source validation
+> **Historical report.** The counts and checks below record the earlier source migration. They are
+> not the current test-suite result or evidence of a current regional rebuild.
+
+## Source validation recorded at migration
 
 The source-organization and shim-removal work passed:
 
@@ -22,7 +25,8 @@ OrcaCast inputs are not all present.
 ## Checked-in migration snapshot
 
 [`viewshed_migration_validation.json`](viewshed_migration_validation.json) records an earlier
-artifact-level inspection. It checks:
+artifact-level inspection. Its referenced OrcaCast source files are no longer in the current tree;
+they are available in the [pinned historical resources](orcacast-history.md). It checks:
 
 - land and water pair-key uniqueness and nullness;
 - finite static weights bounded to `[0, 1]`;
@@ -39,4 +43,5 @@ paths.
 
 The script that produced this JSON report is not present in the current checkout, so the snapshot
 was inspected but not regenerated. Restore or reimplement the validator before treating the report
-as a repeatable current gate.
+as a repeatable current gate. Paths inside the JSON reflect the historical checkout and are not
+instructions to recreate the removed OrcaCast subtree.

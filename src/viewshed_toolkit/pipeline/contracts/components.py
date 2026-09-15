@@ -6,7 +6,7 @@ import hashlib
 import json
 import uuid
 from collections.abc import Mapping
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,13 @@ from .artifacts import final_artifact_paths_from_raw
 
 PAIR_KEYS = ["source_h3", "target_h3"]
 COMPONENT_VERSION = "static_components_v1"
+
+
+def _software_version() -> str:
+    try:
+        return version("viewshed-toolkit")
+    except PackageNotFoundError:
+        return "0.1.0+source"
 
 
 def component_root(app: AppConfig) -> Path:
@@ -68,7 +75,7 @@ def provenance(app: AppConfig, algorithm: str, inputs: Mapping[str, Path]) -> di
     return {
         "schema_version": COMPONENT_VERSION,
         "algorithm_version": algorithm,
-        "software_version": version("viewshed-toolkit"),
+        "software_version": _software_version(),
         "config_hash": app.config_hash,
         "datasets": app.raw_config.get("datasets", {}),
         "bbox": list(bbox_from_config(app.raw_config)),

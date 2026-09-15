@@ -1,4 +1,10 @@
-# Salish Sea case-study snapshot
+# Historical OrcaCast migration snapshot
+
+This report describes an earlier migrated snapshot, not the current expanded case study under
+`analysis/salish_sea/`. The tracked OrcaCast notebooks, contracts, audit, and manifest were later
+intentionally removed from the working tree. See the [historical resource guide](orcacast-history.md)
+for the pinned revision; do not recreate the former directory or substitute current Salish Sea
+artifacts for it.
 
 The migrated OrcaCast snapshot contains land and water H3 resolution 7 static-viewability
 kernels. The validation snapshot records 2,081,219 unique land pairs and 3,208,581 unique water
@@ -18,5 +24,5 @@ their recorded checks.
 
 See [`viewshed_migration_validation.json`](viewshed_migration_validation.json) for machine-readable
 evidence and the
-[portable artifact inventory](../../analysis/case_studies/orcacast/manifests/artifacts.json) for
+[historical portable artifact inventory](https://github.com/stevetylda/viewshed-toolkit/blob/18042d2e570506a90ed826dd6fda92277fc92c1c/analysis/case_studies/orcacast/manifests/artifacts.json) for
 the expected paths, byte sizes, and SHA-256 values.
