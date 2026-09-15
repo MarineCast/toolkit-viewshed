@@ -1,0 +1,7 @@
+# Additional navigation noise; .gitignore already excludes data/build outputs.
+.ruff_cache/
+coverage/
+
+# Rendered case-study report and illustration assets; retain analysis code and docs.
+/analysis/salish_sea/report.html
+/docs/assets/

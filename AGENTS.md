@@ -238,3 +238,37 @@ Before handing off a change:
 5. Verify generated or ignored outputs were not accidentally staged.
 6. Summarize changed behavior, validation performed, skips or unrun checks, and any data or GDAL
    limitations.
+
+## Codebase navigation
+
+Use this repository's local Graphify graph for structural implementation, debugging, and
+architecture questions before broad searches. Skip graph queries for obvious, single-file edits.
+Narrow modules, symbols, callers and dependencies with `query`, `explain`, or `affected`, then
+read the relevant source and tests. Read [ARCHITECTURE.md](ARCHITECTURE.md) for design intent.
+Source and tests are authoritative; explicit schemas/contracts and architecture docs take
+precedence over the graph. Static edges can miss dynamic dispatch or resolve names ambiguously;
+fall back to targeted `rg` searches whenever coverage or freshness is insufficient.
+
+Run from this checkout (Graphify CLI package `graphifyy==0.9.62`, Python 3.10+):
+
+```bash
+# Install once in an isolated developer environment: python -m pip install graphifyy==0.9.62
+graphify extract . --code-only --no-cluster
+graphify query "run_components" --budget 1500
+graphify explain "run_components"
+graphify affected "<symbol>" --relation calls --depth 2
+```
+
+Repeat the extraction command after structural edits: it incrementally detects changed files.
+Use `--force` for a full rescan after checking intentional removals if shrink protection blocks
+refresh. The graph and caches live in ignored `graphify-out/`; never commit them. `.gitignore`
+and `.graphifyignore` both apply. This local AST-only setup does not semantically index prose or
+produce clustered architecture reports; read docs/configuration directly when needed.
+
+Codex uses this section plus the CLI; no skill or MCP registration is required. From a parent
+workspace, change into this checkout before building; queries may instead use
+`--graph <checkout>/graphify-out/graph.json`. Keep each repository's graph independent.
+The upstream `graphify codex install` can add its own AGENTS section, but is unnecessary here.
+Optional `graphify hook install` adds post-commit/post-checkout hooks **and** a merge driver with
+`.gitattributes` changes; it is not enabled or recommended by default for these untracked graphs.
+See the [upstream CLI reference](https://graphify.com/docs/cli) and `graphify --help` on upgrades.

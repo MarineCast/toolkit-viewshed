@@ -46,3 +46,6 @@ credentials.json
 
 # Case-study data, logs, and generated products
 data/salish_sea/
+
+# Graphify generated code graph and local caches
+/graphify-out/
