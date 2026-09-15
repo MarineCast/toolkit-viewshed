@@ -7,6 +7,10 @@ abundance, or ecology.
 The refactor preserves the existing distance-integrated physical kernel, not the illustrative
 three-factor product of independent centroid attenuation and LOS averages.
 
+The diagrams in the [methodology guide](methodology.md) are conceptual. Where their simplified
+labels differ from the equations below—especially the depicted extra centroid-distance
+multiplication—these equations define the implemented scientific contract.
+
 For matched observer samples `o` and target-water pixels `p`:
 
 ```text

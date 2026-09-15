@@ -1,3 +1,5 @@
+![Viewshed Toolkit banner showing visibility paths across the Salish Sea](docs/assets/viewshed-toolkit-banner.png)
+
 # Viewshed Toolkit
 
 A Python 3.11+ package for reproducible terrain, canopy, and distance visibility modeling.
@@ -7,22 +9,23 @@ role, with each component retained for inspection.
 These are **static physical viewability** products. They do not estimate observer effort,
 public access, reporting probability, animal detection probability, occurrence, or abundance.
 
-```text
-configuration → area / source cells / water target cells → candidate pairs
-                     │
-       ┌─────────────┼──────────────────┐
-       ▼             ▼                  ▼
- DEM provider    CHM provider       pair distances
-       ↓             ↓                  ↓
-  download       download          configured decay
-       ↓             ↓                  ↓
-  prepare DEM    prepare CHM       distance table
-       ↓             ↓
-  terrain LOS → canopy LOS / conditional factor
-       └─────────────┴──────────────────┘
-                     ↓
-        composition → final tables → validation → maps
-```
+## Methodology
+
+The toolkit builds a deterministic universe of H3 source–target pairs, samples viewpoints within
+each source cell, and evaluates line of sight to water targets. Land sources use bare-earth DEM and
+matched DEM+CHM surfaces to separate terrain support from conditional canopy obstruction. Water
+sources use the configured opaque-land policy. The line-of-sight kernel applies range attenuation,
+and the resulting pair weights can be aggregated into maps of static viewing support.
+
+![Conceptual Viewshed Toolkit workflow from observers and line-of-sight calculations to H3 viewability summaries](docs/assets/viewshed-methodology-overview.png)
+
+*Conceptual overview only: the illustrated target area does not supply animal activity to the
+model. Outputs describe static physical viewability, and aggregate sums do not represent observer
+effort or detection probability.*
+
+See the [methodology guide](docs/methodology.md) for the staged calculation and interpretation
+boundary, and the [scientific methodology](docs/scientific-methodology.md) for the exact formulas,
+missingness rules, and distance treatment.
 
 ## Install
 
