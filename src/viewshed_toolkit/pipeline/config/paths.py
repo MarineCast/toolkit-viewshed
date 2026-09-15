@@ -114,6 +114,7 @@ def resolve_path(value: str | Path, base_dir: Path = VIEWSHED_ROOT) -> Path:
         "config",
         "data",
         "notebooks",
+        "analysis",
         "outputs",
         "src",
     }:

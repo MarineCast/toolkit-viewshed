@@ -436,14 +436,18 @@ def cleanup_batch_context(app: AppConfig, context: BatchContext) -> None:
 
 
 def cleanup_batches_dir(app: AppConfig) -> None:
+    """Remove empty scaffolding without deleting another running batch.
+
+    Each completed context owns its own cleanup. The shared parent may still
+    contain work from another source role, process, or a failed preparation.
+    Leaving those files is safer than recursively deleting an unowned batch.
+    """
     if app.run.keep_batch_intermediates:
         return
     batches_dir = app.paths.output_dir / "batches"
-    if not batches_dir.exists():
-        return
     try:
-        shutil.rmtree(batches_dir)
-    except Exception:
+        batches_dir.rmdir()
+    except OSError:
         pass
 
 

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from . import compute, finalize, prepare, visualize
+from . import components, compute, finalize, prepare, visualize
 from ..config import DEFAULT_CONFIG
 
 STATIC_INPUT_CACHE_PATHS = [
@@ -37,6 +37,7 @@ def build_cli() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Viewshed Toolkit pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
     default_config = str(DEFAULT_CONFIG)
+    components.register_commands(subparsers, default_config=default_config)
     prepare.register_commands(
         subparsers,
         default_config=default_config,

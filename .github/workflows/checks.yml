@@ -1,0 +1,20 @@
+name: Package and scientific contracts
+on: [push, pull_request]
+jobs:
+  geospatial:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: .github/environment.yml
+          cache-environment: true
+      - run: python -m pip install -e '.[dev,analysis]'
+      - run: viewshed-toolkit --help
+      - run: python -m pytest -q
+      - run: ruff check src tests
+      - run: python scripts/check_components.py
+      - run: python -m compileall -q src

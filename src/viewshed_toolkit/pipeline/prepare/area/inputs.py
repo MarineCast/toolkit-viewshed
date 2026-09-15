@@ -57,16 +57,16 @@ def validate_viewshed_inputs(app: AppConfig) -> None:
         "water polygon parquet",
         "Expected this to be produced by the water/land preprocessing step.",
     )
-    _require_existing_file(
-        app.paths.regional_dem_path,
-        "regional DEM raster",
-        "Run the DEM download/build step first. This viewshed module will not download DEMs.",
-    )
-
-    if not valid_raster(app.paths.regional_dem_path):
-        raise ValueError(
-            f"Configured regional DEM is not a readable raster: {app.paths.regional_dem_path}"
+    if app.source_type == "land":
+        _require_existing_file(
+            app.paths.regional_dem_path,
+            "regional DEM raster",
+            "Run the DEM download/build step first. This viewshed module will not download DEMs.",
         )
+        if not valid_raster(app.paths.regional_dem_path):
+            raise ValueError(
+                f"Configured regional DEM is not a readable raster: {app.paths.regional_dem_path}"
+            )
 
     if normalize_surface_model(app.viewshed.surface_model) == "canopy":
         _require_existing_file(

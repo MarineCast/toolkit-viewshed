@@ -1,0 +1,166 @@
+# Columbia River mouth through northern Vancouver Island.
+provenance:
+  workflow: human.viewshed
+  dataset_id: human.viewshed.static
+  producer: human.viewshed
+run:
+  name: salish_sea
+  version: salish_sea_r7_30m_v1
+  overwrite: false
+  skip_existing_partitions: true
+  combine_final_parquet: false
+  keep_intermediate_rasters: false
+  keep_batch_intermediates: false
+  write_geojson: false
+  write_maps: false
+  write_cumulative_rasters: false
+  write_pair_geometry: false
+datasets:
+  dem:
+    provider: usgs_3dep
+    enabled: true
+    resolution_m: 30
+    version: live
+    cache: true
+  chm:
+    provider: global_canopy_height
+    land_tiles_only: true
+    enabled: true
+    resolution_m: 10
+    version: '2020'
+    cache: true
+composition:
+  model: distance_integrated_los
+  land:
+  - terrain
+  - canopy
+  water:
+  - terrain
+region:
+  name: columbia_river_to_north_vancouver_island
+  coastal_buffer_m: 6000
+  min_source_cell_land_fraction: 0.01
+  min_source_cell_water_fraction: 0.0
+  max_source_cell_water_fraction: 0.95
+  cleanup_natural_earth: false
+viewshed:
+  backend: gdal
+  surface_model: bare_earth
+  dem_resolution_m: 30
+  crs_projected: EPSG:32610
+  observer_eye_height_m: 1.7
+  target_height_m: 1.0
+  sea_level_m: 0.0
+  dem_nodata_policy: opaque_barrier
+  dem_nodata_barrier_height_m: 100000.0
+  max_distance_m: 30000
+  aoi_margin_m: 1000
+  curvature_coefficient: 0.85714
+  earth_radius_m: 6378137.0
+  canopy_resampling: max
+  canopy_nodata_policy: zero
+  minimum_canopy_height_m: 0.0
+  observer_canopy_clearance_radius_m: 30.0
+h3:
+  source_resolution: 7
+  target_resolution: 7
+  source_sampling_mode: active_fraction
+  sample_points_per_source_cell: 10
+  min_sample_points_per_source_cell: 5
+  aggregation_mode: full
+  pixel_stride: 1
+  min_visible_sampled_pixel_count: 1
+  min_visible_area_km2: 0.0
+  include_centroid: true
+batch:
+  max_workers: 8
+  batch_size_cells: 49
+  accumulator_tile_size: 512
+  strategy: h3_parent
+  max_batch_aoi_pixels: 20000000
+  max_estimated_batch_memory_mb: 1536
+raster:
+  intermediate_compress: none
+  final_compress: deflate
+  block_size: 512
+distance_weight:
+  version: distance_v001_slim_source_type_lookup
+  selected_model: logistic
+  logistic_d50_km: 9.0
+  logistic_slope_km: 2.7
+  normalize_at_zero: true
+  hard_cutoff_km: 30.0
+  source_chunk_size: 256
+  overwrite: false
+  compute_exact_p90: false
+  p90_method: none
+static_maps:
+  enabled: true
+  selected_location:
+    latitude: 48.135238
+    longitude: -122.76723
+  colormap_name: visibility_heat
+  display_quantile: 0.98
+  analysis_pixel_size_m: 250
+  output_pixel_size_m: 100
+  gaussian_sigma_km: 1.5
+  support_boundary_smoothing_km: 0.45
+  raster_padding_km: 3.0
+  h3_fill_opacity: 0.78
+  smoothed_fill_opacity: 0.82
+  externalize_map_assets: true
+source_target_lookup:
+  max_distance_km_land: 30.0
+  max_distance_km_water: 30.0
+  include_land_sources: true
+  include_water_sources: true
+  include_mixed_as_land_sources: true
+  include_mixed_as_water_sources: true
+  include_water_targets: true
+  include_mixed_as_water_targets: true
+  allow_self_pairs: false
+  allow_active_role_self_pairs: true
+  strict_bbox_intersection: true
+water_viewing:
+  target_visibility_height_m: 1.5
+  default_observer_height_class: small_craft
+  target_area_equal_area_crs: EPSG:6933
+  source_samples_per_cell: 3
+  land_mask:
+    land_buffer_m: 30
+    target_samples_per_cell: 3
+  observer_height_classes:
+    small_craft:
+      eye_height_m: 2.5
+      description: Pleasure boats and fishing craft
+canopy:
+  resolution_m: 10
+canopy_visibility:
+  contract: conditional_canopy_los_ratio_no_landcover_v1
+  landcover_used: false
+vegetation_weights:
+  resolution_m: 30
+paths:
+  land_polygon_path: data/salish_sea/raw/land/ne_10m_land.shp
+  water_polygon_path: data/salish_sea/prepared/water.parquet
+  raw_dem_dir: data/salish_sea/raw/dem
+  regional_dem_path: data/salish_sea/prepared/dem_30m.tif
+  canopy_height_path: data/salish_sea/prepared/chm_30m.tif
+  output_dir: data/salish_sea/work
+  final_output_dir: data/salish_sea/outputs
+  map_dir: data/salish_sea/maps
+  source_cells_path: data/salish_sea/work/inputs/land_h3.parquet
+  land_h3_path: data/salish_sea/work/inputs/land_h3.parquet
+  projected_dem_path: data/salish_sea/work/cache/projected_dem_batch49.tif
+  final_visibility_path: data/salish_sea/work/terrain/terrain_visibility.parquet
+  partitioned_visibility_dir: data/salish_sea/work/terrain/partitions
+  manifest_path: data/salish_sea/work/terrain/manifest.csv
+bbox_wgs84:
+  min_lon: -128.6
+  min_lat: 46.0
+  max_lon: -121.6
+  max_lat: 51.1
+case_study:
+  name: salish_sea
+  analysis_root: analysis
+  data_root: data

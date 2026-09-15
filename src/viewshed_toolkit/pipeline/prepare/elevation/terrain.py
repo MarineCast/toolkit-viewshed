@@ -191,10 +191,15 @@ def ensure_projected_regional_dem(app: AppConfig) -> Path:
         )
     projected = projected_dem_cache_path(app)
     expected_metadata = expected_projected_dem_metadata(app)
-    overwrite = app.run.overwrite and projected not in _PROJECTED_DEM_READY_THIS_PROCESS
+    actual_metadata = read_projected_dem_metadata(projected)
+    metadata_matches = projected_dem_metadata_matches(actual_metadata, expected_metadata)
+    # A path marked ready earlier in this process can belong to an older
+    # configuration. Explicit overwrite must still replace that stale cache.
+    overwrite = app.run.overwrite and (
+        projected not in _PROJECTED_DEM_READY_THIS_PROCESS or not metadata_matches
+    )
     if projected.exists() and core_raster.valid_raster(projected) and not overwrite:
-        actual_metadata = read_projected_dem_metadata(projected)
-        if not projected_dem_metadata_matches(actual_metadata, expected_metadata):
+        if not metadata_matches:
             raise ValueError(
                 "Projected DEM cache exists but metadata does not match this run. "
                 "Delete the cached DEM, set overwrite=True, or use a versioned projected_dem_path."

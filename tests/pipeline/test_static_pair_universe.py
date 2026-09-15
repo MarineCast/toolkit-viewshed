@@ -6,7 +6,6 @@ import polars as pl
 import pytest
 import yaml
 
-from analysis.case_studies.orcacast.observation_contracts import validate_product_contract
 from viewshed_toolkit.pipeline.contracts.artifacts import (
     FINAL_SCHEMAS,
     final_artifact_paths_from_raw,
@@ -231,7 +230,10 @@ def test_forward_geometry_preserves_legacy_limitation_without_inventing_pure_los
         component_provenance_json="{}",
     )
     result = lazy.collect()
-    validate_product_contract(result, "static_geometry_r7")
+    # Assert the toolkit-owned schema without importing a removed application case study.
+    assert set(FINAL_SCHEMAS["observation_geometry"]).issubset(result.columns)
+    for key, expected in lineage.items():
+        assert result[key].item() == expected
     assert result["line_of_sight_support"].item() is None
     assert result["physical_viewability"].item() is None
     assert result["line_of_sight_state"].item() == "source_unavailable"

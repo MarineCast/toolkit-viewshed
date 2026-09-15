@@ -250,3 +250,85 @@ def test_canonical_batch_surface_defers_grounding(
     assert canonical.observer_pixel_count == 0
     assert canonical.positive_canopy_pixel_count == legacy.positive_canopy_pixel_count
     assert canonical_tags["intervening_obstacle_surface"] == ("canonical_endpoint_dem_plus_chm")
+
+
+@pytest.mark.parametrize("row,col,radius", [(15, 16, 0.0), (15, 16, 30.0), (0, 0, 45.0)])
+def test_private_vrt_matches_full_copy_and_gdal_los(tmp_path, row, col, radius):
+    gdal = pytest.importorskip("osgeo.gdal")
+    from viewshed_toolkit.pipeline.prepare.elevation.canopy import (
+        isolate_observer_canopy_surface,
+        isolate_observer_canopy_vrt,
+    )
+
+    rng = np.random.default_rng(341)
+    ground = rng.uniform(0, 30, size=(32, 32)).astype("float32")
+    canopy = ground + rng.uniform(0, 40, size=(32, 32)).astype("float32")
+    canopy[-1, -1] = -9999.0
+    base = _write_raster(tmp_path / "base.tif", canopy, nodata=-9999.0, dtype="float32")
+    endpoint = _write_raster(tmp_path / "ground.tif", ground, nodata=-9999.0, dtype="float32")
+    point = _observer(row, col).geometry.iloc[0]
+    kwargs = dict(
+        base_surface_path=base,
+        endpoint_dem_path=endpoint,
+        observer_x=point.x,
+        observer_y=point.y,
+        clearance_radius_m=radius,
+    )
+    reference = isolate_observer_canopy_surface(output_path=tmp_path / "reference.tif", **kwargs)
+    virtual = isolate_observer_canopy_vrt(output_path=tmp_path / "virtual.vrt", **kwargs)
+    with rasterio.open(reference) as a, rasterio.open(virtual) as b:
+        np.testing.assert_array_equal(a.read(), b.read())
+        assert (a.crs, a.transform, a.nodata) == (b.crs, b.transform, b.nodata)
+    with rasterio.open(base) as unchanged:
+        np.testing.assert_array_equal(unchanged.read(1), canopy)
+    with rasterio.open(virtual.with_suffix(".patch.tif")) as patch:
+        assert patch.width <= 5 and patch.height <= 5
+    results = []
+    transforms = []
+    for path in (reference, virtual):
+        dataset = gdal.Open(str(path))
+        output = gdal.ViewshedGenerate(
+            dataset.GetRasterBand(1),
+            "MEM",
+            "",
+            [],
+            point.x,
+            point.y,
+            1.7,
+            1.0,
+            1.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.85714,
+            gdal.GVM_Edge,
+            1000.0,
+            None,
+            None,
+            gdal.GVOT_NORMAL,
+            [],
+        )
+        results.append(output.ReadAsArray())
+        transforms.append(output.GetGeoTransform())
+        output = dataset = None
+    np.testing.assert_array_equal(*results)
+    assert transforms[0] == transforms[1]
+
+
+def test_private_vrt_rejects_missing_observer_ground(tmp_path):
+    pytest.importorskip("osgeo.gdal")
+    from viewshed_toolkit.pipeline.prepare.elevation.canopy import isolate_observer_canopy_vrt
+
+    base = _write_raster(tmp_path / "base.tif", np.ones((3, 3)), nodata=-9999, dtype="float32")
+    endpoint = _write_raster(
+        tmp_path / "ground.tif", np.full((3, 3), -9999), nodata=-9999, dtype="float32"
+    )
+    point = _observer(1, 1).geometry.iloc[0]
+    with pytest.raises(ValueError, match="Observer ground elevation is unavailable"):
+        isolate_observer_canopy_vrt(
+            base_surface_path=base,
+            endpoint_dem_path=endpoint,
+            output_path=tmp_path / "virtual.vrt",
+            observer_x=point.x,
+            observer_y=point.y,
+        )

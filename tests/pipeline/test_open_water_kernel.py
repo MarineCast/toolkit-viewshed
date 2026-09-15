@@ -460,3 +460,33 @@ def test_cached_projected_water_geometry_samples_are_reprojected_for_metric_kern
     assert len(points) == 1
     assert points[0].x == pytest.approx(1_113.1949, rel=1e-6)
     assert points[0].y == pytest.approx(0.0, abs=1e-9)
+
+
+def test_water_denominator_conversion_is_bounded_to_requested_targets(monkeypatch):
+    from types import SimpleNamespace
+
+    app = SimpleNamespace(h3=SimpleNamespace(output_resolution=7))
+    frame = pl.DataFrame(
+        {
+            "target_h3_cell": [f"cell-{i}" for i in range(1000)],
+            "target_water_area_m2": [float(i + 1) for i in range(1000)],
+        }
+    )
+    monkeypatch.setattr(gdal, "domain_target_water_area_by_h3", lambda *_: frame)
+    requested = ["cell-12", "cell-700"]
+    expected = {"cell-12": 13.0, "cell-700": 701.0}
+    assert gdal._water_target_area_lookup(app, requested) == expected
+    assert gdal._water_target_area_lookup(app, list(reversed(requested))) == expected
+    assert gdal._water_target_area_lookup(app, []) == {}
+
+
+def test_water_prefilter_cache_is_bounded(monkeypatch):
+    import pandas as pd
+
+    monkeypatch.setattr(gdal, "_WATER_TERRAIN_PREFILTER_CACHE", {})
+    monkeypatch.setattr(gdal, "_WATER_TERRAIN_PREFILTER_CACHE_LIMIT", 2)
+    result = (pd.DataFrame({"weight": [0.25]}), set())
+    for key in range(3):
+        gdal._cache_water_prefilter_result((key,), result)
+    assert list(gdal._WATER_TERRAIN_PREFILTER_CACHE) == [(1,), (2,)]
+    assert gdal._WATER_TERRAIN_PREFILTER_CACHE[(2,)][0].equals(result[0])

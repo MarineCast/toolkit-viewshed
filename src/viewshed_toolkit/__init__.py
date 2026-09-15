@@ -13,6 +13,7 @@ from .pipeline.api import (
     validate,
 )
 from .pipeline.config import AppConfig, load_app_config
+from .pipeline.api.components import run_component_stage, run_components
 from .pipeline.contracts import WorkflowIdentity
 
 __version__ = "0.1.0"
@@ -29,6 +30,8 @@ __all__ = [
     "load_app_config",
     "process",
     "run_stage",
+    "run_component_stage",
+    "run_components",
     "run_viewshed",
     "validate",
 ]

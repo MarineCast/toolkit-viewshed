@@ -18,6 +18,7 @@ import rasterio
 from shapely.geometry import box
 
 from viewshed_toolkit._internal.artifacts import checksum_path
+from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
 from viewshed_toolkit._internal.geo import raster as core_raster
 from viewshed_toolkit._internal.geo.geometry import (
     safe_polygonal_difference,
@@ -191,7 +192,7 @@ def _canonical_dataset_signature(path: Path) -> dict[str, Any]:
             {
                 "path": str(member.resolve()),
                 "size": int(member.stat().st_size),
-                "sha256": checksum_path(member),
+                "sha256": checksum_unchanged_file(member),
             }
             for member in members
             if member.is_file()

@@ -1133,13 +1133,15 @@ def run_gdal_viewshed_to_bool_array(**arguments: Any) -> ViewshedWindowResult:
     app = arguments["app"]
     if str(getattr(getattr(app, "viewshed", None), "surface_model", "bare_earth")) != "canopy":
         return _run_gdal_viewshed_dispatch(**arguments)
-    from ...prepare.elevation.canopy import isolate_observer_canopy_surface
+    from ...prepare.elevation.canopy import isolate_observer_canopy_vrt
 
-    with tempfile.TemporaryDirectory(prefix="orca_observer_canopy_") as directory:
-        surface = isolate_observer_canopy_surface(
+    with tempfile.TemporaryDirectory(
+        prefix="observer_canopy_", dir=context.analysis_dem_path.parent
+    ) as directory:
+        surface = isolate_observer_canopy_vrt(
             base_surface_path=context.analysis_dem_path,
             endpoint_dem_path=context.endpoint_dem_path,
-            output_path=Path(directory) / "surface.tif",
+            output_path=Path(directory) / "surface.vrt",
             observer_x=arguments["observer_x"],
             observer_y=arguments["observer_y"],
             clearance_radius_m=app.viewshed.observer_canopy_clearance_radius_m,

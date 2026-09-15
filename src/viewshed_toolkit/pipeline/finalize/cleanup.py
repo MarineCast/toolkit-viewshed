@@ -48,11 +48,7 @@ import argparse
 import json
 from pathlib import Path
 
-from ..config import (
-    DEFAULT_CONFIG,
-    load_yaml_config,
-    output_dir_from_config,
-)
+from ..config import DEFAULT_CONFIG
 from ..contracts.cleanup import cleanup_data_contract
 from ..finalize.final_artifacts import (
     cleanup_viewshed_dir_to_static_outputs,
@@ -68,12 +64,10 @@ def clean_intermediates(config_path: Path, final_outputs: dict[str, Path]) -> li
             + "\n".join(str(path) for path in missing)
         )
 
-    raw = load_yaml_config(config_path)
-    benchmark_dir = output_dir_from_config(raw, config_path.parent) / "benchmarks"
     return cleanup_data_contract(
         config_path,
         remove_stage_scratch=True,
-        preserve_paths=[*final_outputs.values(), benchmark_dir],
+        preserve_paths=list(final_outputs.values()),
     )
 
 

@@ -111,10 +111,10 @@ def test_cleanup_data_contract_never_removes_sibling_domain_data(tmp_path: Path)
     scratch = paths.output_dir / "_tmp" / "terrain" / "scratch.tif"
     scratch.parent.mkdir(parents=True, exist_ok=True)
     scratch.write_text("scratch")
-    preserved_dir = paths.output_dir / "benchmarks"
-    preserved_child = preserved_dir / "timings.csv"
+    preserved_dir = paths.output_dir / "retained_notes"
+    preserved_child = preserved_dir / "notes.txt"
     preserved_dir.mkdir()
-    preserved_child.write_text("timing")
+    preserved_child.write_text("notes")
 
     removed = cleanup_data_contract(
         config_path,
@@ -198,3 +198,20 @@ def test_finalize_cleanup_is_opt_in(tmp_path: Path, monkeypatch) -> None:
 
     finalize_cleanup.main(["--config", str(config_path), "--clean-intermediates"])
     assert calls == [config_path.resolve()]
+
+
+def test_intermediate_cleanup_preserves_only_requested_final_products(tmp_path, monkeypatch):
+    from viewshed_toolkit.pipeline.finalize import cleanup
+
+    final = tmp_path / "final.parquet"
+    final.write_text("final")
+    captured = {}
+
+    def capture(config_path, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(cleanup, "cleanup_data_contract", capture)
+    assert cleanup.clean_intermediates(tmp_path / "config.yaml", {"land": final}) == []
+    assert captured["preserve_paths"] == [final]
+    assert captured["remove_stage_scratch"] is True

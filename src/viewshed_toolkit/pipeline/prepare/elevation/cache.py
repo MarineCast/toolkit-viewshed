@@ -9,18 +9,16 @@ from typing import Any
 
 import rasterio
 
+from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
+
 
 def input_signature(path: Path) -> dict[str, str | int]:
     """Return the immutable-on-read identity used by raster caches."""
 
     resolved = Path(path).resolve()
     stat = resolved.stat()
-    digest = hashlib.sha256()
-    with resolved.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
     return {
-        "sha256": digest.hexdigest(),
+        "sha256": checksum_unchanged_file(resolved, raw_bytes=True),
         "path": str(resolved),
         "size": int(stat.st_size),
         "mtime_ns": int(stat.st_mtime_ns),

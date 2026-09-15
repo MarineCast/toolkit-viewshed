@@ -1,7 +1,7 @@
 # Shared named areas used by the standalone viewshed configuration.
 areas:
   model_area:
-    description: Model area copied for the Salish Sea case study.
+    description: Canonical OrcaCast SRKW modeling domain for the Salish Sea case study.
     bbox_wgs84:
       min_lon: -125.80
       min_lat: 46.85

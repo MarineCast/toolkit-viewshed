@@ -1,0 +1,10 @@
+name: viewshed-ci
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - gdal>=3.9
+  - rasterio>=1.4
+  - numpy>=1.26
+  - numba>=0.60
+  - pip

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import time
 from pathlib import Path
 from typing import Any
 
@@ -85,27 +84,17 @@ def _cmd_download_landcover(args: argparse.Namespace) -> None:
 
 
 def _cmd_prepare_vegetation_rasters(args: argparse.Namespace) -> None:
-    started = time.perf_counter()
-    canopy_started = time.perf_counter()
     canopy = pipeline.download_canopy_height(
         args.config, overwrite=args.overwrite, dry_run=args.dry_run
     )
-    canopy_elapsed = time.perf_counter() - canopy_started
-    landcover_started = time.perf_counter()
     landcover = pipeline.download_landcover(
         args.config,
         overwrite=args.overwrite,
         dry_run=args.dry_run,
         method=args.method,
     )
-    landcover_elapsed = time.perf_counter() - landcover_started
     print(f"Prepared canopy height -> {canopy.output_path}")
     print(f"Prepared landcover -> {landcover.output_path}")
-    if args.benchmark:
-        print("Vegetation raster benchmark")
-        print(f"  chm_prep_seconds: {canopy_elapsed:.1f}")
-        print(f"  landcover_prep_seconds: {landcover_elapsed:.1f}")
-        print(f"  total_seconds: {time.perf_counter() - started:.1f}")
 
 
 def _default_test_output_dir(config_path: str | Path) -> str:
@@ -187,7 +176,6 @@ def register_commands(
 
     parser = common("prepare-vegetation-rasters", "Prepare vegetation-support rasters.")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--benchmark", action="store_true")
     parser.add_argument("--method", choices=["aws"], default=None)
     parser.set_defaults(func=_cmd_prepare_vegetation_rasters)
 

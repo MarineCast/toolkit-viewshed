@@ -138,3 +138,32 @@ python -m viewshed_toolkit --help
 Use `<command> --help` to inspect a stage without running it. CLI commands are presentation layers
 over the same canonical stage functions; registered compatibility command names may appear in
 `--help`, but they are not additional Python APIs.
+
+## Explicit component API
+
+The package root also exports `run_components` and `run_component_stage`:
+
+```python
+from viewshed_toolkit import load_app_config, run_component_stage, run_components
+
+app = load_app_config("configs/salish_sea.yaml")
+run_component_stage(app, "download-dem")       # acquisition only
+run_component_stage(app, "prepare-dem")        # existing downloaded inputs only
+run_component_stage(app, "build-dem-weights")  # prepared DEM and pair lookup required
+
+outputs = run_components(app, target="all", source_type="land", run_id="land-components")
+```
+
+Both accept a config path or `AppConfig`. `run_component_stage` returns the stage's output path;
+`run_components` returns a stage-name-to-path mapping and writes a durable run manifest with
+status, checksums, and sampled performance metrics. Valid build targets are `dem`, `chm`,
+`distance`, and `all`. `overwrite=True` explicitly rebuilds requested stages.
+
+Advanced provider implementations use `pipeline.providers.RasterProvider`, `Asset`,
+`DownloadResult`, and `register_provider`. Dataset settings use `pipeline.config.datasets`.
+Provider registration must precede loading a configuration that names the new provider.
+
+The component API has no implicit cleanup. Its final tables and maps use a separate namespace;
+the original public `process` and `run_viewshed` retain the legacy paired/cleanup contract above.
+See [pipeline stages](pipelines.md) for exact dependencies and [configuration](configuration.md)
+for the intentionally preserved scientific model.

@@ -100,6 +100,7 @@ _PROJECTED_H3_BOUND_CACHE: dict[tuple[str, str, str, str], tuple[float, float, f
 _PROJECTED_H3_BOUNDS_CACHE: dict[tuple[str, str, str], dict[str, tuple[float, float, float]]] = {}
 _PROJECTED_WATER_TARGET_SAMPLE_CACHE: dict[tuple[Any, ...], tuple[Point, ...]] = {}
 _WATER_TERRAIN_PREFILTER_CACHE: dict[tuple[Any, ...], tuple[pd.DataFrame, set[str] | None]] = {}
+_WATER_TERRAIN_PREFILTER_CACHE_LIMIT = 128
 
 try:
     import xarray as xr
@@ -966,6 +967,30 @@ def _water_land_mask_supports_for_targets(
     return results
 
 
+def _cache_water_prefilter_result(
+    key: tuple[Any, ...], result: tuple[pd.DataFrame, set[str] | None]
+) -> None:
+    """Retain a bounded FIFO cache for repeated single-source inspection."""
+    if key not in _WATER_TERRAIN_PREFILTER_CACHE:
+        while len(_WATER_TERRAIN_PREFILTER_CACHE) >= _WATER_TERRAIN_PREFILTER_CACHE_LIMIT:
+            del _WATER_TERRAIN_PREFILTER_CACHE[next(iter(_WATER_TERRAIN_PREFILTER_CACHE))]
+    _WATER_TERRAIN_PREFILTER_CACHE[key] = result
+
+
+def _water_target_area_lookup(app: AppConfig, targets: Sequence[str]) -> dict[str, float]:
+    """Materialize only this source's candidate denominators as Python objects.
+
+    The regional frame is already cached. Converting its entire domain to
+    dictionaries for every source causes quadratic object allocation and GC.
+    Filtering first preserves the same canonical areas and bounds that work.
+    """
+    frame = domain_target_water_area_by_h3(app, app.h3.output_resolution)
+    subset = frame.filter(pl.col("target_h3_cell").is_in(list(targets))).select(
+        "target_h3_cell", "target_water_area_m2"
+    )
+    return {str(cell): float(area) for cell, area in subset.iter_rows()}
+
+
 def _water_terrain_prefilter_for_source(
     app: AppConfig,
     source_cell: str,
@@ -1030,7 +1055,7 @@ def _water_terrain_prefilter_for_source(
 
     if not targets:
         out = (pd.DataFrame(), set())
-        _WATER_TERRAIN_PREFILTER_CACHE[cache_key] = out
+        _cache_water_prefilter_result(cache_key, out)
         return pd.DataFrame(), set()
 
     domain_geometries = _water_terrain_domains_for_app(app)
@@ -1040,11 +1065,7 @@ def _water_terrain_prefilter_for_source(
         if distance_weight_config.hard_cutoff_km is not None
         else float(app.viewshed.max_distance_m) / 1_000.0
     )
-    target_area_frame = domain_target_water_area_by_h3(app, app.h3.output_resolution)
-    target_area_lookup = {
-        str(row["target_h3_cell"]): float(row["target_water_area_m2"])
-        for row in target_area_frame.to_dicts()
-    }
+    target_area_lookup = _water_target_area_lookup(app, targets)
     open_rows: list[dict[str, Any]] = []
     dem_targets: set[str] = set()
     transformer = _projected_transformer_for_app(app)
@@ -1077,7 +1098,7 @@ def _water_terrain_prefilter_for_source(
 
     out_rows = pd.DataFrame(open_rows)
     out = (out_rows, dem_targets)
-    _WATER_TERRAIN_PREFILTER_CACHE[cache_key] = out
+    _cache_water_prefilter_result(cache_key, out)
     return out_rows.copy(), set(dem_targets)
 
 

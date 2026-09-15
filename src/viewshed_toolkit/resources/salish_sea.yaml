@@ -1,7 +1,6 @@
 # Canonical OrcaCast observation-geometry viewshed configuration.
 #
-# This is the configuration bundled with the package. The editable checkout
-# copy is configs/salish_sea.yaml.
+# This is the editable checkout copy of the default package configuration.
 
 provenance:
   workflow: human.viewshed
@@ -26,6 +25,27 @@ run:
 # from the packaged common.yaml. The modeled target domain extends beyond this source
 # bbox by max_distance_m + aoi_margin_m.
 area: model_area
+
+# Independent provider stages. Existing regional rasters remain usable by the
+# legacy paired workflow; the explicit workflow owns its own asset manifests.
+datasets:
+  dem:
+    provider: usgs_3dep
+    enabled: true
+    resolution_m: 30
+    version: live
+    cache: true
+  chm:
+    provider: global_canopy_height
+    enabled: true
+    resolution_m: 10
+    version: "2020"
+    cache: true
+
+composition:
+  model: distance_integrated_los
+  land: [terrain, canopy]
+  water: [terrain]
 
 region:
   name: model_area

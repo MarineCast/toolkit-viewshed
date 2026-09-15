@@ -11,6 +11,7 @@ from typing import Any, Sequence
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import shapely
 from pyproj import CRS
 from shapely.geometry import Point
 from shapely.geometry.base import BaseGeometry
@@ -236,11 +237,13 @@ def sample_points_in_source_geometry(
         component_minx, component_miny, component_maxx, component_maxy = component.bounds
         xs = np.linspace(component_minx, component_maxx, component_grid_side + 2)[1:-1]
         ys = np.linspace(component_miny, component_maxy, component_grid_side + 2)[1:-1]
-        for y in ys:
-            for x in xs:
-                point = Point(float(x), float(y))
-                if component.covers(point):
-                    candidates_by_coordinate.setdefault(_point_coordinate_key(point), point)
+        # Preserve the scalar y-major candidate order and GEOS predicates while
+        # avoiding one Python geometry call per candidate at regional scale.
+        grid_x, grid_y = np.meshgrid(xs, ys)
+        points = shapely.points(grid_x.ravel(), grid_y.ravel())
+        covered = shapely.covers(component, points)
+        for point in points[covered]:
+            candidates_by_coordinate.setdefault(_point_coordinate_key(point), point)
 
     selected_keys = {_point_coordinate_key(point) for point in selected}
     remaining = [
@@ -248,11 +251,11 @@ def sample_points_in_source_geometry(
     ]
     while len(selected) < design_count and remaining:
         if not selected:
-            central_distances = np.round([point.distance(central_point) for point in remaining], 6)
+            central_distances = np.round(shapely.distance(remaining, central_point), 6)
             next_idx = int(np.argmin(central_distances))
         else:
             maximin_distances = np.round(
-                [min(point.distance(chosen) for chosen in selected) for point in remaining],
+                np.minimum.reduce([shapely.distance(remaining, chosen) for chosen in selected]),
                 6,
             )
             next_idx = int(np.argmax(maximin_distances))

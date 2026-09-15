@@ -7,8 +7,8 @@ The terrain viewshed needs three different elevation semantics:
 * intervening obstruction: endpoint DEM plus canopy height on land.
 
 GDAL accepts only one input elevation raster. Batch preparation keeps an
-observer-neutral obstruction surface. Each LOS invocation copies that surface
-and restores only its own observer pixel to the endpoint DTM.  Water pixels are never raised by CHM.  A
+observer-neutral obstruction surface. Each GDAL LOS invocation overlays a private clearance patch on that surface
+and restores only its own observer pixels to the endpoint DTM. Water pixels are never raised by CHM. A
 GDAL observer height is then correctly interpreted as eye height above ground,
 and the target height is correctly interpreted above the water surface.
 
@@ -778,4 +778,86 @@ def isolate_observer_canopy_surface(
                 observer_grounded_pixel_count=str(len(pixels)),
                 observer_clearance_radius_m=str(clearance_radius_m),
             )
+    return output_path
+
+
+def isolate_observer_canopy_vrt(
+    *,
+    base_surface_path: Path,
+    endpoint_dem_path: Path,
+    output_path: Path,
+    observer_x: float,
+    observer_y: float,
+    clearance_radius_m: float = 0.0,
+) -> Path:
+    """Overlay a small private clearance patch without copying the whole grid."""
+    from xml.etree import ElementTree as ET
+
+    from osgeo import gdal
+
+    validate_strict_grid(base_surface_path, endpoint_dem_path, label="canopy base")
+    with rasterio.open(base_surface_path) as base, rasterio.open(endpoint_dem_path) as ground:
+        observers = gpd.GeoDataFrame(
+            geometry=gpd.points_from_xy([observer_x], [observer_y]), crs=base.crs
+        )
+        pixels = _observer_clearance_pixels(
+            observers,
+            transform=base.transform,
+            raster_crs=base.crs,
+            shape=(base.height, base.width),
+            clearance_radius_m=clearance_radius_m,
+        )
+        rows, cols = zip(*pixels, strict=True)
+        row_min, col_min = min(rows), min(cols)
+        patch_height, patch_width = max(rows) - row_min + 1, max(cols) - col_min + 1
+        window = rasterio.windows.Window(col_min, row_min, patch_width, patch_height)
+        patch = base.read(1, window=window)
+        ground_values = ground.read(1, window=window, masked=True)
+        for row, col in pixels:
+            value = ground_values[row - row_min, col - col_min]
+            if np.ma.is_masked(value) or not np.isfinite(value):
+                raise ValueError("Observer ground elevation is unavailable")
+            patch[row - row_min, col - col_min] = value
+        patch_path = output_path.with_suffix(".patch.tif")
+        with rasterio.open(
+            patch_path,
+            "w",
+            driver="GTiff",
+            height=patch_height,
+            width=patch_width,
+            count=1,
+            dtype=base.dtypes[0],
+            crs=base.crs,
+            transform=base.window_transform(window),
+            nodata=base.nodata,
+        ) as target:
+            target.write(patch, 1)
+        tree = ET.Element("VRTDataset", rasterXSize=str(base.width), rasterYSize=str(base.height))
+        ET.SubElement(tree, "SRS").text = base.crs.to_wkt()
+        ET.SubElement(tree, "GeoTransform").text = ",".join(map(str, base.transform.to_gdal()))
+        dataset = gdal.Open(str(base_surface_path))
+        dtype = gdal.GetDataTypeName(dataset.GetRasterBand(1).DataType)
+        dataset = None
+        band = ET.SubElement(tree, "VRTRasterBand", dataType=dtype, band="1")
+        if base.nodata is not None:
+            ET.SubElement(band, "NoDataValue").text = str(base.nodata)
+        for path, width, height, xoff, yoff in (
+            (base_surface_path, base.width, base.height, 0, 0),
+            (patch_path, patch_width, patch_height, col_min, row_min),
+        ):
+            source = ET.SubElement(band, "SimpleSource")
+            ET.SubElement(source, "SourceFilename", relativeToVRT="0").text = str(path.resolve())
+            ET.SubElement(source, "SourceBand").text = "1"
+            ET.SubElement(
+                source, "SrcRect", xOff="0", yOff="0", xSize=str(width), ySize=str(height)
+            )
+            ET.SubElement(
+                source,
+                "DstRect",
+                xOff=str(xoff),
+                yOff=str(yoff),
+                xSize=str(width),
+                ySize=str(height),
+            )
+        ET.ElementTree(tree).write(output_path, encoding="utf-8", xml_declaration=True)
     return output_path

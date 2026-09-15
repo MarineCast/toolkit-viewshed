@@ -12,9 +12,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from viewshed_toolkit._internal.config.common_areas import bbox_from_config as common_bbox_from_config
+from viewshed_toolkit._internal.config.common_areas import (
+    bbox_from_config as common_bbox_from_config,
+)
 from viewshed_toolkit._internal.config.data import load_data_config
 from viewshed_toolkit._internal.config.paths import resolve_config_path
+from .datasets import CompositionConfig, DatasetsConfig
+from .case_study import CaseStudyConfig
 
 
 def load_yaml_config(config_path: str | Path) -> dict[str, Any]:
@@ -49,6 +53,10 @@ def normalize_viewshed_config(raw: dict[str, Any]) -> dict[str, Any]:
     `vegetation_weights`, so this function provides the compatibility layer.
     """
     cfg = dict(raw or {})
+    if "case_study" in cfg:
+        CaseStudyConfig.model_validate(cfg["case_study"])
+    DatasetsConfig.model_validate(cfg.get("datasets", {}))
+    CompositionConfig.model_validate(cfg.get("composition", {}))
     has_nested = any(
         key in cfg
         for key in (

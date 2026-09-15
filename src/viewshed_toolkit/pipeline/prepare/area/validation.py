@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 import logging
 import math
 from dataclasses import dataclass
@@ -225,67 +226,57 @@ def _pack_h3_parent_remainders(
     resolution_m: float,
     max_pixels: int | None,
 ) -> list[_BatchPackingGroup]:
-    """Greedily merge nearby parent remainders when raster cost cannot increase."""
+    """Apply the deterministic greedy policy without rescoring unchanged pairs.
 
-    packed = list(remainder_groups)
-    while True:
-        best: (
-            tuple[
-                tuple[int, int, int, tuple[str, ...]],
-                int,
-                int,
-                _BatchPackingGroup,
-            ]
-            | None
-        ) = None
-        for left_index, left in enumerate(packed):
-            left_pixels = _packing_group_pixel_count(
-                left,
-                padding_m=padding_m,
-                resolution_m=resolution_m,
-            )
-            for right_index in range(left_index + 1, len(packed)):
-                right = packed[right_index]
-                if len(left.cells) + len(right.cells) > batch_size:
-                    continue
-                merged = _merge_packing_groups(left, right)
-                merged_pixels = _packing_group_pixel_count(
-                    merged,
-                    padding_m=padding_m,
-                    resolution_m=resolution_m,
-                )
-                if max_pixels is not None and merged_pixels > max_pixels:
-                    continue
-                right_pixels = _packing_group_pixel_count(
-                    right,
-                    padding_m=padding_m,
-                    resolution_m=resolution_m,
-                )
-                pixel_savings = left_pixels + right_pixels - merged_pixels
-                if pixel_savings < 0:
-                    continue
-                # Lowest tuple wins: fill the configured batch capacity first,
-                # then maximize pixel savings.  Prioritizing fill prevents a
-                # cheap partial merge from stranding groups that could have
-                # formed a complete batch, while the non-negative-savings gate
-                # above still prevents spatially counterproductive merges.
-                score = (
-                    -len(merged.cells),
-                    -int(pixel_savings),
-                    int(merged_pixels),
-                    merged.cells,
-                )
-                candidate = (score, left_index, right_index, merged)
-                if best is None or candidate[0] < best[0]:
-                    best = candidate
-        if best is None:
-            break
-        _, left_index, right_index, merged = best
-        packed = [
-            group for index, group in enumerate(packed) if index not in {left_index, right_index}
-        ]
-        packed.append(merged)
-    return packed
+    A merge changes only candidates involving its two removed groups and its
+    new group. Keep other candidates in a heap and discard stale entries when
+    popped. This preserves the exhaustive planner's ordering with quadratic
+    candidate evaluations instead of a complete rescan after every merge.
+    """
+
+    active = dict(enumerate(remainder_groups))
+    pixels = {
+        key: _packing_group_pixel_count(group, padding_m=padding_m, resolution_m=resolution_m)
+        for key, group in active.items()
+    }
+    candidates: list[tuple[tuple[int, int, int, tuple[str, ...]], int, int]] = []
+
+    def add_candidate(left_id: int, right_id: int) -> None:
+        left, right = active[left_id], active[right_id]
+        if len(left.cells) + len(right.cells) > batch_size:
+            return
+        merged = _merge_packing_groups(left, right)
+        merged_pixels = _packing_group_pixel_count(
+            merged, padding_m=padding_m, resolution_m=resolution_m
+        )
+        if max_pixels is not None and merged_pixels > max_pixels:
+            return
+        savings = pixels[left_id] + pixels[right_id] - merged_pixels
+        if savings < 0:
+            return
+        score = (-len(merged.cells), -savings, merged_pixels, merged.cells)
+        heapq.heappush(candidates, (score, left_id, right_id))
+
+    for left_id in active:
+        for right_id in range(left_id + 1, len(active)):
+            add_candidate(left_id, right_id)
+    next_id = len(active)
+    while candidates:
+        _, left_id, right_id = heapq.heappop(candidates)
+        if left_id not in active or right_id not in active:
+            continue
+        merged = _merge_packing_groups(active.pop(left_id), active.pop(right_id))
+        pixels.pop(left_id)
+        pixels.pop(right_id)
+        active[next_id] = merged
+        pixels[next_id] = _packing_group_pixel_count(
+            merged, padding_m=padding_m, resolution_m=resolution_m
+        )
+        for other_id in active:
+            if other_id != next_id:
+                add_candidate(other_id, next_id)
+        next_id += 1
+    return list(active.values())
 
 
 def validated_h3_parent_batches(

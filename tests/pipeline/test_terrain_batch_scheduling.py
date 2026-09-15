@@ -729,4 +729,104 @@ def test_cleanup_batches_dir_honors_keep_batch_intermediates(
         paths=SimpleNamespace(output_dir=tmp_path),
     )
     cleanup.cleanup_batches_dir(delete_app)
+    assert marker.read_text() == "keep"
+    marker.unlink()
+    cleanup.cleanup_batches_dir(keep_app)
+    assert batches.exists()
+    cleanup.cleanup_batches_dir(delete_app)
     assert not batches.exists()
+
+
+def _exhaustive_packing_reference(
+    remainder_groups: list[batch_validation._BatchPackingGroup],
+    *,
+    batch_size: int,
+    padding_m: float,
+    resolution_m: float,
+    max_pixels: int | None,
+) -> list[batch_validation._BatchPackingGroup]:
+    """Greedily merge nearby parent remainders when raster cost cannot increase."""
+
+    packed = list(remainder_groups)
+    while True:
+        best: (
+            tuple[
+                tuple[int, int, int, tuple[str, ...]],
+                int,
+                int,
+                batch_validation._BatchPackingGroup,
+            ]
+            | None
+        ) = None
+        for left_index, left in enumerate(packed):
+            left_pixels = batch_validation._packing_group_pixel_count(
+                left,
+                padding_m=padding_m,
+                resolution_m=resolution_m,
+            )
+            for right_index in range(left_index + 1, len(packed)):
+                right = packed[right_index]
+                if len(left.cells) + len(right.cells) > batch_size:
+                    continue
+                merged = batch_validation._merge_packing_groups(left, right)
+                merged_pixels = batch_validation._packing_group_pixel_count(
+                    merged,
+                    padding_m=padding_m,
+                    resolution_m=resolution_m,
+                )
+                if max_pixels is not None and merged_pixels > max_pixels:
+                    continue
+                right_pixels = batch_validation._packing_group_pixel_count(
+                    right,
+                    padding_m=padding_m,
+                    resolution_m=resolution_m,
+                )
+                pixel_savings = left_pixels + right_pixels - merged_pixels
+                if pixel_savings < 0:
+                    continue
+                # Lowest tuple wins: fill the configured batch capacity first,
+                # then maximize pixel savings.  Prioritizing fill prevents a
+                # cheap partial merge from stranding groups that could have
+                # formed a complete batch, while the non-negative-savings gate
+                # above still prevents spatially counterproductive merges.
+                score = (
+                    -len(merged.cells),
+                    -int(pixel_savings),
+                    int(merged_pixels),
+                    merged.cells,
+                )
+                candidate = (score, left_index, right_index, merged)
+                if best is None or candidate[0] < best[0]:
+                    best = candidate
+        if best is None:
+            break
+        _, left_index, right_index, merged = best
+        packed = [
+            group for index, group in enumerate(packed) if index not in {left_index, right_index}
+        ]
+        packed.append(merged)
+    return packed
+
+
+def test_heap_packing_matches_exhaustive_policy() -> None:
+    rng = np.random.default_rng(1203)
+    for count in (0, 1, 8, 40):
+        groups = []
+        for i in range(count):
+            x, y = rng.uniform(0, 200_000, size=2)
+            cells = tuple(f"{i:04d}-{j}" for j in range(int(rng.integers(1, 8))))
+            groups.append(batch_validation._BatchPackingGroup(cells, x, y, x + 1500, y + 2000))
+        for batch_size in (7, 14, 49):
+            for limit in (None, 6_000_000):
+                kwargs = dict(
+                    batch_size=batch_size, padding_m=31_000.0, resolution_m=30.0, max_pixels=limit
+                )
+                expected = _exhaustive_packing_reference(groups, **kwargs)
+                actual = batch_validation._pack_h3_parent_remainders(groups, **kwargs)
+                assert actual == expected
+                reversed_result = batch_validation._pack_h3_parent_remainders(
+                    list(reversed(groups)), **kwargs
+                )
+                assert sorted(group.cells for group in actual) == sorted(
+                    group.cells for group in reversed_result
+                )
