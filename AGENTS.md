@@ -8,6 +8,20 @@ subdirectory; a deeper file takes precedence for that subtree.
 
 Do not edit ignored `__pycache__`, `.pytest_cache`, or `*.egg-info` contents.
 
+## Shared MarineCast context
+
+Before changing repository boundaries, dependencies, shared schemas, provenance, or application
+integration, read the MarineCast [infrastructure guide](https://github.com/MarineCast/.github/blob/HEAD/INFRASTRUCTURE.md).
+In the multi-repository workspace, the local copy is `../../.github/INFRASTRUCTURE.md`.
+Prefer that local copy when present; in an independent checkout, read the linked document. If it
+cannot be retrieved, report that limitation and use the local contracts below; do not invent a
+shared standard. These instructions explicitly request that reading; a sibling repository's
+`AGENTS.md` is not automatically inherited.
+
+The infrastructure guide owns cross-repository context. This repository owns its implementation
+and scientific contracts. Surface conflicts before changing an interface; do not silently replace
+an existing local contract with a proposed ecosystem convention.
+
 ## Required reading and task routing
 
 Use each guide for its designated contract instead of copying its detail here:
