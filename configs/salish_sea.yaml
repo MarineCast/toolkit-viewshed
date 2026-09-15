@@ -208,9 +208,11 @@ paths:
   regional_dem_path: data/processed/domain/environmental_layer/landscape/DEM/DEM_30M.tif
   canopy_height_path: data/processed/domain/environmental_layer/landscape/CHM/CHM_30M.tif
   # Rebuildable stage data lives outside the durable processed-data contract.
-  # A successful complete build removes this working directory.
+  # The established run_viewshed/complete-process workflow removes this working
+  # directory after success; explicit component workflows never clean it implicitly.
   output_dir: data/tmp/viewshed/h3r7
-  # The durable viewshed contract contains only the two final static tables.
+  # The established compact workflow writes only its two final static tables here.
+  # Explicit component products use the separate final_output_dir/components namespace.
   final_output_dir: data/processed/domain/human/viewshed/RES7
   # Static-map export appends h3r{source_resolution}/static.
   map_dir: outputs/effort/viewshed

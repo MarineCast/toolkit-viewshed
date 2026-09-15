@@ -13,7 +13,6 @@ from typing import Any
 import polars as pl
 
 from ..config import AppConfig, apply_source_type_policy, initialize_app_config
-from ..config.distance import load_distance_weight_config
 from ..contracts.artifacts import final_artifact_paths_from_raw
 from ..contracts.components import (
     PAIR_KEYS,
@@ -23,6 +22,36 @@ from ..contracts.components import (
     validate_pairs,
     write_component,
 )
+
+
+def _distance_component_contract(app: AppConfig, source_type: str) -> dict[str, Any]:
+    """Return dependency-scoped provenance for the compatibility distance table."""
+
+    from ..contracts.distance import package_version, pair_distance_path
+    from .distance.products import (
+        default_distance_profile,
+        distance_profile_output_path,
+        validate_distance_product,
+    )
+
+    pair_path = pair_distance_path(app, source_type)
+    profile_path = distance_profile_output_path(pair_path, default_distance_profile(app))
+    pair_record = validate_distance_product(pair_path)
+    profile_record = validate_distance_product(profile_path)
+    return {
+        "schema_version": "static_components_v1",
+        "algorithm_version": "default_distance_component_v2",
+        "software_version": package_version(),
+        "source_type": source_type,
+        "source_h3_resolution": app.h3.source_resolution,
+        "target_h3_resolution": app.h3.target_resolution,
+        "inputs": {
+            "pair_distances": pair_record["output_checksum"],
+            "distance_profile": profile_record["output_checksum"],
+        },
+        "profile_scientific_identity": profile_record["contract"]["profile_scientific_identity"],
+        "distance_role": "centroid_diagnostic_only; attenuation_already_integrated_in_LOS",
+    }
 
 
 def _lookup(app: AppConfig, source_type: str) -> tuple[Path, pl.DataFrame]:
@@ -44,28 +73,25 @@ def _lookup(app: AppConfig, source_type: str) -> tuple[Path, pl.DataFrame]:
 def build_distance_component(
     app: AppConfig, *, source_type: str = "land", overwrite: bool = False
 ) -> Path:
-    from .distance.compute import distance_weight_values
+    from .distance.products import (
+        build_distance_profile,
+        build_pair_distances,
+        default_distance_profile,
+    )
 
-    lookup_path, lookup = _lookup(app, source_type)
+    pair_path = build_pair_distances(app, source_type=source_type, overwrite=overwrite)
+    default_profile = default_distance_profile(app)
+    profile_path = build_distance_profile(pair_path, default_profile, overwrite=overwrite)
     path = component_path(app, "distance", source_type)
-    contract = provenance(app, "centroid_distance_v1", {"lookup": lookup_path})
-    contract["source_type"] = source_type
-    contract["distance_model"] = app.raw_config.get("distance_weight", {})
+    contract = _distance_component_contract(app, source_type)
     if not overwrite and cache_matches(path, contract):
         return path
-    cfg = load_distance_weight_config(app.raw_config)
-    distances = lookup["distance_km"]
-    if distances.null_count() or not distances.is_finite().all() or (distances < 0).any():
-        raise ValueError("Distance must be finite, nonnegative, and observed")
-    values = distance_weight_values(
-        distances.to_numpy(),
-        cfg,
-        max_distance_km=cfg.hard_cutoff_km or app.viewshed.max_distance_m / 1000,
-    )
-    frame = lookup.select(*PAIR_KEYS, "distance_km").with_columns(
-        (pl.col("distance_km") * 1000).alias("distance_m"),
-        pl.Series("weight_distance", values),
-        pl.lit(cfg.selected_model).alias("distance_model"),
+    frame = pl.read_parquet(profile_path).select(
+        *PAIR_KEYS,
+        pl.col("distance_km").cast(pl.Float32),
+        pl.col("distance_m").cast(pl.Float64),
+        pl.col("weight_distance").cast(pl.Float32),
+        pl.lit(default_profile.selected_model).alias("distance_model"),
     )
     return write_component(frame, path, contract, weights=("weight_distance",))
 

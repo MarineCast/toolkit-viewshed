@@ -63,6 +63,13 @@ an intentional alternate project root. See [configuration](docs/configuration.md
 
 The explicit component workflow supplements the existing paired production workflow:
 
+| Contract | Established production workflow | Explicit component workflow |
+|---|---|---|
+| Main API | `run_viewshed` / `process` | `run_components` / `run_component_stage` |
+| Durable outputs | Compact legacy final outputs | Separate `components/` namespace |
+| Automatic cleanup | After successful complete execution | None |
+| Land/water promotion | Rollback-safe paired promotion | Per-role manifests; no combined atomic generation pointer |
+
 ```bash
 viewshed-toolkit stage download-dem --config configs/salish_sea.yaml
 viewshed-toolkit stage download-chm --config configs/salish_sea.yaml
@@ -76,6 +83,27 @@ viewshed-toolkit build distance --config configs/salish_sea.yaml --run-id distan
 viewshed-toolkit build all --config configs/salish_sea.yaml --source-type land --run-id land
 viewshed-toolkit build all --config configs/salish_sea.yaml --source-type water --run-id water
 ```
+
+**Water dependency caveat:** `build all --source-type water` currently resolves both DEM and CHM
+acquisition and preparation through the shared graph. The opaque-land water implementation itself
+is raster-free; after preparing its geometry/lookup inputs, use exact `stage` commands such as
+`stage build-dem-weights --source-type water` when avoiding raster dependencies is required.
+`build distance` remains raster-independent. See [pipeline stages](docs/pipelines.md) for the
+complete contract.
+
+Distance can also be reused as a first-class product. Build the role-specific pair distances once,
+then create any number of content-addressed attenuation profiles without geometry or rasters:
+
+```bash
+viewshed-toolkit build-pair-distances --config configs/salish_sea.yaml --source-type land
+viewshed-toolkit build-distance-profile \
+  --pair-distances data/processed/domain/human/viewshed/RES7/components/distance/land/pair_distances.parquet \
+  --profile-id near --model exponential --exponential-lambda-km 5 --hard-cutoff-km 20
+```
+
+The exact output root follows `paths.final_output_dir`; each command prints its actual path. See
+[distance products](docs/distance-products.md) for schemas, Python examples, validation, candidate
+coverage, and cache identity.
 
 `stage` runs exactly one operation and requires its upstream inputs. `build` resolves dependencies;
 it can download regional data and run substantial computation. Geometry inputs must already exist.
@@ -102,6 +130,7 @@ The explicit workflow writes under `<paths.final_output_dir>/components/`:
 ```text
 inputs/{dem,chm}/         Source assets, download manifests, checksums
 geometry/                Area and target-cell products
+distance/{land,water}/   Raw pair distances and independently reusable profiles
 weights/{land,water}/     dem_weights, chm_weights, distance_weights, static_weights
 final/                   land_static_weights.parquet / water_static_weights.parquet
 manifests/               Per-source run metrics and validation reports

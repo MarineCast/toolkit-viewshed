@@ -15,7 +15,7 @@ Each dataset included here should document:
 - Spatial reference system
 - Date accessed
 
-## Local OrcaCast case-study products
+## Historical OrcaCast case-study products
 
 The migration copied the complete H3 R7 static pair kernels to:
 
@@ -27,10 +27,15 @@ artifact checksums. These files are generated research artifacts and remain igno
 They are physical source-to-target viewability kernels, not observer effort, detection
 probabilities, or whale-occurrence estimates.
 
-The expected ignored payload is tracked by relative path, byte size, and SHA-256 in
-`analysis/case_studies/orcacast/manifests/artifacts.json`. Restore files from a matching source
-bundle at the exact recorded paths and verify both size and checksum. This checkout does not
-contain an automated artifact-sync helper.
+The manifest is not part of the current tree. It is preserved in the
+[last revision containing the OrcaCast analysis subtree](https://github.com/stevetylda/viewshed-toolkit/blob/18042d2e570506a90ed826dd6fda92277fc92c1c/analysis/case_studies/orcacast/manifests/artifacts.json).
+Restore files only from a matching historical source bundle, using the exact recorded paths, byte
+sizes, and SHA-256 values. See the [historical resource and restoration guide](../docs/reports/orcacast-history.md)
+for the provenance boundary and retrieval instructions. This checkout does not contain an
+automated artifact-sync helper.
+
+The current `analysis/salish_sea/` case study is newer and geographically expanded. Its artifacts
+are not interchangeable with this OrcaCast bundle.
 
 The manifest expects generated map products under `outputs/effort/viewshed`. A local copy under
 `data/outputs/effort/viewshed` does not satisfy that contract and is reported as missing by the

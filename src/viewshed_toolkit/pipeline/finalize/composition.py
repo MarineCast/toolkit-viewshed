@@ -18,13 +18,11 @@ from ..contracts.components import (
 
 def validate_composed(app: AppConfig, source_type: str) -> Path:
     """Validate lineage and contents without running a producer."""
-    from ..weights.components import _lookup, _surface_contract
+    from ..weights.components import _distance_component_contract, _lookup, _surface_contract
 
     paths = {name: component_path(app, name, source_type) for name in ("dem", "chm", "distance")}
-    lookup_path, _ = _lookup(app, source_type)
-    distance_contract = provenance(app, "centroid_distance_v1", {"lookup": lookup_path})
-    distance_contract["source_type"] = source_type
-    distance_contract["distance_model"] = app.raw_config.get("distance_weight", {})
+    _lookup(app, source_type)
+    distance_contract = _distance_component_contract(app, source_type)
     for name, expected in (
         ("dem", _surface_contract(app, source_type)),
         ("chm", _surface_contract(app, source_type, canopy=True)),
@@ -61,13 +59,11 @@ def compose_components(
     app: AppConfig, *, source_type: str = "land", overwrite: bool = False
 ) -> Path:
     CompositionConfig.model_validate(app.raw_config.get("composition", {}))
-    from ..weights.components import _lookup, _surface_contract
+    from ..weights.components import _distance_component_contract, _lookup, _surface_contract
 
     paths = {name: component_path(app, name, source_type) for name in ("dem", "chm", "distance")}
-    lookup_path, lookup = _lookup(app, source_type)
-    distance_contract = provenance(app, "centroid_distance_v1", {"lookup": lookup_path})
-    distance_contract["source_type"] = source_type
-    distance_contract["distance_model"] = app.raw_config.get("distance_weight", {})
+    _, lookup = _lookup(app, source_type)
+    distance_contract = _distance_component_contract(app, source_type)
     for name, expected in (
         ("dem", _surface_contract(app, source_type)),
         ("chm", _surface_contract(app, source_type, canopy=True)),

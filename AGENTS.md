@@ -6,43 +6,42 @@ These instructions apply to the entire repository. Preserve unrelated working-tr
 keep edits limited to the task at hand. Check for a more specific `AGENTS.md` before working in a
 subdirectory; a deeper file takes precedence for that subtree.
 
-## Repository purpose
-
-Viewshed Toolkit is a Python 3.11+ package for reproducible terrain, vegetation, distance, and
-source-to-target visibility modeling. The durable analytical grain is one unique
-`source_h3 × target_h3` pair.
-
-Keep the scientific boundary explicit:
-
-- Static viewability describes physical viewing support.
-- It is not observer activity, public access, reporting capture, animal detection probability,
-  animal presence, or ecology.
-- Distance is a separately inspectable factor even when it contributes to a composed output.
-- Missing, unavailable, not-applicable, and observed zero are different states. Never silently
-  coerce one into another.
-
-## Repository map
-
-- `src/viewshed_toolkit/__init__.py`: supported public Python facade.
-- `src/viewshed_toolkit/__main__.py`: `python -m viewshed_toolkit` entry point.
-- `src/viewshed_toolkit/pipeline/api/`: typed orchestration and the canonical stage registry.
-- `src/viewshed_toolkit/pipeline/cli/`: argument parsing and terminal presentation only.
-- `src/viewshed_toolkit/pipeline/config/`: configuration, path, and runtime initialization.
-- `src/viewshed_toolkit/pipeline/contracts/`: schemas, artifact paths, cleanup rules, pair keys, and
-  provenance identity.
-- `src/viewshed_toolkit/pipeline/prepare/`: area, elevation, and vegetation preparation.
-- `src/viewshed_toolkit/pipeline/weights/`: distance, terrain, canopy, and vegetation calculations.
-- `src/viewshed_toolkit/pipeline/finalize/`: durable pair-kernel materialization and validation.
-- `src/viewshed_toolkit/pipeline/visualization/`: static and interactive map exports.
-- `src/viewshed_toolkit/_internal/`: private shared persistence and geospatial infrastructure.
-- `src/viewshed_toolkit/resources/`: YAML resources shipped in the wheel.
-- `configs/salish_sea.yaml`: editable checkout copy of the canonical case-study configuration.
-- `analysis/case_studies/orcacast/`: application-specific notebooks, contracts, history, and
-  artifact manifest; this is not part of the reusable package API.
-- `tests/`: API, architecture, numerical, artifact, and cleanup regression tests.
-- `data/` and `outputs/`: ignored local inputs and generated products.
-
 Do not edit ignored `__pycache__`, `.pytest_cache`, or `*.egg-info` contents.
+
+## Required reading and task routing
+
+Use each guide for its designated contract instead of copying its detail here:
+
+| Document | Primary responsibility |
+|---|---|
+| `AGENTS.md` | Required behavior, non-negotiable constraints, task routing, validation commands, and completion requirements |
+| `ARCHITECTURE.md` | Canonical ownership map, dependency direction, and where changes belong |
+| `docs/scientific-methodology.md` | Numerical definitions, assumptions, state semantics, and scientific invariants |
+| `docs/api.md` and `docs/pipelines.md` | How to invoke each workflow and what it reads, writes, reuses, or deletes |
+| `docs/reports/` | Clearly dated evidence; never undated instructions or proof of a current run |
+
+**Before changing numerical behavior, read `docs/scientific-methodology.md`.** Distance attenuation
+is already integrated into `weight_terrain`; do not multiply the H3-centroid distance diagnostic
+into the static result. Preserve the distinction between physical viewability and observer
+activity, access, detection, presence, or ecology. Missing, unavailable, not-applicable, and
+observed zero are distinct states.
+
+Distance products are independently executable. Changing a standalone distance profile must not
+trigger terrain or canopy computation or alter their scientific configuration. Independently
+computed H3-level averages are not generally interchangeable with joint observer/target-sample
+averages. The current viewshed kernel already integrates distance attenuation; never multiply a
+standalone centroid-distance weight into it again.
+
+**Before changing orchestration, promotion, overwrite, or cleanup, identify the affected workflow.**
+The established paired workflow (`run_viewshed` / `process`) and explicit component workflow
+(`run_components` / `run_component_stage`) have different output, promotion, and cleanup
+contracts. Read `docs/api.md` and `docs/pipelines.md` before changing either.
+
+For module moves, new modules, shared contracts, or import changes, read `ARCHITECTURE.md` first.
+For regional case-study work, use `analysis/salish_sea/`, `docs/salish-sea-case-study.md`, and the
+canonical configuration. Historical OrcaCast locations are recorded only in
+`docs/reports/orcacast-history.md`; do not recreate the removed subtree or substitute the current
+Salish Sea study for it.
 
 ## Environment and installation
 
@@ -72,6 +71,19 @@ python -m compileall -q src
 git diff --check
 ```
 
+For changes to the explicit component workflow, providers, case-study code, or the incremental
+quality-gate scope, also run the focused tests and component quality gate required by CI:
+
+```bash
+PYTHONPATH=src python -m pytest -q tests/pipeline/test_component_workflow.py
+PYTHONPATH=src python -m pytest -q tests/pipeline/test_case_study.py
+python scripts/check_components.py
+```
+
+`scripts/check_components.py` applies expanded Ruff rules, Black checks, and strict mypy to its
+defined component-code scope. It is not required for a prose-only edit that does not change the
+script or its quality-gate instructions.
+
 Format changed Python files with Black at the repository's 100-character line length. Do not use a
 whole-tree Black failure as evidence that your change is bad: the repository documentation records
 pre-existing full-tree formatting debt. Check the files you touched.
@@ -91,22 +103,16 @@ confirm inputs are present, use a dedicated output directory, and report exactly
 Some GDAL integration tests skip when the required CLI or Python bindings are unavailable. Report
 skips and environment limitations; do not present a skipped integration path as validated.
 
-## Architecture and API rules
+## Architecture and API constraints
 
-- Keep `viewshed_toolkit` package-root exports intentional and minimal. A new supported public API
-  requires updating `src/viewshed_toolkit/__init__.py`, documentation, and tests.
-- Advanced imports should use the canonical module under `viewshed_toolkit.pipeline`.
-- Do not recreate removed top-level pass-through modules or compatibility aliases.
-- Keep CLI modules as thin presentation adapters over typed, argparse-free API functions.
-- `_internal` must not import `viewshed_toolkit.pipeline`.
-- `prepare` must not depend on `weights`, and `config`, `prepare`, and `diagnostics` must not depend
-  on `finalize`.
-- Keep the internal import graph acyclic. Run `tests/pipeline/test_architecture.py` after changing
-  module ownership or imports.
-- Add or reorder canonical stages only through `pipeline/api/registry.py`; keep the service, CLI,
-  public constants, documentation, and stage-contract tests aligned.
-- Put shared schemas, path names, provenance, pair-key constants, and cleanup policy in their
-  existing owners under `pipeline/contracts/`, not in late-stage implementation modules.
+- Follow the ownership map and dependency direction in `ARCHITECTURE.md`; do not create a second
+  ownership map here. Run `tests/pipeline/test_architecture.py` after changing ownership or imports.
+- Keep package-root exports intentional and minimal. A supported public API change requires facade,
+  documentation, and test updates; do not recreate removed pass-through modules or aliases.
+- Keep CLI code as presentation over the typed API. Change canonical stage names or order only in
+  `pipeline/api/registry.py`, then align the API, CLI, documentation, and contract tests.
+- Put shared schemas, artifact paths, provenance, pair keys, and cleanup policy in their existing
+  owners under `pipeline/contracts/`, not in calculation or finalization modules.
 
 ## Configuration and path contracts
 
@@ -122,8 +128,10 @@ skips and environment limitations; do not present a skipped integration path as 
 
 ## Data and artifact contracts
 
-- Enforce non-null, unique `source_h3` and `target_h3` keys at the expected pair grain before joins
-  and writes.
+- Enforce non-null, unique `source_h3 × target_h3` keys **within each source role** before joins
+  and writes. When combining land and water results, retain `source_type` as part of the row
+  identity: a mixed coastal H3 cell can participate in both roles. A role-partitioned artifact may
+  encode that identity in its path, but a cross-role table must carry it explicitly.
 - Use explicit join-cardinality validation. Do not rely on row order or `keep="first"` to hide an
   upstream uniqueness violation when a table is expected to be one row per pair.
 - Validate required columns, units, ranges, CRS, raster alignment, H3 resolution, and source type at
@@ -147,6 +155,14 @@ skips and environment limitations; do not present a skipped integration path as 
 ## Cleanup and overwrite safety
 
 Cleanup and overwrite behavior is part of the public data contract.
+
+Do not transfer cleanup or promotion behavior between workflows. Successful complete execution in
+the established paired workflow may clean intermediates and uses rollback-safe paired land/water
+promotion. The explicit component workflow writes its separate component namespace, performs no
+implicit cleanup, and uses per-role manifests rather than a combined atomic generation pointer.
+For water builds, read the dependency caveat beside the examples in `docs/pipelines.md`; an
+individual opaque-land stage can be raster-free even when a broader dependency-resolved build is
+not.
 
 - Never broaden a cleanup root or bypass containment checks.
 - Never clean the repository root, current working directory, or a path outside the configured
@@ -184,9 +200,10 @@ determinism under reordered input.
 
 ## Documentation and validation claims
 
-- Update `README.md`, `docs/api.md`, or `docs/methodology.md` when user-facing behavior, public
-  imports, CLI stages, or scientific interpretation changes.
-- Treat `analysis/case_studies/orcacast/history/` and
+- Update `README.md`, `docs/api.md`, `docs/pipelines.md`, or the methodology guides when
+  user-facing behavior, public imports, CLI stages, workflow effects, or scientific interpretation
+  changes.
+- Treat the OrcaCast resources linked from `docs/reports/orcacast-history.md` and
   `docs/reports/viewshed_migration_validation.json` as historical evidence, not a current run.
 - Do not hand-edit generated validation snapshots to imply that validation was rerun.
 - Keep source-data citations, access dates, licenses, processing, and CRS documentation with any
@@ -201,7 +218,9 @@ Before handing off a change:
 
 1. Review `git status` and `git diff`; confirm unrelated changes were preserved.
 2. Run focused tests for the changed contract, then the full suite when practical.
-3. Run Ruff, byte-compilation, Black on changed Python files, and `git diff --check` as applicable.
-4. Verify generated or ignored outputs were not accidentally staged.
-5. Summarize changed behavior, validation performed, skips or unrun checks, and any data or GDAL
+3. For component, provider, case-study, or quality-gate changes, run both focused component and
+   case-study test files and `python scripts/check_components.py`.
+4. Run Ruff, byte-compilation, Black on changed Python files, and `git diff --check` as applicable.
+5. Verify generated or ignored outputs were not accidentally staged.
+6. Summarize changed behavior, validation performed, skips or unrun checks, and any data or GDAL
    limitations.

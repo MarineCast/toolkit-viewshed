@@ -57,13 +57,13 @@ usually requires synchronized API, CLI, documentation, and stage-contract test u
 | `pipeline/api/` | Typed orchestration, stage dispatch, canonical registry | Argument parsing or terminal formatting |
 | `pipeline/cli/` | Argument parsing and presentation adapters | Scientific calculations or workflow policy |
 | `pipeline/config/` | Strict configuration, paths, runtime initialization | Artifact-specific schemas or late-stage logic |
-| `pipeline/contracts/` | Pair keys, schemas, artifact paths, cleanup policy, provenance | Scientific implementations |
+| `pipeline/contracts/` | Pair keys, schemas, distance-product paths, cleanup policy, provenance | Scientific implementations |
 | `pipeline/providers/` | Discovery and acquisition of source datasets | Mosaicking, reprojection, LOS, or composition |
 | `pipeline/prepare/area/` | Area geometry, H3 roles, sampling, pair universe | Weight calculation |
 | `pipeline/prepare/elevation/` | DEM preparation and raster-stack support | Vegetation weighting |
 | `pipeline/prepare/vegetation/` | Canopy preparation | Terrain weighting |
 | `pipeline/prepare/datasets.py` | Mosaic, clip, reproject, resample, and dataset validation | Provider acquisition or final composition |
-| `pipeline/weights/distance/` | Distance tables and configured decay | Terrain or canopy LOS |
+| `pipeline/weights/distance/` | Pair-distance promotion, reusable profiles, configured decay | Terrain or canopy LOS |
 | `pipeline/weights/terrain/` | Terrain LOS and aggregation | Distance-policy ownership |
 | `pipeline/weights/vegetation/` | Vegetation/canopy path weighting | Pair finalization |
 | `pipeline/weights/components.py` | Durable component-weight orchestration | Shared schema ownership |
@@ -71,7 +71,11 @@ usually requires synchronized API, CLI, documentation, and stage-contract test u
 | `pipeline/visualization/` | Static and interactive map exports | Canonical scientific calculations |
 | `src/viewshed_toolkit/_internal/` | Private generic persistence and geospatial infrastructure | Imports from `viewshed_toolkit.pipeline` |
 | `src/viewshed_toolkit/resources/` | YAML files distributed with the wheel | Workstation-specific paths |
-| `analysis/case_studies/orcacast/` | Application-specific analysis and history | Reusable package API |
+| `analysis/salish_sea/` | Expanded regional case-study README and HTML report | Reusable package API |
+
+The older OrcaCast analysis subtree is not present in the current tree. Its notebooks, contracts,
+audit, and artifact manifest are preserved only in the pinned revision documented in
+`docs/reports/orcacast-history.md`; do not substitute `analysis/salish_sea/` for those resources.
 
 The enforced import constraints are:
 
@@ -101,6 +105,8 @@ metadata, fingerprints, and atomic component writes belong in the existing modul
 - Static weights are finite and bounded to `[0, 1]` where their metric contract defines that
   range.
 - Distance remains independently persisted and inspectable.
+- Standalone distance products branch from the canonical lookup, remain raster-free, and use
+  dependency-specific identity; custom profiles never become static-composition inputs.
 - Canopy obstruction uses absolute `DEM + CHM` elevations and the configured observer-grounding
   policy.
 - The conditional canopy factor depends on the matching DEM kernel as its denominator, so canopy
@@ -173,6 +179,19 @@ python -m compileall -q src
 git diff --check
 ```
 
+Component workflow, provider, case-study, and quality-gate changes also require focused component
+validation and the incremental quality gate used by CI:
+
+```bash
+PYTHONPATH=src python -m pytest -q tests/pipeline/test_component_workflow.py
+PYTHONPATH=src python -m pytest -q tests/pipeline/test_case_study.py
+python scripts/check_components.py
+```
+
+The script runs expanded Ruff rules, Black checks, and strict mypy over the component-code scope it
+defines. Do not run this component-specific route automatically for prose-only changes unless the
+prose changes the quality-gate instructions themselves.
+
 Format only changed Python files with Black using the repository's 100-character line length.
 Full-tree formatting debt may be pre-existing and is not evidence about a focused change.
 
@@ -198,6 +217,8 @@ Before handing off a change:
 3. Confirm pair grain, state semantics, provenance, cache invalidation, and cleanup safety wherever
    relevant.
 4. Run focused tests, then broader checks appropriate to the risk.
-5. Verify ignored/generated products were not accidentally staged.
-6. Report tests run, skips, missing data or GDAL limitations, and any regional workflows or
+5. For component, provider, case-study, or quality-gate changes, run the component-specific CI
+   route above.
+6. Verify ignored/generated products were not accidentally staged.
+7. Report tests run, skips, missing data or GDAL limitations, and any regional workflows or
    notebooks intentionally not run.

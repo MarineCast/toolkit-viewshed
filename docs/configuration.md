@@ -44,7 +44,17 @@ Distance retains the existing `selected_model`, logistic parameters, exponential
 thresholds, normalization, and hard cutoff. Unsupported formulas/factor selections are rejected;
 arbitrary mathematical strings are not evaluated. Gaussian decay has not been added.
 
+That YAML `distance_weight` block remains the integrated LOS/default-component configuration.
+Standalone sensitivity profiles are passed explicitly as `DistanceProfile` objects or
+`build-distance-profile` CLI arguments; they are not written back into YAML and cannot silently
+replace the integrated settings. Effective defaults, including an inherited cutoff, are resolved
+before a profile identity is calculated. See [distance products](distance-products.md).
+
 Use one bbox definition. `area: model_area` resolves the shared packaged OrcaCast SRKW domain.
 A custom region instead supplies a mapping at `region.bbox_wgs84`. Configure all input/output
 paths, including land and water polygons. Keep durable output separate from the work directory.
 Loading configuration remains read-only.
+
+Standalone distance products require `paths.final_output_dir` outside `paths.output_dir`. This
+prevents the established complete-workflow cleanup from silently deleting durable pair distances
+or profiles.

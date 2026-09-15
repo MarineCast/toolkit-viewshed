@@ -13,6 +13,8 @@ Neither routes scientific work through argparse.
 | `providers/` | Discover/download source assets; no mosaic, projection, LOS, or composition |
 | `prepare/datasets.py` | Mosaic, clip, reproject, resample, and validate DEM or CHM |
 | `prepare/area/` | Existing geometry, deterministic H3 roles, sampling, pair universe |
+| `contracts/distance.py` | Standalone distance schemas, paths, checksum-backed persistence |
+| `weights/distance/products.py` | Raw pair-distance promotion, reusable profiles, validation |
 | `weights/components.py` | Independently persist terrain, conditional canopy, and distance |
 | `finalize/composition.py` | Exact coverage joins, explicit formula, lineage validation |
 | `contracts/components.py` | Paths, pair validation, fingerprints, atomic writes, metadata |
@@ -29,6 +31,12 @@ The conditional canopy factor also needs the matched DEM kernel as its denominat
 CHM acquisition/preparation is independent, while canopy weighting explicitly depends on DEM
 weighting. Neither LOS product consumes the centroid-distance table. Both continue to use the
 configured observer-pixel attenuation function inside the existing LOS aggregation.
+
+Standalone pair distances and profiles form a narrow branch from the canonical pair lookup. Raw
+distance identity includes only relevant vector/pair lineage and scientific contracts, not raster
+settings. Profile identity depends on that raw scientific identity and normalized effective curve
+parameters. The existing distance component adapts the default profile for old consumers; custom
+profiles never enter static composition.
 
 Water keeps its opaque-land-mask policy. Its direct DEM/terrain component stage does not require
 raster input validation. The shared `build` DAG currently retains DEM preparation dependencies for

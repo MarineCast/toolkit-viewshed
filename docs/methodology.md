@@ -9,6 +9,12 @@ Both sides use durable H3 identifiers, and the final table grain is one unique
 The graphic is a conceptual overview. Whale icons identify an illustrative target area; animal
 activity is not an input to the static viewability model.
 
+For reproduction or review, use the [scientific methodology](scientific-methodology.md) as the
+complete numerical reference. It defines the sampling design, observer and target averaging
+populations, denominators, distance curves, curvature, endpoint repair, raster-gap policies,
+sparse-result semantics, and canopy clearance, with links to their implementation owners and
+regression tests. This page intentionally stays at the workflow level.
+
 The staged calculation is:
 
 1. Build valid land and water source/target support and candidate pairs.
