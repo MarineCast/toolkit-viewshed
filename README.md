@@ -1,6 +1,6 @@
-![Ink panorama of a coastal archipelago with an observation point and sight lines](docs/assets/viewshed-toolkit-banner.png)
-
 # Viewshed Toolkit
+
+<img src="docs/assets/viewshed-toolkit-banner.png" alt="Ink panorama of a coastal archipelago with an observation point and sight lines" width="100%">
 
 A Python 3.11+ package for reproducible terrain, canopy, and distance visibility modeling.
 It produces provenance-aware H3 tables at one unique `source_h3 × target_h3` pair per source
