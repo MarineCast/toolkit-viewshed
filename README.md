@@ -1,4 +1,4 @@
-![Viewshed Toolkit banner showing visibility paths across the Salish Sea](docs/assets/viewshed-toolkit-banner.png)
+![Ink panorama of a coastal archipelago with an observation point and sight lines](docs/assets/viewshed-toolkit-banner.png)
 
 # Viewshed Toolkit
 
