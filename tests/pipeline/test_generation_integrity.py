@@ -44,14 +44,38 @@ def generation(tmp_path):
     return config, materialize_static_viewability_outputs(config)
 
 
-def test_land_metadata_changes_with_lookup_content(tmp_path):
+@pytest.mark.parametrize("mutation", ["remove", "add", "replace", "empty"])
+@pytest.mark.parametrize("empty_partition", [False, True])
+def test_land_metadata_changes_with_lookup_content(tmp_path, mutation, empty_partition):
     config = coastal_fixture(tmp_path)
     run_component_stage(config, "build-source-target-lookup")
     app = load_app_config(config)
     path = gdal._area_lookup_path_for_app(app)
     before = gdal.expected_partition_metadata(app)
-    pl.read_parquet(path).slice(1).write_parquet(path)
-    assert gdal.expected_partition_metadata(app) != before
+    partition = tmp_path / "cached.parquet"
+    frame = pl.read_parquet(path)
+    frame.head(0 if empty_partition else 1).write_parquet(partition)
+    gdal._write_partition_metadata_sidecar(partition, before)
+    assert gdal.partition_metadata_matches(partition, before)
+    if mutation == "remove":
+        changed = frame.slice(1)
+    elif mutation == "add":
+        changed = pl.concat(
+            [frame, frame.head(1).with_columns(pl.lit("new-target").alias("target_h3"))]
+        )
+    elif mutation == "replace":
+        changed = frame.with_columns(
+            pl.when(pl.col("target_h3") == frame["target_h3"][0])
+            .then(pl.lit("replacement-target"))
+            .otherwise(pl.col("target_h3"))
+            .alias("target_h3")
+        )
+    else:
+        changed = frame.head(0)
+    changed.write_parquet(path)
+    current = gdal.expected_partition_metadata(app)
+    assert current != before
+    assert not gdal.partition_metadata_matches(partition, current)
 
 
 def test_partition_checksum_rejects_mutated_cache(tmp_path):
@@ -166,3 +190,92 @@ def test_presentation_metadata_refresh_preserves_scientific_identity(generation)
     refresh_static_artifact_metadata(config, source_type="land")
     assert outputs["land_static_weights"].read_bytes() == before
     materialize_static_viewability_outputs(config)
+
+
+@pytest.mark.parametrize("name", ["regional_dem_path", "canopy_height_path"])
+def test_reuse_rejects_changed_prepared_surfaces(generation, name):
+    import rasterio
+
+    config, _ = generation
+    path = getattr(load_app_config(config).paths, name)
+    with rasterio.open(path, "r+") as raster:
+        values = raster.read(1)
+        values[0, 0] += 1
+        raster.write(values, 1)
+    with pytest.raises(ValueError, match=r"source.*changed|inputs changed"):
+        materialize_static_viewability_outputs(config)
+
+
+def test_reuse_rejects_changed_coverage_audit(generation):
+    config, outputs = generation
+    audit = outputs["land_static_weights"].parent / "components/analysis/input-coverage.json"
+    audit.parent.mkdir(parents=True, exist_ok=True)
+    audit.write_text(json.dumps({"rasters": {"chm": {"missing_land_pixels": 1}}}))
+    with pytest.raises(ValueError, match=r"coverage.*changed"):
+        materialize_static_viewability_outputs(config)
+
+
+@pytest.mark.parametrize(
+    "state", ["distance_detection_state", "distance_weighted_los_state", "vegetation_state"]
+)
+def test_typed_validator_checks_all_value_state_pairs(generation, state):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from viewshed_toolkit.pipeline.contracts.generation import validate_observation_geometry
+    from viewshed_toolkit.pipeline.finalize.final_artifacts import static_scientific_config_hash
+
+    config, outputs = generation
+    path = outputs["land_observation_geometry"]
+    frame = pl.read_parquet(path)
+    generation_id = frame["GENERATION_ID"][0]
+    # Preserve embedded metadata so the scientific validator, rather than the
+    # receipt checksum, must catch this inconsistent declared state.
+    table = pq.read_table(path)
+    metadata = {
+        key: value
+        for key, value in pq.read_metadata(path).metadata.items()
+        if key.startswith(b"orcacast.")
+    }
+    table = table.set_column(
+        table.schema.get_field_index(state), state, pa.array(["not_applicable"] * table.num_rows)
+    )
+    table = table.replace_schema_metadata(metadata)
+    pq.write_table(table, path)
+    with pytest.raises(ValueError, match="state"):
+        validate_observation_geometry(
+            path,
+            source_type="land",
+            config_hash=static_scientific_config_hash(yaml.safe_load(config.read_text())),
+            generation_id=generation_id,
+            compact_path=outputs["land_static_weights"],
+        )
+
+
+def test_typed_validator_checks_compact_diagnostic_parity(generation):
+    import pyarrow.parquet as pq
+
+    from viewshed_toolkit.pipeline.contracts.generation import validate_observation_geometry
+    from viewshed_toolkit.pipeline.finalize.final_artifacts import static_scientific_config_hash
+
+    config, outputs = generation
+    path = outputs["land_observation_geometry"]
+    metadata = {
+        k: v for k, v in pq.read_metadata(path).metadata.items() if k.startswith(b"orcacast.")
+    }
+    frame = pl.read_parquet(path)
+    frame = frame.with_columns(
+        pl.when(pl.col("distance_detection_weight") > 0)
+        .then(pl.lit(0.123, dtype=pl.Float32))
+        .otherwise(pl.col("distance_detection_weight"))
+        .alias("distance_detection_weight")
+    )
+    pq.write_table(frame.to_arrow().replace_schema_metadata(metadata), path)
+    with pytest.raises(ValueError, match=r"compact.*values|values.*compact"):
+        validate_observation_geometry(
+            path,
+            source_type="land",
+            config_hash=static_scientific_config_hash(yaml.safe_load(config.read_text())),
+            generation_id=frame["GENERATION_ID"][0],
+            compact_path=outputs["land_static_weights"],
+        )

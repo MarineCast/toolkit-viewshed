@@ -15,7 +15,7 @@ from .artifacts import FINAL_SCHEMAS, OBSERVATION_GEOMETRY_SCHEMA_VERSION
 from .components import fingerprint
 from .pairs import LOS_NUMERICAL_TOLERANCE, validate_pair_kernel
 
-GENERATION_CONTRACT = "viewshed_output_set_v1"
+GENERATION_CONTRACT = "viewshed_output_set_v2"
 
 
 def byte_checksum(path: Path) -> str:
@@ -112,6 +112,9 @@ def validate_observation_geometry(
             raise ValueError("Observation geometry invalid state")
     for value, state in [
         ("line_of_sight_support", "line_of_sight_state"),
+        ("distance_detection_weight", "distance_detection_state"),
+        ("distance_weighted_los_support", "distance_weighted_los_state"),
+        ("vegetation_attenuation", "vegetation_state"),
         ("physical_viewability", "physical_viewability_state"),
         ("distance_adjusted_viewability", "distance_adjusted_viewability_state"),
     ]:
@@ -120,6 +123,24 @@ def validate_observation_geometry(
             | ((pl.col(state) == "derived_zero") & (pl.col(value).is_null() | (pl.col(value) != 0)))
             | ((pl.col(state) == "source_unavailable") & pl.col(value).is_not_null())
         )
+        if state == "vegetation_state":
+            bad = (
+                bad
+                | ((pl.col(state) == "not_applicable") & pl.lit(source_type != "water"))
+                | (
+                    (pl.col(state) == "no_baseline_support_neutral")
+                    & (
+                        pl.lit(source_type != "land")
+                        | (pl.col("distance_weighted_los_support") != 0)
+                        | pl.col(value).is_null()
+                        | (pl.col(value) != 1)
+                    )
+                )
+            )
+            if source_type == "water":
+                bad = bad | (pl.col(state) != "not_applicable") | pl.col(value).is_not_null()
+        else:
+            bad = bad | ~pl.col(state).is_in(["positive", "derived_zero", "source_unavailable"])
         if frame.filter(bad).limit(1).collect().height:
             raise ValueError("Observation geometry value/state mismatch")
     if (
@@ -154,16 +175,24 @@ def validate_observation_geometry(
     ):
         raise ValueError("Observation geometry and compact pair universes differ")
     compared = frame.join(compact, on=keys, validate="1:1")
-    if (
-        compared.filter(
-            (pl.col("distance_adjusted_viewability") - pl.col("weight_static_viewability")).abs()
-            > LOS_NUMERICAL_TOLERANCE
-        )
-        .limit(1)
-        .collect()
-        .height
-    ):
-        raise ValueError("Observation geometry and compact values differ")
+    parity = [
+        ("distance_adjusted_viewability", "weight_static_viewability"),
+        ("distance_detection_weight", "weight_distance"),
+        ("distance_weighted_los_support", "weight_terrain"),
+    ]
+    if source_type == "land":
+        parity.append(("vegetation_attenuation", "weight_vegetation"))
+    for geometry_value, compact_value in parity:
+        if (
+            compared.filter(
+                pl.col(geometry_value).is_null()
+                | ((pl.col(geometry_value) - pl.col(compact_value)).abs() > LOS_NUMERICAL_TOLERANCE)
+            )
+            .limit(1)
+            .collect()
+            .height
+        ):
+            raise ValueError("Observation geometry and compact values differ: " + geometry_value)
     compact_meta = parquet_metadata(compact_path)
     if compact_meta.get("orcacast.generation_id") != generation_id:
         raise ValueError("Mixed compact and geometry generation")
@@ -180,6 +209,7 @@ def validate_generation_receipt(
         raise ValueError("Invalid viewshed generation receipt structure")
     if (
         payload.get("contract") != GENERATION_CONTRACT
+        or payload.get("method") != OBSERVATION_GEOMETRY_SCHEMA_VERSION
         or payload.get("scientific_config_hash") != config_hash
     ):
         raise ValueError("Viewshed generation receipt scientific identity mismatch")
@@ -191,6 +221,14 @@ def validate_generation_receipt(
         raise ValueError("Viewshed generation identity is invalid")
     if set(payload.get("files", {})) != set(paths):
         raise ValueError("Viewshed generation file set mismatch")
+    records = payload.get("prepared_sources")
+    if not isinstance(records, dict) or any(
+        not isinstance(record, dict)
+        or record.get("checksum") != payload["source_hashes"].get("prepared:" + name)
+        or not isinstance(record.get("path"), str)
+        for name, record in records.items()
+    ):
+        raise ValueError("Viewshed prepared source lineage mismatch")
     for name, path in paths.items():
         record = payload["files"][name]
         if not isinstance(record, dict) or record.get("sha256") != byte_checksum(path):

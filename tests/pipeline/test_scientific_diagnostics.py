@@ -123,6 +123,7 @@ def test_zero_tiny_and_raw_canopy_excess_remain_inspectable(
 
 def test_geometry_uses_direct_canopy_los_not_weighted_ratio(tmp_path):
     import yaml
+
     from viewshed_toolkit.pipeline.finalize.final_artifacts import build_observation_geometry_lazy
 
     kwargs = composition_fixture(tmp_path)

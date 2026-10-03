@@ -31,6 +31,14 @@ def main() -> None:
         "tests/pipeline/test_component_workflow.py",
         "tests/pipeline/test_case_study.py",
         "tests/pipeline/test_distance_products.py",
+        "tests/pipeline/test_scientific_diagnostics.py",
+        "tests/pipeline/test_generation_integrity.py",
+        "tests/pipeline/test_documentation_bundle.py",
+        "scripts/docs_hooks.py",
+        "scripts/build_documentation_examples.py",
+        "scripts/render_documentation_examples.py",
+        "scripts/check_documentation_browser.py",
+        "scripts/check_installed_wheel.py",
         __file__,
     ]
     subprocess.run(

@@ -57,12 +57,17 @@ from viewshed_toolkit._internal.data.parquet import (
 )
 
 from ..config.paths import (
+    DEFAULT_DEM_PATH_TEMPLATE,
+    DEFAULT_LAND_H3_PATH_TEMPLATE,
+    DEFAULT_LAND_POLYGON_RELATIVE,
+    DEFAULT_WATER_POLYGON_RELATIVE,
     get_dem_settings,
     load_metadata_sidecar,
     stable_config_hash,
     write_metadata_sidecar,
 )
 from ..config.schema import load_yaml
+from ..config.loader import resolve_existing_or_relative_path
 from ..contracts.artifacts import (
     FINAL_SCHEMAS,
     OBSERVATION_GEOMETRY_SCHEMA_VERSION,
@@ -1081,6 +1086,54 @@ def validate_static_artifact_metadata(
     return sidecar
 
 
+def _prepared_source_records(config_path: str | Path) -> dict[str, dict[str, str]]:
+    """Bind durable lineage to prepared inputs, including actual geometry bytes."""
+    raw, config_dir = load_yaml(config_path)
+    paths = raw.get("paths", {}) or {}
+    resolution = int(raw.get("viewshed", {}).get("dem_resolution_m", 10))
+    dem = resolve_existing_or_relative_path(
+        paths.get("regional_dem_path", DEFAULT_DEM_PATH_TEMPLATE.format(resolution_m=resolution)),
+        config_dir,
+    )
+    sources = {
+        "regional_dem_path": dem,
+        "canopy_height_path": paths.get(
+            "canopy_height_path", dem.with_name(f"CHM_{resolution}M.tif")
+        ),
+        "land_polygon_path": paths.get("land_polygon_path", DEFAULT_LAND_POLYGON_RELATIVE),
+        "water_polygon_path": paths.get("water_polygon_path", DEFAULT_WATER_POLYGON_RELATIVE),
+        "land_h3_path": paths.get(
+            "land_h3_path",
+            DEFAULT_LAND_H3_PATH_TEMPLATE.format(
+                resolution=int(raw.get("h3", {}).get("source_resolution", 6))
+            ),
+        ),
+        "source_cells_path": paths.get(
+            "source_cells_path",
+            DEFAULT_LAND_H3_PATH_TEMPLATE.format(
+                resolution=int(raw.get("h3", {}).get("source_resolution", 6))
+            ),
+        ),
+    }
+    records = {}
+    for name, value in sources.items():
+        path = resolve_existing_or_relative_path(value, config_dir)
+        if path.exists():
+            records[name] = {"path": str(path), "checksum": checksum_path(path)}
+    return records
+
+
+def _input_coverage(paths: FinalArtifactPaths) -> dict[str, object]:
+    path = paths.final_output_dir / "components" / "analysis" / "input-coverage.json"
+    coverage = (
+        json.loads(path.read_text())
+        if path.exists()
+        else {"state": "unknown", "reason": "input coverage audit unavailable"}
+    )
+    coverage.pop("config_hash", None)
+    return coverage
+
+
 def materialize_static_viewability_outputs(
     config_path: str | Path, *, overwrite: bool = False
 ) -> dict[str, Path]:
@@ -1116,9 +1169,18 @@ def materialize_static_viewability_outputs(
                 raw=raw,
                 source_type=source_type,
             )
-        validate_generation_receipt(
+        previous = validate_generation_receipt(
             receipt, all_outputs, config_hash=static_scientific_config_hash(raw)
         )
+        records = previous.get("prepared_sources", {})
+        if not isinstance(records, dict):
+            raise ValueError("Invalid prepared source lineage")
+        for name, current in _prepared_source_records(config_path).items():
+            if records.get(name) != current:
+                raise ValueError(f"Prepared source inputs changed: {name}; rebuild the model")
+        audit = paths.final_output_dir / "components" / "analysis" / "input-coverage.json"
+        if audit.exists() and _input_coverage(paths) != previous["input_coverage"]:
+            raise ValueError("Input coverage audit changed; rebuild the model")
         return {
             "land_static_weights": outputs["land"],
             "water_static_weights": outputs["water"],
@@ -1136,13 +1198,11 @@ def materialize_static_viewability_outputs(
         source_hashes.update(
             {role + ":" + key: checksum_path(path) for key, path in inputs.items()}
         )
-    coverage_path = paths.final_output_dir / "components" / "analysis" / "input-coverage.json"
-    input_coverage = (
-        json.loads(coverage_path.read_text())
-        if coverage_path.exists()
-        else {"state": "unknown", "reason": "input coverage audit unavailable"}
+    prepared_sources = _prepared_source_records(config_path)
+    source_hashes.update(
+        {"prepared:" + name: record["checksum"] for name, record in prepared_sources.items()}
     )
-    input_coverage.pop("config_hash", None)
+    input_coverage = _input_coverage(paths)
     generation = generation_identity(
         static_scientific_config_hash(raw), source_hashes, input_coverage
     )
@@ -1198,6 +1258,7 @@ def materialize_static_viewability_outputs(
             json.dumps(
                 {
                     **generation,
+                    "prepared_sources": prepared_sources,
                     "files": {
                         name: {"name": path.name, "sha256": byte_checksum(staged[name])}
                         for name, path in all_outputs.items()

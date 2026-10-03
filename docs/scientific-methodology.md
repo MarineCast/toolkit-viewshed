@@ -357,6 +357,12 @@ four files. Reuse validates typed schemas, unique pair keys, roles, bounds, valu
 identity, exact compact/geometry pair coverage and final-weight parity. Older output sets without
 a receipt require regeneration; adding a receipt to old outputs does not establish compatibility.
 
+The `viewshed_output_set_v2` receipt also binds checksums of the prepared ground/canopy rasters
+and source geometry to the shared identity. Present inputs and coverage audits are rechecked on
+reuse. Inputs may be pruned under the existing retention policy after validation; the receipt
+retains their original checksums and audit, rather than claiming they were reobserved. Version 1
+receipts must be rebuilt through the model workflow, not relabeled by finalization.
+
 Finalization validates all staged members before promotion and restores the previous files and
 sidecars if promotion or validation fails. This is a single-writer rollback guarantee. Concurrent
 readers must validate the receipt and retry during publication; multiple renames are not a

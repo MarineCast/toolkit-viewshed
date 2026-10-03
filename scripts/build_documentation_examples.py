@@ -71,10 +71,51 @@ def check(output):
             raise ValueError("Duplicate pair identity")
         indexed[key] = pair
         indexed[pair["id"]] = pair
+        if (
+            pair["source_type"] not in {"land", "water"}
+            or pair["scenario"] != "baseline"
+            or pair["id"] != ":".join(key)
+        ):
+            raise ValueError("Invalid pair role/scenario identity")
         for metric in METRICS:
             value = pair[metric]
+            if value is None and not (
+                pair["source_type"] == "water" and metric == "vegetation_attenuation"
+            ):
+                raise ValueError(
+                    "Public lesson requires observed unweighted and integrated evidence"
+                )
             if value is not None and (not math.isfinite(value) or not 0 <= value <= 1):
                 raise ValueError("Invalid scientific value")
+        for value, state in (
+            ("line_of_sight_support", "line_of_sight_state"),
+            ("physical_viewability", "physical_viewability_state"),
+            ("distance_detection_weight", "distance_detection_state"),
+            ("distance_weighted_los_support", "distance_weighted_los_state"),
+            ("distance_adjusted_viewability", "distance_adjusted_viewability_state"),
+        ):
+            expected = "positive" if pair[value] > 0 else "derived_zero"
+            if pair[state] != expected:
+                raise ValueError("Scientific value/state mismatch")
+        raw_canopy = pair["canopy_distance_weighted_los_support"]
+        if (
+            not math.isfinite(raw_canopy)
+            or not 0 <= raw_canopy <= pair["physical_viewability"] + 1e-6
+        ):
+            raise ValueError("Invalid direct canopy integrated support")
+        if pair["source_type"] == "land":
+            bare = pair["distance_weighted_los_support"]
+            expected_retention = min(raw_canopy, bare) / bare if bare > 0 else 1.0
+            expected_state = (
+                "no_baseline_support_neutral"
+                if bare == 0
+                else "positive" if expected_retention > 0 else "derived_zero"
+            )
+            if (
+                abs(pair["vegetation_attenuation"] - expected_retention) > 1e-6
+                or pair["vegetation_state"] != expected_state
+            ):
+                raise ValueError("Conditional canopy retention evidence/state mismatch")
         if (
             abs(
                 pair["distance_adjusted_viewability"]
@@ -86,7 +127,10 @@ def check(output):
             raise ValueError("Combined support disagrees with production formula")
         if pair["distance_weighted_los_support"] > pair["line_of_sight_support"] + 1e-6:
             raise ValueError("Integrated support exceeds unweighted support")
-        if pair["source_type"] == "water" and pair["vegetation_state"] != "not_applicable":
+        if pair["source_type"] == "water" and (
+            pair["vegetation_state"] != "not_applicable"
+            or pair["vegetation_attenuation"] is not None
+        ):
             raise ValueError("Water canopy applicability is invalid")
     indexes = read(output / "indexes.json")
     for direction, field in (("forward", "source_h3"), ("inverse", "target_h3")):

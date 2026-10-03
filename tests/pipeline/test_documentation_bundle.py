@@ -93,3 +93,22 @@ def test_docs_revision_is_informational_and_forward_inverse_share_exact_values(t
     assert default["id"] in indexes["inverse"]["land:" + default["target_h3"]]
     assert 0 < default["vegetation_attenuation"] < 1
     assert default["physical_viewability"] < default["line_of_sight_support"]
+
+
+@pytest.mark.parametrize("mutation", ["state", "canopy_kernel", "missing_evidence"])
+def test_checker_rejects_inconsistent_scientific_evidence(tmp_path, mutation):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    data = EXPORT.read(output / "pairs.json")
+    columns = data["columns"]
+    row = next(row for row in data["rows"] if row[columns.index("source_type")] == "land")
+    field, value = {
+        "state": ("vegetation_state", "not_applicable"),
+        "canopy_kernel": ("canopy_distance_weighted_los_support", 1.0),
+        "missing_evidence": ("line_of_sight_support", None),
+    }[mutation]
+    row[columns.index(field)] = value
+    EXPORT.write(output / "pairs.json", data)
+    reseal(output)
+    with pytest.raises(ValueError):
+        EXPORT.check(output)

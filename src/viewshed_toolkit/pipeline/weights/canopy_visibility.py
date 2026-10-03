@@ -16,8 +16,8 @@ The durable factors are::
     weight_vegetation = min(K_canopy, K_bare) / K_bare  when K_bare > 0
     static physical weight = weight_terrain * weight_vegetation
 
-For terrain-blocked pairs, ``weight_vegetation`` is neutral 1 because terrain
-already makes the physical score zero. Land-cover attenuation is deliberately
+For pairs without baseline integrated support, ``weight_vegetation`` is neutral
+1 bookkeeping; this does not establish a terrain obstruction. Land-cover attenuation is deliberately
 outside this pipeline.
 """
 
