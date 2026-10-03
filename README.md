@@ -203,3 +203,11 @@ The [guided Examples page](docs/examples.md) explains the real San Juan model wi
 For a local documentation preview, install `requirements-docs.txt`, run `python -m mkdocs serve`,
 and open the Examples navigation item. The [reproduction guide](docs/documentation-examples.md)
 separates model execution, scientific export and offline validation.
+
+The `Publish documentation` GitHub Actions workflow validates and builds the site on pull
+requests, then publishes changes pushed to `main`. To enable hosting once, open repository
+**Settings → Pages → Build and deployment → Source** and select **GitHub Actions**.
+After the workflow is merged, it can also be run from **Actions → Publish documentation →
+Run workflow**, selecting `main`. The site is hosted at
+[marinecast.github.io/toolkit-viewshed](https://marinecast.github.io/toolkit-viewshed/).
+The workflow uses the committed demo bundle and requires only documentation dependencies.
