@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import geopandas as gpd
@@ -436,7 +437,11 @@ def _fake_app(config_hash: str, sampling_mode: str = "active_fraction") -> Simpl
     )
 
 
-def test_partition_metadata_tracks_sampling_contract_and_model_hash() -> None:
+def test_partition_metadata_tracks_sampling_contract_and_model_hash(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "viewshed_toolkit.pipeline.weights.terrain.gdal._area_lookup_path_for_app",
+        lambda app: Path(__file__),
+    )
     expected = expected_partition_metadata(_fake_app("hash-a"))
     same_model_new_full_hash = expected_partition_metadata(_fake_app("hash-b"))
 

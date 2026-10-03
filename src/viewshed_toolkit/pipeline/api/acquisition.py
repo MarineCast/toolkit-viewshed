@@ -57,6 +57,12 @@ def download_dataset(
             {
                 **asdict(asset),
                 "downloaded_at": metadata.get("downloaded_at"),
+                "source_year": (
+                    settings.source_year
+                    if settings.source_year is not None
+                    else (2020 if settings.provider == "global_canopy_height" else None)
+                ),
+                "source_version": settings.version,
                 "observed_sha256": checksums[str(index)],
             }
         )

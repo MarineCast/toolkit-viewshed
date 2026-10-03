@@ -78,6 +78,12 @@ from ..contracts.cleanup import (
     cleanup_output_tree,
     metadata_sidecars_for,
 )
+from ..contracts.generation import (
+    byte_checksum,
+    generation_identity,
+    parquet_metadata,
+    validate_generation_receipt,
+)
 from ..contracts.pairs import SOURCE_TYPES
 
 
@@ -676,12 +682,24 @@ def build_observation_geometry_lazy(
     return composed, coverage
 
 
+def _canopy_source_year(paths: FinalArtifactPaths) -> int | None:
+    manifest = paths.final_output_dir / "components" / "inputs" / "chm" / "download.json"
+    if not manifest.exists():
+        return None
+    records = json.loads(manifest.read_text()).get("assets", [])
+    years = {record.get("source_year") for record in records}
+    if len(years) != 1 or None in years:
+        return None
+    return int(years.pop())
+
+
 def materialize_observation_geometry_output(
     config_path: str | Path,
     *,
     source_type: str,
     overwrite: bool = False,
     output_path: Path | None = None,
+    generation: Mapping[str, object] | None = None,
 ) -> Path:
     """Publish one schema-v3 geometry artifact from retained full diagnostics."""
 
@@ -706,6 +724,8 @@ def materialize_observation_geometry_output(
     input_checksums = {name: checksum_path(path) for name, path in input_paths.items()}
     config_hash = static_scientific_config_hash(raw)
     generation_id = f"{source_type}_{stable_config_hash({'config': config_hash, 'inputs': input_checksums}, length=20)}"
+    if generation is not None:
+        generation_id = str(generation["generation_id"])
     knowledge_time = datetime.now(UTC).replace(microsecond=0).isoformat()
     lineage = {
         "GENERATION_ID": generation_id,
@@ -716,9 +736,7 @@ def materialize_observation_geometry_output(
         "KNOWLEDGE_TIME_UTC": knowledge_time,
         "SOURCE_VINTAGES_JSON": json.dumps(
             {
-                "canopy_product_year": (raw.get("vegetation_data", {}) or {})
-                .get("canopy", {})
-                .get("product_year", 2020),
+                "canopy_product_year": _canopy_source_year(paths),
                 "viewshed_run_version": (raw.get("run", {}) or {}).get("version"),
             },
             sort_keys=True,
@@ -734,9 +752,7 @@ def materialize_observation_geometry_output(
                 "historical_reconstruction": False,
             },
             "vegetation": {
-                "source_vintage": (raw.get("vegetation_data", {}) or {})
-                .get("canopy", {})
-                .get("product_year", 2020),
+                "source_vintage": _canopy_source_year(paths),
                 "knowledge_time_utc": knowledge_time,
                 "historical_reconstruction": False,
             },
@@ -749,6 +765,21 @@ def materialize_observation_geometry_output(
         source_type=source_type,
         lineage=lineage,
         component_provenance_json=component_provenance,
+    )
+    coverage = dict(generation.get("input_coverage", {})) if generation else {}
+    rasters = coverage.get("rasters", {})
+    relevant = ("dem", "chm") if source_type == "land" else ()
+    state = (
+        "unknown"
+        if not rasters
+        else (
+            "partial"
+            if any(rasters.get(name, {}).get("missing_land_pixels", 0) for name in relevant)
+            else "complete"
+        )
+    )
+    geometry = geometry.with_columns(
+        pl.lit(state).alias("DATA_COVERAGE_STATE"), pl.lit(state).alias("SOURCE_COVERAGE_STATE")
     )
     atomic_sink_parquet(
         geometry,
@@ -782,6 +813,7 @@ def static_scientific_config_hash(raw: Mapping[str, object]) -> str:
             "water_viewing",
             "canopy_visibility",
             "vegetation_weights",
+            "datasets",
         )
     }
     return stable_config_hash(payload, length=16)
@@ -802,9 +834,11 @@ def _static_parquet_metadata(
     *,
     source_type: str,
     input_checksums: Mapping[str, str],
+    generation_id: str | None = None,
 ) -> dict[str, str]:
     assumptions = _effective_physical_assumptions(raw, source_type=source_type)
     return {
+        "orcacast.generation_id": generation_id or "standalone",
         "orcacast.artifact_kind": "human.viewshed.static_pair_kernel",
         "orcacast.schema_version": STATIC_ARTIFACT_SCHEMA_VERSION,
         "orcacast.source_type": normalize_source_type(source_type),
@@ -933,6 +967,11 @@ def refresh_static_artifact_metadata(
     previous = load_metadata_sidecar(output_path)
     if previous is None:
         raise ValueError(f"Static viewshed artifact has no metadata sidecar: {output_path}")
+    if previous.get("scientific_config_hash") != static_scientific_config_hash(raw):
+        raise ValueError("Scientific configuration changed; rebuild instead of refreshing metadata")
+    embedded = parquet_metadata(output_path)
+    if embedded.get("orcacast.scientific_config_hash") != previous.get("scientific_config_hash"):
+        raise ValueError("Embedded scientific metadata disagrees with sidecar")
     input_paths = previous.get("input_paths")
     input_checksums = previous.get("input_checksums")
     if not isinstance(input_paths, Mapping) or not isinstance(input_checksums, Mapping):
@@ -993,6 +1032,12 @@ def validate_static_artifact_metadata(
             f"Static viewshed metadata mismatch for {output_path}: "
             f"{json.dumps(mismatches, sort_keys=True)}"
         )
+    embedded = parquet_metadata(output_path)
+    for key in ("schema_version", "source_type", "scientific_config_hash"):
+        if embedded.get("orcacast." + key) != str(sidecar.get(key)):
+            raise ValueError("Embedded scientific metadata disagrees with sidecar: " + key)
+    if json.loads(embedded.get("orcacast.input_checksums", "{}")) != sidecar.get("input_checksums"):
+        raise ValueError("Embedded input checksums disagree with sidecar")
     expected_artifact_checksum = sidecar.get("artifact_checksum")
     actual_artifact_checksum = checksum_path(output_path)
     if expected_artifact_checksum != actual_artifact_checksum:
@@ -1057,6 +1102,7 @@ def materialize_static_viewability_outputs(
         "water_observation_geometry": paths.water_observation_geometry,
     }
     all_outputs = {**outputs, **geometry_outputs}
+    receipt = paths.land_static_weights.parent / "viewshed-generation.json"
     existing = {source_type: path.exists() for source_type, path in all_outputs.items()}
     if not overwrite and any(existing.values()):
         if not all(existing.values()):
@@ -1070,14 +1116,37 @@ def materialize_static_viewability_outputs(
                 raw=raw,
                 source_type=source_type,
             )
-        for path in geometry_outputs.values():
-            validate_parquet_schema(path, FINAL_SCHEMAS["observation_geometry"])
+        validate_generation_receipt(
+            receipt, all_outputs, config_hash=static_scientific_config_hash(raw)
+        )
         return {
             "land_static_weights": outputs["land"],
             "water_static_weights": outputs["water"],
             **geometry_outputs,
         }
 
+    source_hashes = {}
+    for role in outputs:
+        inputs = _static_input_paths(paths, role)
+        inputs["clear_sky"] = (
+            paths.source_target_clear_sky if role == "land" else paths.ocean_source_target_clear_sky
+        )
+        if role == "land" and paths.dual_surface_factors.exists():
+            inputs["dual_surface"] = paths.dual_surface_factors
+        source_hashes.update(
+            {role + ":" + key: checksum_path(path) for key, path in inputs.items()}
+        )
+    coverage_path = paths.final_output_dir / "components" / "analysis" / "input-coverage.json"
+    input_coverage = (
+        json.loads(coverage_path.read_text())
+        if coverage_path.exists()
+        else {"state": "unknown", "reason": "input coverage audit unavailable"}
+    )
+    input_coverage.pop("config_hash", None)
+    generation = generation_identity(
+        static_scientific_config_hash(raw), source_hashes, input_coverage
+    )
+    transaction_outputs = {**all_outputs, "generation_receipt": receipt}
     staged: dict[str, Path] = {}
     prepared: dict[str, dict[str, object]] = {}
     try:
@@ -1092,6 +1161,7 @@ def materialize_static_viewability_outputs(
                 raw,
                 source_type=source_type,
                 input_checksums=input_checksums,
+                generation_id=str(generation["generation_id"]),
             )
             stage_path = output_path.with_name(f".{output_path.name}.{uuid.uuid4().hex}.staged")
             staged[source_type] = stage_path
@@ -1119,13 +1189,36 @@ def materialize_static_viewability_outputs(
                 source_type=name.split("_", 1)[0],
                 overwrite=True,
                 output_path=stage_path,
+                generation=generation,
             )
+
+        receipt_stage = receipt.with_name(f".{receipt.name}.{uuid.uuid4().hex}.staged")
+        staged["generation_receipt"] = receipt_stage
+        receipt_stage.write_text(
+            json.dumps(
+                {
+                    **generation,
+                    "files": {
+                        name: {"name": path.name, "sha256": byte_checksum(staged[name])}
+                        for name, path in all_outputs.items()
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        validate_generation_receipt(
+            receipt_stage,
+            {name: staged[name] for name in all_outputs},
+            config_hash=static_scientific_config_hash(raw),
+        )
 
         backups: dict[str, Path] = {}
         sidecar_backups: dict[Path, Path] = {}
         promoted: set[str] = set()
         try:
-            for source_type, output_path in all_outputs.items():
+            for source_type, output_path in transaction_outputs.items():
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 if output_path.exists():
                     backup = output_path.with_name(f".{output_path.name}.{uuid.uuid4().hex}.backup")
@@ -1138,7 +1231,7 @@ def materialize_static_viewability_outputs(
                         )
                         sidecar.replace(sidecar_backup)
                         sidecar_backups[sidecar] = sidecar_backup
-            for source_type, output_path in all_outputs.items():
+            for source_type, output_path in transaction_outputs.items():
                 staged[source_type].replace(output_path)
                 promoted.add(source_type)
             for source_type, output_path in outputs.items():
@@ -1157,8 +1250,11 @@ def materialize_static_viewability_outputs(
                     raw=raw,
                     source_type=source_type,
                 )
+            validate_generation_receipt(
+                receipt, all_outputs, config_hash=static_scientific_config_hash(raw)
+            )
         except Exception:
-            for source_type, output_path in all_outputs.items():
+            for source_type, output_path in transaction_outputs.items():
                 if source_type in promoted:
                     output_path.unlink(missing_ok=True)
                 for sidecar in metadata_sidecars_for(output_path):

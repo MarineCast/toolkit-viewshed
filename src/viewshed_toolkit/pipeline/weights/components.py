@@ -164,9 +164,7 @@ def _surface_component(
     validate_pairs(sparse, ("weight_terrain",))
     validate_los_diagnostics(sparse.lazy())
     if sparse.join(lookup.select(PAIR_KEYS), on=PAIR_KEYS, how="anti").height:
-        # Existing runners may retain targets outside the candidate cutoff; prune
-        # explicitly after validating uniqueness, preserving the authoritative universe.
-        sparse = sparse.join(lookup.select(PAIR_KEYS), on=PAIR_KEYS, how="semi")
+        raise ValueError("LOS partition contains pairs outside its canonical evaluated universe")
     # Absence in successfully completed sparse partitions means observed no LOS.
     # Nulls within an observed row are rejected above and never converted to zero.
     columns = [*PAIR_KEYS, "weight_terrain"]

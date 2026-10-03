@@ -346,3 +346,31 @@ observer/target population stay fixed.
 
 Experimental xarray window alignment uses zero relative tolerance tied to pixel spacing and
 checks every coordinate. Its fix is separate from the GDAL-backed regional example.
+
+### Durable generation integrity
+
+A paired publication now includes `viewshed-generation.json` beside the four Parquet outputs.
+Its content identity includes the scientific configuration, both source roles' input checksums,
+the geometry method version, and the input coverage audit when available. Access timestamps and
+presentation settings are excluded from the identity. The receipt records byte checksums for all
+four files. Reuse validates typed schemas, unique pair keys, roles, bounds, value states, embedded
+identity, exact compact/geometry pair coverage and final-weight parity. Older output sets without
+a receipt require regeneration; adding a receipt to old outputs does not establish compatibility.
+
+Finalization validates all staged members before promotion and restores the previous files and
+sidecars if promotion or validation fails. This is a single-writer rollback guarantee. Concurrent
+readers must validate the receipt and retry during publication; multiple renames are not a
+filesystem transaction. Cleanup preserves the receipt with the durable files.
+
+Terrain partitions include the content checksum of the canonical candidate lookup and their own
+byte checksum. A lookup edited in place invalidates cached partitions. Current producers evaluate
+only the canonical candidates; an out-of-universe observed row is rejected before densification.
+Successful execution permits modeled sparse zeros within that universe, but does not establish
+complete source data. `DATA_COVERAGE_STATE` is `partial` when the coverage audit records missing
+mapped-land inputs, and `unknown` without an audit. Missing-canopy zero-height and missing-DEM
+barrier policies remain scientific assumptions, not observations. The receipt retains the audit.
+
+Canopy source years come from normalized acquisition records. The global-canopy provider records
+its known 2020 product; local assets require an explicit `datasets.chm.source_year`. Unspecified
+local years remain null. Metadata refresh may change presentation settings only; changed scientific
+settings or disagreement between embedded metadata and sidecars requires rebuilding.

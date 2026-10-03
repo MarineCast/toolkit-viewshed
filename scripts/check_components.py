@@ -12,6 +12,7 @@ PATTERNS = (
     "src/viewshed_toolkit/pipeline/config/datasets.py",
     "src/viewshed_toolkit/pipeline/config/case_study.py",
     "src/viewshed_toolkit/pipeline/contracts/distance.py",
+    "src/viewshed_toolkit/pipeline/contracts/generation.py",
     "src/viewshed_toolkit/pipeline/prepare/area/case_study.py",
     "src/viewshed_toolkit/pipeline/finalize/aggregate.py",
     "src/viewshed_toolkit/pipeline/prepare/datasets.py",

@@ -302,6 +302,9 @@ def expected_partition_metadata(app: AppConfig) -> dict[str, Any]:
         metadata["water_land_buffer_m"] = land_buffer_m
         metadata["water_target_samples_per_cell"] = target_samples
         metadata["observer_height_class"] = str(app.observer_height_class or "default")
+    from ...contracts.generation import byte_checksum
+
+    metadata["candidate_lookup_sha256"] = byte_checksum(_area_lookup_path_for_app(app))
     return metadata
 
 
@@ -311,7 +314,17 @@ def _partition_metadata_sidecar_path(path: Path) -> Path:
 
 def _write_partition_metadata_sidecar(path: Path, expected: dict[str, Any]) -> None:
     sidecar = _partition_metadata_sidecar_path(path)
-    sidecar.write_text(json.dumps(expected, indent=2, sort_keys=True, default=str) + "\n")
+    from ...contracts.generation import byte_checksum
+
+    sidecar.write_text(
+        json.dumps(
+            {**expected, "artifact_checksum": byte_checksum(path)},
+            indent=2,
+            sort_keys=True,
+            default=str,
+        )
+        + "\n"
+    )
 
 
 def _read_partition_metadata_sidecar(path: Path) -> dict[str, Any] | None:
@@ -347,7 +360,13 @@ def partition_metadata_matches(path: Path, expected: dict[str, Any]) -> bool:
     if not path.exists():
         return False
     sidecar = _read_partition_metadata_sidecar(path)
-    return bool(sidecar and _metadata_values_match(sidecar, expected))
+    from ...contracts.generation import byte_checksum
+
+    return bool(
+        sidecar
+        and _metadata_values_match(sidecar, expected)
+        and sidecar.get("artifact_checksum") == byte_checksum(path)
+    )
 
 
 def _partition_row_count(path: Path) -> int:
