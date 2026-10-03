@@ -49,3 +49,6 @@ data/salish_sea/
 
 # Graphify generated code graph and local caches
 /graphify-out/
+
+# Bounded documentation demo inputs and intermediates
+data/san_juan_demo/

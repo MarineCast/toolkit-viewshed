@@ -44,7 +44,10 @@ from ..contracts.artifacts import (
     FinalArtifactPaths,
     final_artifact_paths_from_raw,
 )
+from ..contracts.pairs import validate_pair_kernel
 from .terrain.runner import run_paired_surface_source_cells
+from .terrain.gdal import expected_partition_metadata, partition_metadata_matches
+from .terrain.cleanup import combine_partitions
 
 CANOPY_VISIBILITY_CONTRACT_VERSION = "conditional_canopy_los_ratio_no_landcover_v1"
 TERRAIN_FACTOR_DEFINITION = "mean_bare_los_times_observer_pixel_distance_weight"
@@ -191,12 +194,10 @@ def scan_terrain_partitions(
 
 
 def _terrain_kernel_scan(paths: Sequence[Path], output_name: str) -> pl.LazyFrame:
-    """Build one lazy kernel scan without pre-reading it for validation.
+    """Validate observed keys and weights before composing sparse kernels.
 
-    Pair uniqueness is enforced by the validated joins in
-    :func:`compose_dual_surface_artifacts`.  Keeping validation in that same
-    execution avoids scanning every terrain partition once for counts and then
-    again for composition.
+    Validation uses bounded lazy results, then composition retains a multi-file
+    scan so regional partitions do not require one independent plan per file.
     """
 
     if not paths:
@@ -206,14 +207,12 @@ def _terrain_kernel_scan(paths: Sequence[Path], output_name: str) -> pl.LazyFram
     # overhead, that can exhaust Polars' blocking-thread/file-handle ceiling
     # before the streaming sink begins.  A single multi-file scan lets the
     # Parquet reader bound file access internally.
-    return pl.scan_parquet([str(path) for path in paths]).select(
+    frame = pl.scan_parquet([str(path) for path in paths])
+    validate_pair_kernel(frame, weight="weight_terrain")
+    return frame.select(
         pl.col("source_h3").cast(pl.Utf8),
         pl.col("target_h3").cast(pl.Utf8),
-        pl.col("weight_terrain")
-        .cast(pl.Float32, strict=False)
-        .fill_null(0.0)
-        .clip(0.0, 1.0)
-        .alias(output_name),
+        pl.col("weight_terrain").cast(pl.Float32).alias(output_name),
     )
 
 
@@ -227,6 +226,8 @@ def compose_dual_surface_artifacts(
     config_dir: Path,
     bare_config_hash: str,
     canopy_config_hash: str,
+    bare_completed_sources: Sequence[str],
+    canopy_completed_sources: Sequence[str],
     canopy_scenario_id: str | None = None,
     canopy_scenario: dict[str, Any] | None = None,
 ) -> DualSurfaceCanopyResult:
@@ -240,6 +241,11 @@ def compose_dual_surface_artifacts(
             pl.col("target_h3").cast(pl.Utf8),
         )
     )
+    validate_pair_kernel(lookup)
+    expected_sources = set(lookup.select("source_h3").unique().collect()["source_h3"])
+    for completed in (bare_completed_sources, canopy_completed_sources):
+        if len(completed) != len(set(completed)) or set(completed) != expected_sources:
+            raise ValueError("Incomplete paired LOS source execution; cannot infer observed zero")
     bare = _terrain_kernel_scan(bare_earth_partition_paths, "weight_terrain")
     canopy = _terrain_kernel_scan(canopy_partition_paths, "weight_canopy_los_raw")
     composed = (
@@ -416,12 +422,27 @@ def run_dual_surface_canopy_weights(
         )
     )
 
-    run_paired_surface_source_cells(bare_app, canopy_app)
-    bare_partitions = terrain_partition_paths(bare_app.paths.partitioned_visibility_dir)
-    canopy_partitions = terrain_partition_paths(canopy_app.paths.partitioned_visibility_dir)
+    bare_completed, canopy_completed = run_paired_surface_source_cells(bare_app, canopy_app)
+    completed_sources = []
+    selected_partitions = []
+    for surface_app, completed in ((bare_app, bare_completed), (canopy_app, canopy_completed)):
+        if not {"source_h3_cell", "status"}.issubset(completed.columns):
+            raise ValueError("Missing paired LOS completion records")
+        if not completed["status"].isin(["ok", "skipped_existing"]).all():
+            raise ValueError("Failed paired LOS source execution")
+        sources = completed["source_h3_cell"].astype(str).tolist()
+        partitions = terrain_partition_paths(
+            surface_app.paths.partitioned_visibility_dir, selected_sources=set(sources)
+        )
+        expected = expected_partition_metadata(surface_app)
+        if any(not partition_metadata_matches(path, expected) for path in partitions):
+            raise ValueError("Missing or stale paired terrain partition")
+        completed_sources.append(sources)
+        selected_partitions.append(partitions)
+    bare_partitions, canopy_partitions = selected_partitions
     paths = final_artifact_paths_from_raw(app.raw_config, app.config_path.parent)
     scenario_metadata = canopy_scenario_metadata(app)
-    return compose_dual_surface_artifacts(
+    result = compose_dual_surface_artifacts(
         lookup_path=paths.source_target_lookup,
         bare_earth_partition_paths=bare_partitions,
         canopy_partition_paths=canopy_partitions,
@@ -430,6 +451,13 @@ def run_dual_surface_canopy_weights(
         config_dir=app.config_path.parent,
         bare_config_hash=bare_app.config_hash,
         canopy_config_hash=canopy_app.config_hash,
+        bare_completed_sources=completed_sources[0],
+        canopy_completed_sources=completed_sources[1],
         canopy_scenario_id=str(scenario_metadata["canopy_scenario_id"]),
         canopy_scenario=dict(scenario_metadata["canopy_scenario"]),
     )
+
+    # Only bare-earth diagnostics own the land clear-sky product. Canopy
+    # combination must not overwrite it with the obstruction-surface kernel.
+    combine_partitions(bare_app, partition_paths=bare_partitions)
+    return result

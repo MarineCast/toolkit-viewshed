@@ -60,6 +60,14 @@ caches may require `--overwrite` or a fresh work directory. A changed source inv
 component composition. Complete sparse LOS execution is checked before absent rows can mean
 observed zero; duplicate keys and invalid observed values are errors.
 
+Paired production checks completion records and current partition metadata for both land
+surfaces before composition. It materializes dense bare-earth clear-sky diagnostics over the
+candidate lookup, then stages both compact static tables and both observation-geometry tables
+before promoting the four-file set. A staging or promotion failure preserves the previous set.
+This is rollback safety within one writer, not an atomic generation pointer for concurrent readers.
+Water partition identity and in-process geometry caches include land/water geometry and lookup
+content, so changes at the same path invalidate reuse.
+
 Run manifests are per source type and run ID. Reusing an ID with a different configuration or
 plan fails before stages execute unless `--overwrite` is explicit. An interrupted run records
 completed outputs and a failed stage; it does not claim completion. Concurrent writers to the

@@ -29,6 +29,7 @@ from ...config import (
     BatchContext,
     metadata_sidecar_candidates,
 )
+from ...contracts.pairs import validate_pair_kernel
 from ...contracts.artifacts import (
     FINAL_SCHEMAS,
     final_artifact_paths,
@@ -70,7 +71,9 @@ from .gdal import (
 )
 
 
-def combine_partitions(app: AppConfig) -> dict[str, Any]:
+def combine_partitions(
+    app: AppConfig, *, partition_paths: list[Path] | None = None
+) -> dict[str, Any]:
     """Materialize dense compact terrain weights from source partitions.
 
     Terrain partition files are naturally sparse: they only contain source-target
@@ -95,7 +98,11 @@ def combine_partitions(app: AppConfig) -> dict[str, Any]:
     if source_type not in {"land", "water"}:
         raise ValueError("source_type must be land or water")
 
-    parts = sorted(_partitioned_visibility_dir_for_app(app).glob("source_h3_cell=*.parquet"))
+    parts = (
+        sorted(partition_paths)
+        if partition_paths is not None
+        else sorted(_partitioned_visibility_dir_for_app(app).glob("source_h3_cell=*.parquet"))
+    )
     expected_metadata = expected_partition_metadata(app)
     mismatched = [path for path in parts if not partition_metadata_matches(path, expected_metadata)]
     if mismatched:
@@ -341,6 +348,8 @@ def combine_partitions(app: AppConfig) -> dict[str, Any]:
             f"First missing sources:\n{preview}" + ("\n..." if len(missing_sources) > 10 else "")
         )
 
+    validate_pair_kernel(pl.scan_parquet([str(path) for path in parts]), weight="weight_terrain")
+
     clear_sky_path = (
         final_artifact_paths(app.config_path).ocean_source_target_clear_sky
         if source_type == "water"
@@ -350,9 +359,30 @@ def combine_partitions(app: AppConfig) -> dict[str, Any]:
     clear_tmp = clear_sky_path.with_name(f".{clear_sky_path.name}.{uuid.uuid4().hex}.tmp")
     clear_tmp.unlink(missing_ok=True)
     try:
-        _normalized_clear_sky(parts).select(FINAL_SCHEMAS["source_target_clear_sky"]).sink_parquet(
-            str(clear_tmp)
+        sparse = _normalized_clear_sky(parts)
+        observed_los = (
+            "joint_los_fraction" in pl.scan_parquet([str(p) for p in parts]).collect_schema()
         )
+        diagnostics = lookup_pairs.join(
+            sparse, on=["source_h3", "target_h3"], how="left", validate="1:1"
+        )
+        defaults = []
+        for name, dtype in sparse.collect_schema().items():
+            if name in {"source_h3", "target_h3"}:
+                continue
+            default = (
+                observed_los
+                if name == "unweighted_los_observed"
+                else (
+                    False
+                    if dtype == pl.Boolean
+                    else "no_visible_support" if dtype == pl.String else 0
+                )
+            )
+            defaults.append(pl.col(name).fill_null(default))
+        diagnostics.with_columns(defaults).select(
+            FINAL_SCHEMAS["source_target_clear_sky"]
+        ).sink_parquet(str(clear_tmp))
         clear_tmp.replace(clear_sky_path)
     finally:
         clear_tmp.unlink(missing_ok=True)

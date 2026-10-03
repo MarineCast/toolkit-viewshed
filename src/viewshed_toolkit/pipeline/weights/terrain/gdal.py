@@ -191,6 +191,26 @@ def _terrain_partition_config_hash(app: AppConfig) -> str:
     return stable_config_hash(payload)
 
 
+def _water_input_identity(app: AppConfig) -> str:
+    from ...prepare.area.raster_stack import _canonical_dataset_signature
+
+    inputs = {
+        name: getattr(app.paths, name, None) for name in ("land_polygon_path", "water_polygon_path")
+    }
+    inputs["lookup"] = _area_lookup_path_for_app(app)
+    return json.dumps(
+        {
+            name: (
+                _canonical_dataset_signature(Path(path))
+                if path is not None and Path(path).exists()
+                else {"unavailable": str(path)}
+            )
+            for name, path in inputs.items()
+        },
+        sort_keys=True,
+    )
+
+
 def expected_partition_metadata(app: AppConfig) -> dict[str, Any]:
     water_viewing = app.raw_config.get("water_viewing", {}) or {}
     metadata = {
@@ -275,6 +295,7 @@ def expected_partition_metadata(app: AppConfig) -> dict[str, Any]:
         metadata["gdal_grid_alignment_version"] = "strict_parent_grid_v1"
     if _source_type_for_app(app) == "water":
         land_buffer_m, target_samples = _water_land_mask_settings(app)
+        metadata["water_scientific_input_signatures"] = _water_input_identity(app)
         metadata["water_terrain_model"] = "opaque_land_mask_v1"
         metadata["water_terrain_prefilter_version"] = "land_mask_los_v1"
         metadata["water_land_buffer_m"] = land_buffer_m
@@ -514,7 +535,7 @@ def _load_terrain_source_cells(app: AppConfig) -> gpd.GeoDataFrame:
 
 
 def _water_terrain_domains_for_app(app: AppConfig) -> domains.DomainGeometries:
-    cache_key = f"{app.config_path}:{app.config_hash}"
+    cache_key = f"{app.config_path}:{app.config_hash}:{_water_input_identity(app)}"
     cached = _WATER_TERRAIN_DOMAIN_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -1045,6 +1066,7 @@ def _water_terrain_prefilter_for_source(
         str(app.viewshed.crs_projected),
         land_mask_settings,
         source_point_signature,
+        _water_input_identity(app),
         len(targets),
         distance_digest.digest(),
     )

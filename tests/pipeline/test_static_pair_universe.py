@@ -290,8 +290,27 @@ def test_paired_static_promotion_rolls_back_artifacts_and_sidecars(
             }
         ).write_parquet(paths.weights_path("vegetation_weights", source_type=source_type))
 
+    for role in ("land", "water"):
+        clear = (
+            paths.source_target_clear_sky if role == "land" else paths.ocean_source_target_clear_sky
+        )
+        pl.DataFrame(
+            {
+                "source_h3": [f"{role}-source"],
+                "target_h3": ["target"],
+                "unweighted_los_observed": [True],
+                "joint_los_fraction": [0.6],
+                "distance_weighted_los_fraction": [0.5],
+            }
+        ).write_parquet(clear)
+
     originals = {}
-    for output in (paths.land_static_weights, paths.water_static_weights):
+    for output in (
+        paths.land_static_weights,
+        paths.water_static_weights,
+        paths.land_observation_geometry,
+        paths.water_observation_geometry,
+    ):
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(f"old:{output.name}".encode())
         sidecar = output.with_name(f"{output.stem}_metadata.json")

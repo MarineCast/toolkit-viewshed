@@ -17,6 +17,7 @@ from viewshed_toolkit.pipeline.weights.terrain import gdal
 def _app(*, curvature_coefficient: float) -> SimpleNamespace:
     return SimpleNamespace(
         config_path=Path("fixture.yaml"),
+        paths=SimpleNamespace(output_dir=Path("missing-test-geometry")),
         config_hash="fixture",
         raw_config={
             "water_viewing": {

@@ -5,7 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from ..config import AppConfig, load_app_config
-from ..config.datasets import DatasetsConfig
+from ..config.datasets import DatasetConfig
 from ..config.paths import bbox_from_config
 from ..contracts.components import component_root, input_checksums, write_json
 from ..providers import DownloadResult, get_provider
@@ -17,33 +17,15 @@ def download_dataset(
     app = config if isinstance(config, AppConfig) else load_app_config(config)
     if dataset not in {"dem", "chm"}:
         raise ValueError("dataset must be dem or chm")
-    settings = getattr(DatasetsConfig.model_validate(app.raw_config.get("datasets", {})), dataset)
+    from ..contracts.components import acquisition_request
+
+    request = acquisition_request(app, dataset)
+    settings = DatasetConfig.model_validate(request["dataset"])
     if not settings.enabled:
         raise ValueError(f"Dataset {dataset} is disabled")
     provider = get_provider(settings.provider)
-    # Local paths use the same project-root contract as other configured paths.
-    if settings.provider == "local":
-        from ..config.paths import resolve_path
-
-        settings = settings.model_copy(
-            update={
-                "assets": tuple(
-                    str(resolve_path(path, app.config_path.parent)) for path in settings.assets
-                )
-            }
-        )
     root = component_root(app) / "inputs" / dataset
-    from pyproj import Transformer
-
-    forward = Transformer.from_crs(4326, app.viewshed.crs_projected, always_xy=True)
-    inverse = Transformer.from_crs(app.viewshed.crs_projected, 4326, always_xy=True)
-    west, south, east, north = forward.transform_bounds(
-        *bbox_from_config(app.raw_config), densify_pts=21
-    )
-    margin = app.viewshed.max_distance_m + app.viewshed.aoi_margin_m
-    acquisition_bbox = inverse.transform_bounds(
-        west - margin, south - margin, east + margin, north + margin, densify_pts=21
-    )
+    acquisition_bbox = tuple(request["acquisition_bbox"])
     assets = provider.discover(acquisition_bbox, settings)
     excluded_assets = []
     if settings.land_tiles_only:

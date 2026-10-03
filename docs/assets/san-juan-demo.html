@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html>
+<head><title>San Juan Islands viewshed demo</title>
+
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_30b6fe5bb273c34b2508276afbc91ba0 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+
+
+                    <style>
+                        .foliumtooltip {
+
+                        }
+                       .foliumtooltip table{
+                            margin: auto;
+                        }
+                        .foliumtooltip tr{
+                            text-align: left;
+                        }
+                        .foliumtooltip th{
+                            padding: 2px; padding-right: 8px;
+                        }
+                    </style>
+
+
+
+                <style>
+                    .leaflet-image-layer {
+                        /* old android/safari*/
+                        image-rendering: -webkit-optimize-contrast;
+                        image-rendering: crisp-edges; /* safari */
+                        image-rendering: pixelated; /* chrome */
+                        image-rendering: -moz-crisp-edges; /* firefox */
+                        image-rendering: -o-crisp-edges; /* opera */
+                        -ms-interpolation-mode: nearest-neighbor; /* ie */
+                    }
+                </style>
+
+
+
+                    <style>
+                        .foliumtooltip {
+
+                        }
+                       .foliumtooltip table{
+                            margin: auto;
+                        }
+                        .foliumtooltip tr{
+                            text-align: left;
+                        }
+                        .foliumtooltip th{
+                            padding: 2px; padding-right: 8px;
+                        }
+                    </style>
+
+
+
+                <style>
+                    .leaflet-image-layer {
+                        /* old android/safari*/
+                        image-rendering: -webkit-optimize-contrast;
+                        image-rendering: crisp-edges; /* safari */
+                        image-rendering: pixelated; /* chrome */
+                        image-rendering: -moz-crisp-edges; /* firefox */
+                        image-rendering: -o-crisp-edges; /* opera */
+                        -ms-interpolation-mode: nearest-neighbor; /* ie */
+                    }
+                </style>
+
+
+
+                    <style>
+                        .foliumtooltip {
+
+                        }
+                       .foliumtooltip table{
+                            margin: auto;
+                        }
+                        .foliumtooltip tr{
+                            text-align: left;
+                        }
+                        .foliumtooltip th{
+                            padding: 2px; padding-right: 8px;
+                        }
+                    </style>
+
+
+
+                <style>
+                    .leaflet-image-layer {
+                        /* old android/safari*/
+                        image-rendering: -webkit-optimize-contrast;
+                        image-rendering: crisp-edges; /* safari */
+                        image-rendering: pixelated; /* chrome */
+                        image-rendering: -moz-crisp-edges; /* firefox */
+                        image-rendering: -o-crisp-edges; /* opera */
+                        -ms-interpolation-mode: nearest-neighbor; /* ie */
+                    }
+                </style>
+
+
+
+                    <style>
+                        .foliumtooltip {
+
+                        }
+                       .foliumtooltip table{
+                            margin: auto;
+                        }
+                        .foliumtooltip tr{
+                            text-align: left;
+                        }
+                        .foliumtooltip th{
+                            padding: 2px; padding-right: 8px;
+                        }
+                    </style>
+
+
+
+                <style>
+                    .leaflet-image-layer {
+                        /* old android/safari*/
+                        image-rendering: -webkit-optimize-contrast;
+                        image-rendering: crisp-edges; /* safari */
+                        image-rendering: pixelated; /* chrome */
+                        image-rendering: -moz-crisp-edges; /* firefox */
+                        image-rendering: -o-crisp-edges; /* opera */
+                        -ms-interpolation-mode: nearest-neighbor; /* ie */
+                    }
+                </style>
+
+
+
+                    <style>
+                        .foliumtooltip {
+
+                        }
+                       .foliumtooltip table{
+                            margin: auto;
+                        }
+                        .foliumtooltip tr{
+                            text-align: left;
+                        }
+                        .foliumtooltip th{
+                            padding: 2px; padding-right: 8px;
+                        }
+                    </style>
+
+</head>
+<body><style>body {display:flex;flex-direction:column;}
+        .folium-map {flex:1;min-height:400px;height:auto!important;}</style>
+        <header style="background:white;padding:10px 14px;border-bottom:1px solid #bbb;
+        font:12px/1.4 sans-serif;flex:none;">
+        <strong>San Juan Islands documentation demo · 100 m terrain · H3 R7 · 5 km</strong><br>
+        Static physical viewability, not detection probability or public access.
+        Missing canopy uses zero height (9.7% of mapped land in this input grid).
+        Generalized shoreline; coarse exploratory example.<br>
+        Sources: USGS 3DEP (public domain);
+        <a href="https://langnico.github.io/globalcanopyheight/">ETH 2020 canopy,
+        Lang et al.</a> (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>);
+        Natural Earth (public domain). Derived by terrain/canopy LOS and distance attenuation.
+        </header>
+
+
+            <div style="position:fixed;left:14px;bottom:28px;z-index:9999;
+                        width:310px;background:rgba(255,255,255,.94);padding:10px 12px;
+                        border:1px solid #777;border-radius:5px;font:13px/1.35 sans-serif;">
+              <div style="font-weight:700;margin-bottom:5px;">Configured-location land-source static viewshed weights</div>
+              <div style="height:10px;background:linear-gradient(90deg, #32c7f3, #61d9d5, #9ee59b, #dce85a, #ffe13b, #f9a431, #ed5b27, #d52222, #941936);margin-bottom:3px;"></div>
+              <div style="display:flex;justify-content:space-between;"><span>Low</span><span>High</span></div>
+              <div style="margin-top:5px;color:#444;">Each factor is independently scaled
+              from zero to its configured display quantile. Hover an original H3 layer
+              for its unscaled grid value.</div>
+            </div>
+
+
+            <div class="folium-map" id="map_30b6fe5bb273c34b2508276afbc91ba0" ></div>
+
+</body>
+<script>
+
+
+            var map_30b6fe5bb273c34b2508276afbc91ba0 = L.map(
+                "map_30b6fe5bb273c34b2508276afbc91ba0",
+                {
+                    center: [48.535, -123.015],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 10,
+  "zoomControl": true,
+  "preferCanvas": true,
+}
+
+                }
+            );
+            L.control.scale().addTo(map_30b6fe5bb273c34b2508276afbc91ba0);
+
+
+
+
+
+            var tile_layer_0235eadce69ec8a0fe1accf9fde8378b = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+
+
+            tile_layer_0235eadce69ec8a0fe1accf9fde8378b.addTo(map_30b6fe5bb273c34b2508276afbc91ba0);
+
+
+        function geo_json_16e4e419bfc8e92ce30602ab6f9d2291_styler(feature) {
+            switch(feature.id) {
+                case "0": case "3": case "7": case "8": case "10": case "12": case "13": case "14": case "16": case "17": case "18": case "22": case "26": case "27": case "28":
+                    return {"color": "#3f3f3f", "fillColor": "#32c7f3ff", "fillOpacity": 0.0, "weight": 0.4};
+                case "1":
+                    return {"color": "#3f3f3f", "fillColor": "#6bdacaff", "fillOpacity": 0.78, "weight": 0.4};
+                case "2":
+                    return {"color": "#3f3f3f", "fillColor": "#f9a731ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "4":
+                    return {"color": "#3f3f3f", "fillColor": "#4ad0e4ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "5":
+                    return {"color": "#3f3f3f", "fillColor": "#55d4ddff", "fillOpacity": 0.78, "weight": 0.4};
+                case "6":
+                    return {"color": "#3f3f3f", "fillColor": "#f4852dff", "fillOpacity": 0.78, "weight": 0.4};
+                case "11":
+                    return {"color": "#3f3f3f", "fillColor": "#8ae1aeff", "fillOpacity": 0.78, "weight": 0.4};
+                case "19": case "25":
+                    return {"color": "#3f3f3f", "fillColor": "#f37e2bff", "fillOpacity": 0.78, "weight": 0.4};
+                case "20":
+                    return {"color": "#3f3f3f", "fillColor": "#8be1aeff", "fillOpacity": 0.78, "weight": 0.4};
+                case "21": case "24":
+                    return {"color": "#3f3f3f", "fillColor": "#70dbc6ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "23":
+                    return {"color": "#3f3f3f", "fillColor": "#941936ff", "fillOpacity": 0.78, "weight": 0.4};
+                default:
+                    return {"color": "#3f3f3f", "fillColor": "#58d5dbff", "fillOpacity": 0.78, "weight": 0.4};
+            }
+        }
+        function geo_json_16e4e419bfc8e92ce30602ab6f9d2291_highlighter(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#111111", "weight": 1.8};
+            }
+        }
+
+        function geo_json_16e4e419bfc8e92ce30602ab6f9d2291_onEachFeature(feature, layer) {
+
+            layer.on({
+                mouseout: function(e) {
+                    if(typeof e.target.setStyle === "function"){
+                            geo_json_16e4e419bfc8e92ce30602ab6f9d2291.resetStyle(e.target);
+                    }
+                },
+                mouseover: function(e) {
+                    if(typeof e.target.setStyle === "function"){
+                        const highlightStyle = geo_json_16e4e419bfc8e92ce30602ab6f9d2291_highlighter(e.target.feature)
+                        e.target.setStyle(highlightStyle);
+                    }
+                },
+            });
+        };
+        var geo_json_16e4e419bfc8e92ce30602ab6f9d2291 = L.geoJson(null, {
+                onEachFeature: geo_json_16e4e419bfc8e92ce30602ab6f9d2291_onEachFeature,
+
+                style: geo_json_16e4e419bfc8e92ce30602ab6f9d2291_styler,
+            ...{
+}
+        });
+
+        function geo_json_16e4e419bfc8e92ce30602ab6f9d2291_add (data) {
+            geo_json_16e4e419bfc8e92ce30602ab6f9d2291
+                .addData(data);
+        }
+            geo_json_16e4e419bfc8e92ce30602ab6f9d2291_add({"bbox": [-123.08494735124425, 48.46122761365707, -122.90431521064677, 48.60055305860513], "features": [{"bbox": [-122.94081641660016, 48.498469692294975, -122.90431521064677, 48.51985073295947], "geometry": {"coordinates": [[[-122.91264463369563, 48.50018037002996], [-122.90431521064677, 48.51087081772074], [-122.91423864299033, 48.51985073295947], [-122.93249133605623, 48.51813924443525], [-122.94081641660016, 48.50744865161037], [-122.93089314782422, 48.498469692294975], [-122.91264463369563, 48.50018037002996]]], "type": "Polygon"}, "id": "0", "properties": {"target_h3": "8728d1001ffffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-122.9705957501892, 48.52539877819348, -122.93409027748808, 48.54677489337214], "geometry": {"coordinates": [[[-122.94241707070397, 48.52711478558427], [-122.93409027748808, 48.53780277102796], [-122.9440184792146, 48.54677489337214], [-122.9622733058629, 48.54505807456176], [-122.9705957501892, 48.534369944976135], [-122.96066771799742, 48.52539877819348], [-122.94241707070397, 48.52711478558427]]], "type": "Polygon"}, "id": "1", "properties": {"target_h3": "8728d1008ffffff", "weight_distance": 0.12837569415569305}, "type": "Feature"}, {"bbox": [-122.99877466781773, 48.53264942006559, -122.9622733058629, 48.55402582190728], "geometry": {"coordinates": [[[-122.9705957501892, 48.534369944976135], [-122.9622733058629, 48.54505807456176], [-122.97220380594413, 48.55402582190728], [-122.99045657648207, 48.55230448431688], [-122.99877466781773, 48.54161621221049], [-122.98884434284541, 48.53264942006559], [-122.9705957501892, 48.534369944976135]]], "type": "Polygon"}, "id": "2", "properties": {"target_h3": "8728d1009ffffff", "weight_distance": 0.5565597414970398}, "type": "Feature"}, {"bbox": [-122.9440184792146, 48.53780277102796, -122.90750054997439, 48.55917337837279], "geometry": {"coordinates": [[[-122.9158334036004, 48.53951506970952], [-122.90750054997439, 48.55020030011169], [-122.91742891605467, 48.55917337837279], [-122.93568997264984, 48.55746027016563], [-122.9440184792146, 48.54677489337214], [-122.93409027748808, 48.53780277102796], [-122.9158334036004, 48.53951506970952]]], "type": "Polygon"}, "id": "3", "properties": {"target_h3": "8728d100affffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-122.97220380594413, 48.54505807456176, -122.93568997264984, 48.566428973069826], "geometry": {"coordinates": [[[-122.9440184792146, 48.54677489337214], [-122.93568997264984, 48.55746027016563], [-122.94562064266307, 48.566428973069826], [-122.96387965055048, 48.564711343472354], [-122.97220380594413, 48.55402582190728], [-122.9622733058629, 48.54505807456176], [-122.9440184792146, 48.54677489337214]]], "type": "Polygon"}, "id": "4", "properties": {"target_h3": "8728d100bffffff", "weight_distance": 0.05657626688480377}, "type": "Feature"}, {"bbox": [-122.96898845193161, 48.505733456271734, -122.93249133605623, 48.52711478558427], "geometry": {"coordinates": [[[-122.94081641660016, 48.50744865161037], [-122.93249133605623, 48.51813924443525], [-122.94241707070397, 48.52711478558427], [-122.96066771799742, 48.52539877819348], [-122.96898845193161, 48.514708041855], [-122.95906288642188, 48.505733456271734], [-122.94081641660016, 48.50744865161037]]], "type": "Polygon"}, "id": "5", "properties": {"target_h3": "8728d100cffffff", "weight_distance": 0.08368485420942307}, "type": "Feature"}, {"bbox": [-122.99716072607127, 48.5129883302576, -122.96066771799742, 48.534369944976135], "geometry": {"coordinates": [[[-122.96898845193161, 48.514708041855], [-122.96066771799742, 48.52539877819348], [-122.9705957501892, 48.534369944976135], [-122.98884434284541, 48.53264942006559], [-122.99716072607127, 48.52195854183506], [-122.98723286858778, 48.5129883302576], [-122.96898845193161, 48.514708041855]]], "type": "Polygon"}, "id": "6", "properties": {"target_h3": "8728d100dffffff", "weight_distance": 0.6105724573135376}, "type": "Feature"}, {"bbox": [-122.94241707070397, 48.51813924443525, -122.90590750499226, 48.53951506970952], "geometry": {"coordinates": [[[-122.91423864299033, 48.51985073295947], [-122.90590750499226, 48.53053857264108], [-122.9158334036004, 48.53951506970952], [-122.93409027748808, 48.53780277102796], [-122.94241707070397, 48.52711478558427], [-122.93249133605623, 48.51813924443525], [-122.91423864299033, 48.51985073295947]]], "type": "Polygon"}, "id": "7", "properties": {"target_h3": "8728d100effffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-122.99393512220031, 48.4736480816098, -122.95745881060455, 48.49504011445161], "geometry": {"coordinates": [[[-122.96577612577852, 48.47536616468054], [-122.95745881060455, 48.48606211070763], [-122.96738191063875, 48.49504011445161], [-122.98562215317526, 48.49332121680077], [-122.99393512220031, 48.482625130135226], [-122.9840121960746, 48.4736480816098], [-122.96577612577852, 48.47536616468054]]], "type": "Polygon"}, "id": "8", "properties": {"target_h3": "8728d1028ffffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-123.02209434515702, 48.48090253467705, -122.98562215317526, 48.50229484717285], "geometry": {"coordinates": [[[-122.99393512220031, 48.482625130135226], [-122.98562215317526, 48.49332121680077], [-122.99554754437685, 48.50229484717285], [-123.01378572636824, 48.50057143587418], [-123.02209434515702, 48.48987521019344], [-123.01216913342628, 48.48090253467705], [-122.99393512220031, 48.482625130135226]]], "type": "Polygon"}, "id": "9", "properties": {"target_h3": "8728d1029ffffff", "weight_distance": 0.0909542441368103}, "type": "Feature"}, {"bbox": [-122.96738191063875, 48.48606211070763, -122.93089314782422, 48.50744865161037], "geometry": {"coordinates": [[[-122.93921651637277, 48.487776493361366], [-122.93089314782422, 48.498469692294975], [-122.94081641660016, 48.50744865161037], [-122.95906288642188, 48.505733456271734], [-122.96738191063875, 48.49504011445161], [-122.95745881060455, 48.48606211070763], [-122.93921651637277, 48.487776493361366]]], "type": "Polygon"}, "id": "10", "properties": {"target_h3": "8728d102affffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-122.99554754437685, 48.49332121680077, -122.95906288642188, 48.514708041855], "geometry": {"coordinates": [[[-122.96738191063875, 48.49504011445161], [-122.95906288642188, 48.505733456271734], [-122.96898845193161, 48.514708041855], [-122.98723286858778, 48.5129883302576], [-122.99554754437685, 48.50229484717285], [-122.98562215317526, 48.49332121680077], [-122.96738191063875, 48.49504011445161]]], "type": "Polygon"}, "id": "11", "properties": {"target_h3": "8728d102bffffff", "weight_distance": 0.18844348192214966}, "type": "Feature"}, {"bbox": [-123.02047604840291, 48.46122761365707, -122.9840121960746, 48.482625130135226], "geometry": {"coordinates": [[[-122.99232345900786, 48.462949392640375], [-122.9840121960746, 48.4736480816098], [-122.99393512220031, 48.482625130135226], [-123.01216913342628, 48.48090253467705], [-123.02047604840291, 48.47020370731769], [-123.010553301345, 48.46122761365707], [-122.99232345900786, 48.462949392640375]]], "type": "Polygon"}, "id": "12", "properties": {"target_h3": "8728d102dffffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-122.96577612577852, 48.466384743419084, -122.92929571226242, 48.487776493361366], "geometry": {"coordinates": [[[-122.93761736949173, 48.468098312755075], [-122.92929571226242, 48.47879411652145], [-122.93921651637277, 48.487776493361366], [-122.95745881060455, 48.48606211070763], [-122.96577612577852, 48.47536616468054], [-122.95585549001423, 48.466384743419084], [-122.93761736949173, 48.468098312755075]]], "type": "Polygon"}, "id": "13", "properties": {"target_h3": "8728d102effffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-123.0833127132686, 48.55434800524086, -123.04682378991184, 48.575725247602726], "geometry": {"coordinates": [[[-123.05513316298745, 48.556082074566504], [-123.04682378991184, 48.566770626846626], [-123.05676115644071, 48.575725247602726], [-123.07500770544975, 48.57399036182799], [-123.0833127132686, 48.56330167189693], [-123.07337553857059, 48.55434800524086], [-123.05513316298745, 48.556082074566504]]], "type": "Polygon"}, "id": "14", "properties": {"target_h3": "8728d1042ffffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-123.02857515819626, 48.55954200137931, -122.99206957003211, 48.580913472489826], "geometry": {"coordinates": [[[-123.00038937015098, 48.56126785639464], [-122.99206957003211, 48.57195352111041], [-123.00200483360615, 48.580913472489826], [-123.02025971744969, 48.5791868041701], [-123.02857515819626, 48.56850099792553], [-123.01864007571038, 48.55954200137931], [-123.00038937015098, 48.56126785639464]]], "type": "Polygon"}, "id": "15", "properties": {"target_h3": "8728d1050ffffff", "weight_distance": 0.09123211354017258}, "type": "Feature"}, {"bbox": [-123.05676115644071, 48.566770626846626, -123.02025971744969, 48.58814237939218], "geometry": {"coordinates": [[[-123.02857515819626, 48.56850099792553], [-123.02025971744969, 48.5791868041701], [-123.03019727064469, 48.58814237939218], [-123.04845007915765, 48.58641119375317], [-123.05676115644071, 48.575725247602726], [-123.04682378991184, 48.566770626846626], [-123.02857515819626, 48.56850099792553]]], "type": "Polygon"}, "id": "16", "properties": {"target_h3": "8728d1051ffffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-123.00200483360615, 48.57195352111041, -122.96548675259295, 48.593319489602834], "geometry": {"coordinates": [[[-122.9738126197295, 48.57367567074754], [-122.96548675259295, 48.58435858302779], [-122.97542219207881, 48.593319489602834], [-122.9936833240303, 48.591596528551996], [-123.00200483360615, 48.580913472489826], [-122.99206957003211, 48.57195352111041], [-122.9738126197295, 48.57367567074754]]], "type": "Polygon"}, "id": "17", "properties": {"target_h3": "8728d1052ffffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-123.03019727064469, 48.5791868041701, -122.9936833240303, 48.60055305860513], "geometry": {"coordinates": [[[-123.00200483360615, 48.580913472489826], [-122.9936833240303, 48.591596528551996], [-123.00362105871908, 48.60055305860513], [-123.0218801227295, 48.59882557761473], [-123.03019727064469, 48.58814237939218], [-123.02025971744969, 48.5791868041701], [-123.00200483360615, 48.580913472489826]]], "type": "Polygon"}, "id": "18", "properties": {"target_h3": "8728d1053ffffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-123.02695380996037, 48.53989117113338, -122.99045657648207, 48.56126785639464], "geometry": {"coordinates": [[[-122.99877466781773, 48.54161621221049], [-122.99045657648207, 48.55230448431688], [-123.00038937015098, 48.56126785639464], [-123.01864007571038, 48.55954200137931], [-123.02695380996037, 48.54885358837442], [-123.01702119697458, 48.53989117113338], [-122.99877466781773, 48.54161621221049]]], "type": "Polygon"}, "id": "19", "properties": {"target_h3": "8728d1054ffffff", "weight_distance": 0.6222636699676514}, "type": "Feature"}, {"bbox": [-123.05513316298745, 48.54712403249016, -123.01864007571038, 48.56850099792553], "geometry": {"coordinates": [[[-123.02695380996037, 48.54885358837442], [-123.01864007571038, 48.55954200137931], [-123.02857515819626, 48.56850099792553], [-123.04682378991184, 48.566770626846626], [-123.05513316298745, 48.556082074566504], [-123.04519826675862, 48.54712403249016], [-123.02695380996037, 48.54885358837442]]], "type": "Polygon"}, "id": "20", "properties": {"target_h3": "8728d1055ffffff", "weight_distance": 0.1888616383075714}, "type": "Feature"}, {"bbox": [-123.00038937015098, 48.55230448431688, -122.96387965055048, 48.57367567074754], "geometry": {"coordinates": [[[-122.97220380594413, 48.55402582190728], [-122.96387965055048, 48.564711343472354], [-122.9738126197295, 48.57367567074754], [-122.99206957003211, 48.57195352111041], [-123.00038937015098, 48.56126785639464], [-122.99045657648207, 48.55230448431688], [-122.97220380594413, 48.55402582190728]]], "type": "Polygon"}, "id": "21", "properties": {"target_h3": "8728d1056ffffff", "weight_distance": 0.13718542456626892}, "type": "Feature"}, {"bbox": [-123.08494735124425, 48.57399036182799, -123.04845007915765, 48.59536239256167], "geometry": {"coordinates": [[[-123.05676115644071, 48.575725247602726], [-123.04845007915765, 48.58641119375317], [-123.05838991719597, 48.59536239256167], [-123.07664064150971, 48.59362669097304], [-123.08494735124425, 48.58294060654068], [-123.07500770544975, 48.57399036182799], [-123.05676115644071, 48.575725247602726]]], "type": "Polygon"}, "id": "22", "properties": {"target_h3": "8728d105cffffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-123.02533322539968, 48.5202343153301, -122.98884434284541, 48.54161621221049], "geometry": {"coordinates": [[[-122.99716072607127, 48.52195854183506], [-122.98884434284541, 48.53264942006559], [-122.99877466781773, 48.54161621221049], [-123.01702119697458, 48.53989117113338], [-123.02533322539968, 48.52920015263335], [-123.01540308070587, 48.5202343153301], [-122.99716072607127, 48.52195854183506]]], "type": "Polygon"}, "id": "23", "properties": {"target_h3": "8728d1072ffffff", "weight_distance": 1.0}, "type": "Feature"}, {"bbox": [-123.05025378104781, 48.488148103701484, -123.01378572636824, 48.50954069260366], "geometry": {"coordinates": [[[-123.02209434515702, 48.48987521019344], [-123.01378572636824, 48.50057143587418], [-123.02371340397734, 48.50954069260366], [-123.04194951657644, 48.50781276901272], [-123.05025378104781, 48.49711640594113], [-123.0403262884718, 48.488148103701484], [-123.02209434515702, 48.48987521019344]]], "type": "Polygon"}, "id": "24", "properties": {"target_h3": "8728d1074ffffff", "weight_distance": 0.1369868814945221}, "type": "Feature"}, {"bbox": [-123.02371340397734, 48.50057143587418, -122.98723286858778, 48.52195854183506], "geometry": {"coordinates": [[[-122.99554754437685, 48.50229484717285], [-122.98723286858778, 48.5129883302576], [-122.99716072607127, 48.52195854183506], [-123.01540308070587, 48.5202343153301], [-123.02371340397734, 48.50954069260366], [-123.01378572636824, 48.50057143587418], [-122.99554754437685, 48.50229484717285]]], "type": "Polygon"}, "id": "25", "properties": {"target_h3": "8728d1076ffffff", "weight_distance": 0.6220536828041077}, "type": "Feature"}, {"bbox": [-122.94562064266307, 48.55746027016563, -122.90909434612172, 48.57882565704875], "geometry": {"coordinates": [[[-122.91742891605467, 48.55917337837279], [-122.90909434612172, 48.56985599822874], [-122.91902518088244, 48.57882565704875], [-122.93729042207214, 48.57711173994765], [-122.94562064266307, 48.566428973069826], [-122.93568997264984, 48.55746027016563], [-122.91742891605467, 48.55917337837279]]], "type": "Polygon"}, "id": "26", "properties": {"target_h3": "8728d10e4ffffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-122.9738126197295, 48.564711343472354, -122.93729042207214, 48.586077022780074], "geometry": {"coordinates": [[[-122.94562064266307, 48.566428973069826], [-122.93729042207214, 48.57711173994765], [-122.9472235615808, 48.586077022780074], [-122.96548675259295, 48.58435858302779], [-122.9738126197295, 48.57367567074754], [-122.96387965055048, 48.564711343472354], [-122.94562064266307, 48.566428973069826]]], "type": "Polygon"}, "id": "27", "properties": {"target_h3": "8728d10e5ffffff", "weight_distance": 0.0}, "type": "Feature"}, {"bbox": [-123.07678185444688, 48.47571834240226, -123.0403262884718, 48.49711640594113], "geometry": {"coordinates": [[[-123.04862885141314, 48.477449139576834], [-123.0403262884718, 48.488148103701484], [-123.05025378104781, 48.49711640594113], [-123.06848364761315, 48.49538478977529], [-123.07678185444688, 48.48468569051106], [-123.06685455205509, 48.47571834240226], [-123.04862885141314, 48.477449139576834]]], "type": "Polygon"}, "id": "28", "properties": {"target_h3": "8728d115bffffff", "weight_distance": 0.0}, "type": "Feature"}], "type": "FeatureCollection"});
+
+
+
+    geo_json_16e4e419bfc8e92ce30602ab6f9d2291.bindTooltip(
+    function(layer){
+    let div = L.DomUtil.create('div');
+
+    let handleObject = feature => {
+        if (feature === null) {
+            return '';
+        } else if (typeof(feature)=='object') {
+            return JSON.stringify(feature);
+        } else {
+            return feature;
+        }
+    }
+    let fields = ["target_h3", "weight_distance"];
+    let aliases = ["H3 cell", "Grid value"];
+    let table = '<table>' +
+        String(
+        fields.map(
+        (v,i)=>
+        `<tr>
+            <th>${aliases[i].toLocaleString()}</th>
+
+            <td>${handleObject(layer.feature.properties[v]).toLocaleString()}</td>
+        </tr>`).join(''))
+    +'</table>';
+    div.innerHTML=table;
+
+    return div
+    }
+    ,{
+  "sticky": true,
+  "className": "foliumtooltip",
+});
+
+
+            var image_overlay_a67854db950e1f7a99f23d52cc26a468 = L.imageOverlay(
+                "data:image/png;base64,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",
+                [[48.433441276291305, -123.12621152560237], [48.62796705884688, -122.86210683207122]],
+                {
+  "opacity": 1.0,
+  "interactive": true,
+  "crossOrigin": false,
+  "zindex": 2,
+}
+            );
+
+
+        function geo_json_c97b7b78cbfe625b83337aac9ec211ee_styler(feature) {
+            switch(feature.id) {
+                case "0": case "1": case "3": case "4": case "5": case "6": case "7": case "8": case "9": case "10": case "11": case "12": case "13": case "14": case "16": case "18": case "20": case "22": case "23": case "24": case "25": case "26": case "27": case "28":
+                    return {"color": "#3f3f3f", "fillColor": "#32c7f3ff", "fillOpacity": 0.0, "weight": 0.4};
+                case "2":
+                    return {"color": "#3f3f3f", "fillColor": "#61d8d3ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "15":
+                    return {"color": "#3f3f3f", "fillColor": "#4ed2e2ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "17":
+                    return {"color": "#3f3f3f", "fillColor": "#941936ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "19":
+                    return {"color": "#3f3f3f", "fillColor": "#3eccecff", "fillOpacity": 0.78, "weight": 0.4};
+                default:
+                    return {"color": "#3f3f3f", "fillColor": "#fcba34ff", "fillOpacity": 0.78, "weight": 0.4};
+            }
+        }
+        function geo_json_c97b7b78cbfe625b83337aac9ec211ee_highlighter(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#111111", "weight": 1.8};
+            }
+        }
+
+        function geo_json_c97b7b78cbfe625b83337aac9ec211ee_onEachFeature(feature, layer) {
+
+            layer.on({
+                mouseout: function(e) {
+                    if(typeof e.target.setStyle === "function"){
+                            geo_json_c97b7b78cbfe625b83337aac9ec211ee.resetStyle(e.target);
+                    }
+                },
+                mouseover: function(e) {
+                    if(typeof e.target.setStyle === "function"){
+                        const highlightStyle = geo_json_c97b7b78cbfe625b83337aac9ec211ee_highlighter(e.target.feature)
+                        e.target.setStyle(highlightStyle);
+                    }
+                },
+            });
+        };
+        var geo_json_c97b7b78cbfe625b83337aac9ec211ee = L.geoJson(null, {
+                onEachFeature: geo_json_c97b7b78cbfe625b83337aac9ec211ee_onEachFeature,
+
+                style: geo_json_c97b7b78cbfe625b83337aac9ec211ee_styler,
+            ...{
+}
+        });
+
+        function geo_json_c97b7b78cbfe625b83337aac9ec211ee_add (data) {
+            geo_json_c97b7b78cbfe625b83337aac9ec211ee
+                .addData(data);
+        }
+            geo_json_c97b7b78cbfe625b83337aac9ec211ee_add({"bbox": [-123.08494735124425, 48.46122761365707, -122.90431521064677, 48.60055305860513], "features": [{"bbox": [-122.94081641660016, 48.498469692294975, -122.90431521064677, 48.51985073295947], "geometry": {"coordinates": [[[-122.91264463369563, 48.50018037002996], [-122.90431521064677, 48.51087081772074], [-122.91423864299033, 48.51985073295947], [-122.93249133605623, 48.51813924443525], [-122.94081641660016, 48.50744865161037], [-122.93089314782422, 48.498469692294975], [-122.91264463369563, 48.50018037002996]]], "type": "Polygon"}, "id": "0", "properties": {"target_h3": "8728d1001ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.9705957501892, 48.52539877819348, -122.93409027748808, 48.54677489337214], "geometry": {"coordinates": [[[-122.94241707070397, 48.52711478558427], [-122.93409027748808, 48.53780277102796], [-122.9440184792146, 48.54677489337214], [-122.9622733058629, 48.54505807456176], [-122.9705957501892, 48.534369944976135], [-122.96066771799742, 48.52539877819348], [-122.94241707070397, 48.52711478558427]]], "type": "Polygon"}, "id": "1", "properties": {"target_h3": "8728d1008ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.99877466781773, 48.53264942006559, -122.9622733058629, 48.55402582190728], "geometry": {"coordinates": [[[-122.9705957501892, 48.534369944976135], [-122.9622733058629, 48.54505807456176], [-122.97220380594413, 48.55402582190728], [-122.99045657648207, 48.55230448431688], [-122.99877466781773, 48.54161621221049], [-122.98884434284541, 48.53264942006559], [-122.9705957501892, 48.534369944976135]]], "type": "Polygon"}, "id": "2", "properties": {"target_h3": "8728d1009ffffff", "vegetation_supported_weight": 0.08488792181015015}, "type": "Feature"}, {"bbox": [-122.9440184792146, 48.53780277102796, -122.90750054997439, 48.55917337837279], "geometry": {"coordinates": [[[-122.9158334036004, 48.53951506970952], [-122.90750054997439, 48.55020030011169], [-122.91742891605467, 48.55917337837279], [-122.93568997264984, 48.55746027016563], [-122.9440184792146, 48.54677489337214], [-122.93409027748808, 48.53780277102796], [-122.9158334036004, 48.53951506970952]]], "type": "Polygon"}, "id": "3", "properties": {"target_h3": "8728d100affffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.97220380594413, 48.54505807456176, -122.93568997264984, 48.566428973069826], "geometry": {"coordinates": [[[-122.9440184792146, 48.54677489337214], [-122.93568997264984, 48.55746027016563], [-122.94562064266307, 48.566428973069826], [-122.96387965055048, 48.564711343472354], [-122.97220380594413, 48.55402582190728], [-122.9622733058629, 48.54505807456176], [-122.9440184792146, 48.54677489337214]]], "type": "Polygon"}, "id": "4", "properties": {"target_h3": "8728d100bffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.96898845193161, 48.505733456271734, -122.93249133605623, 48.52711478558427], "geometry": {"coordinates": [[[-122.94081641660016, 48.50744865161037], [-122.93249133605623, 48.51813924443525], [-122.94241707070397, 48.52711478558427], [-122.96066771799742, 48.52539877819348], [-122.96898845193161, 48.514708041855], [-122.95906288642188, 48.505733456271734], [-122.94081641660016, 48.50744865161037]]], "type": "Polygon"}, "id": "5", "properties": {"target_h3": "8728d100cffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.99716072607127, 48.5129883302576, -122.96066771799742, 48.534369944976135], "geometry": {"coordinates": [[[-122.96898845193161, 48.514708041855], [-122.96066771799742, 48.52539877819348], [-122.9705957501892, 48.534369944976135], [-122.98884434284541, 48.53264942006559], [-122.99716072607127, 48.52195854183506], [-122.98723286858778, 48.5129883302576], [-122.96898845193161, 48.514708041855]]], "type": "Polygon"}, "id": "6", "properties": {"target_h3": "8728d100dffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.94241707070397, 48.51813924443525, -122.90590750499226, 48.53951506970952], "geometry": {"coordinates": [[[-122.91423864299033, 48.51985073295947], [-122.90590750499226, 48.53053857264108], [-122.9158334036004, 48.53951506970952], [-122.93409027748808, 48.53780277102796], [-122.94241707070397, 48.52711478558427], [-122.93249133605623, 48.51813924443525], [-122.91423864299033, 48.51985073295947]]], "type": "Polygon"}, "id": "7", "properties": {"target_h3": "8728d100effffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.99393512220031, 48.4736480816098, -122.95745881060455, 48.49504011445161], "geometry": {"coordinates": [[[-122.96577612577852, 48.47536616468054], [-122.95745881060455, 48.48606211070763], [-122.96738191063875, 48.49504011445161], [-122.98562215317526, 48.49332121680077], [-122.99393512220031, 48.482625130135226], [-122.9840121960746, 48.4736480816098], [-122.96577612577852, 48.47536616468054]]], "type": "Polygon"}, "id": "8", "properties": {"target_h3": "8728d1028ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.02209434515702, 48.48090253467705, -122.98562215317526, 48.50229484717285], "geometry": {"coordinates": [[[-122.99393512220031, 48.482625130135226], [-122.98562215317526, 48.49332121680077], [-122.99554754437685, 48.50229484717285], [-123.01378572636824, 48.50057143587418], [-123.02209434515702, 48.48987521019344], [-123.01216913342628, 48.48090253467705], [-122.99393512220031, 48.482625130135226]]], "type": "Polygon"}, "id": "9", "properties": {"target_h3": "8728d1029ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.96738191063875, 48.48606211070763, -122.93089314782422, 48.50744865161037], "geometry": {"coordinates": [[[-122.93921651637277, 48.487776493361366], [-122.93089314782422, 48.498469692294975], [-122.94081641660016, 48.50744865161037], [-122.95906288642188, 48.505733456271734], [-122.96738191063875, 48.49504011445161], [-122.95745881060455, 48.48606211070763], [-122.93921651637277, 48.487776493361366]]], "type": "Polygon"}, "id": "10", "properties": {"target_h3": "8728d102affffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.99554754437685, 48.49332121680077, -122.95906288642188, 48.514708041855], "geometry": {"coordinates": [[[-122.96738191063875, 48.49504011445161], [-122.95906288642188, 48.505733456271734], [-122.96898845193161, 48.514708041855], [-122.98723286858778, 48.5129883302576], [-122.99554754437685, 48.50229484717285], [-122.98562215317526, 48.49332121680077], [-122.96738191063875, 48.49504011445161]]], "type": "Polygon"}, "id": "11", "properties": {"target_h3": "8728d102bffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.02047604840291, 48.46122761365707, -122.9840121960746, 48.482625130135226], "geometry": {"coordinates": [[[-122.99232345900786, 48.462949392640375], [-122.9840121960746, 48.4736480816098], [-122.99393512220031, 48.482625130135226], [-123.01216913342628, 48.48090253467705], [-123.02047604840291, 48.47020370731769], [-123.010553301345, 48.46122761365707], [-122.99232345900786, 48.462949392640375]]], "type": "Polygon"}, "id": "12", "properties": {"target_h3": "8728d102dffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.96577612577852, 48.466384743419084, -122.92929571226242, 48.487776493361366], "geometry": {"coordinates": [[[-122.93761736949173, 48.468098312755075], [-122.92929571226242, 48.47879411652145], [-122.93921651637277, 48.487776493361366], [-122.95745881060455, 48.48606211070763], [-122.96577612577852, 48.47536616468054], [-122.95585549001423, 48.466384743419084], [-122.93761736949173, 48.468098312755075]]], "type": "Polygon"}, "id": "13", "properties": {"target_h3": "8728d102effffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.0833127132686, 48.55434800524086, -123.04682378991184, 48.575725247602726], "geometry": {"coordinates": [[[-123.05513316298745, 48.556082074566504], [-123.04682378991184, 48.566770626846626], [-123.05676115644071, 48.575725247602726], [-123.07500770544975, 48.57399036182799], [-123.0833127132686, 48.56330167189693], [-123.07337553857059, 48.55434800524086], [-123.05513316298745, 48.556082074566504]]], "type": "Polygon"}, "id": "14", "properties": {"target_h3": "8728d1042ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.02857515819626, 48.55954200137931, -122.99206957003211, 48.580913472489826], "geometry": {"coordinates": [[[-123.00038937015098, 48.56126785639464], [-122.99206957003211, 48.57195352111041], [-123.00200483360615, 48.580913472489826], [-123.02025971744969, 48.5791868041701], [-123.02857515819626, 48.56850099792553], [-123.01864007571038, 48.55954200137931], [-123.00038937015098, 48.56126785639464]]], "type": "Polygon"}, "id": "15", "properties": {"target_h3": "8728d1050ffffff", "vegetation_supported_weight": 0.05212293937802315}, "type": "Feature"}, {"bbox": [-123.05676115644071, 48.566770626846626, -123.02025971744969, 48.58814237939218], "geometry": {"coordinates": [[[-123.02857515819626, 48.56850099792553], [-123.02025971744969, 48.5791868041701], [-123.03019727064469, 48.58814237939218], [-123.04845007915765, 48.58641119375317], [-123.05676115644071, 48.575725247602726], [-123.04682378991184, 48.566770626846626], [-123.02857515819626, 48.56850099792553]]], "type": "Polygon"}, "id": "16", "properties": {"target_h3": "8728d1051ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.00200483360615, 48.57195352111041, -122.96548675259295, 48.593319489602834], "geometry": {"coordinates": [[[-122.9738126197295, 48.57367567074754], [-122.96548675259295, 48.58435858302779], [-122.97542219207881, 48.593319489602834], [-122.9936833240303, 48.591596528551996], [-123.00200483360615, 48.580913472489826], [-122.99206957003211, 48.57195352111041], [-122.9738126197295, 48.57367567074754]]], "type": "Polygon"}, "id": "17", "properties": {"target_h3": "8728d1052ffffff", "vegetation_supported_weight": 0.7308663725852966}, "type": "Feature"}, {"bbox": [-123.03019727064469, 48.5791868041701, -122.9936833240303, 48.60055305860513], "geometry": {"coordinates": [[[-123.00200483360615, 48.580913472489826], [-122.9936833240303, 48.591596528551996], [-123.00362105871908, 48.60055305860513], [-123.0218801227295, 48.59882557761473], [-123.03019727064469, 48.58814237939218], [-123.02025971744969, 48.5791868041701], [-123.00200483360615, 48.580913472489826]]], "type": "Polygon"}, "id": "18", "properties": {"target_h3": "8728d1053ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.02695380996037, 48.53989117113338, -122.99045657648207, 48.56126785639464], "geometry": {"coordinates": [[[-122.99877466781773, 48.54161621221049], [-122.99045657648207, 48.55230448431688], [-123.00038937015098, 48.56126785639464], [-123.01864007571038, 48.55954200137931], [-123.02695380996037, 48.54885358837442], [-123.01702119697458, 48.53989117113338], [-122.99877466781773, 48.54161621221049]]], "type": "Polygon"}, "id": "19", "properties": {"target_h3": "8728d1054ffffff", "vegetation_supported_weight": 0.022112280130386353}, "type": "Feature"}, {"bbox": [-123.05513316298745, 48.54712403249016, -123.01864007571038, 48.56850099792553], "geometry": {"coordinates": [[[-123.02695380996037, 48.54885358837442], [-123.01864007571038, 48.55954200137931], [-123.02857515819626, 48.56850099792553], [-123.04682378991184, 48.566770626846626], [-123.05513316298745, 48.556082074566504], [-123.04519826675862, 48.54712403249016], [-123.02695380996037, 48.54885358837442]]], "type": "Polygon"}, "id": "20", "properties": {"target_h3": "8728d1055ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.00038937015098, 48.55230448431688, -122.96387965055048, 48.57367567074754], "geometry": {"coordinates": [[[-122.97220380594413, 48.55402582190728], [-122.96387965055048, 48.564711343472354], [-122.9738126197295, 48.57367567074754], [-122.99206957003211, 48.57195352111041], [-123.00038937015098, 48.56126785639464], [-122.99045657648207, 48.55230448431688], [-122.97220380594413, 48.55402582190728]]], "type": "Polygon"}, "id": "21", "properties": {"target_h3": "8728d1056ffffff", "vegetation_supported_weight": 0.4087047576904297}, "type": "Feature"}, {"bbox": [-123.08494735124425, 48.57399036182799, -123.04845007915765, 48.59536239256167], "geometry": {"coordinates": [[[-123.05676115644071, 48.575725247602726], [-123.04845007915765, 48.58641119375317], [-123.05838991719597, 48.59536239256167], [-123.07664064150971, 48.59362669097304], [-123.08494735124425, 48.58294060654068], [-123.07500770544975, 48.57399036182799], [-123.05676115644071, 48.575725247602726]]], "type": "Polygon"}, "id": "22", "properties": {"target_h3": "8728d105cffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.02533322539968, 48.5202343153301, -122.98884434284541, 48.54161621221049], "geometry": {"coordinates": [[[-122.99716072607127, 48.52195854183506], [-122.98884434284541, 48.53264942006559], [-122.99877466781773, 48.54161621221049], [-123.01702119697458, 48.53989117113338], [-123.02533322539968, 48.52920015263335], [-123.01540308070587, 48.5202343153301], [-122.99716072607127, 48.52195854183506]]], "type": "Polygon"}, "id": "23", "properties": {"target_h3": "8728d1072ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.05025378104781, 48.488148103701484, -123.01378572636824, 48.50954069260366], "geometry": {"coordinates": [[[-123.02209434515702, 48.48987521019344], [-123.01378572636824, 48.50057143587418], [-123.02371340397734, 48.50954069260366], [-123.04194951657644, 48.50781276901272], [-123.05025378104781, 48.49711640594113], [-123.0403262884718, 48.488148103701484], [-123.02209434515702, 48.48987521019344]]], "type": "Polygon"}, "id": "24", "properties": {"target_h3": "8728d1074ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.02371340397734, 48.50057143587418, -122.98723286858778, 48.52195854183506], "geometry": {"coordinates": [[[-122.99554754437685, 48.50229484717285], [-122.98723286858778, 48.5129883302576], [-122.99716072607127, 48.52195854183506], [-123.01540308070587, 48.5202343153301], [-123.02371340397734, 48.50954069260366], [-123.01378572636824, 48.50057143587418], [-122.99554754437685, 48.50229484717285]]], "type": "Polygon"}, "id": "25", "properties": {"target_h3": "8728d1076ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.94562064266307, 48.55746027016563, -122.90909434612172, 48.57882565704875], "geometry": {"coordinates": [[[-122.91742891605467, 48.55917337837279], [-122.90909434612172, 48.56985599822874], [-122.91902518088244, 48.57882565704875], [-122.93729042207214, 48.57711173994765], [-122.94562064266307, 48.566428973069826], [-122.93568997264984, 48.55746027016563], [-122.91742891605467, 48.55917337837279]]], "type": "Polygon"}, "id": "26", "properties": {"target_h3": "8728d10e4ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-122.9738126197295, 48.564711343472354, -122.93729042207214, 48.586077022780074], "geometry": {"coordinates": [[[-122.94562064266307, 48.566428973069826], [-122.93729042207214, 48.57711173994765], [-122.9472235615808, 48.586077022780074], [-122.96548675259295, 48.58435858302779], [-122.9738126197295, 48.57367567074754], [-122.96387965055048, 48.564711343472354], [-122.94562064266307, 48.566428973069826]]], "type": "Polygon"}, "id": "27", "properties": {"target_h3": "8728d10e5ffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}, {"bbox": [-123.07678185444688, 48.47571834240226, -123.0403262884718, 48.49711640594113], "geometry": {"coordinates": [[[-123.04862885141314, 48.477449139576834], [-123.0403262884718, 48.488148103701484], [-123.05025378104781, 48.49711640594113], [-123.06848364761315, 48.49538478977529], [-123.07678185444688, 48.48468569051106], [-123.06685455205509, 48.47571834240226], [-123.04862885141314, 48.477449139576834]]], "type": "Polygon"}, "id": "28", "properties": {"target_h3": "8728d115bffffff", "vegetation_supported_weight": 0.0}, "type": "Feature"}], "type": "FeatureCollection"});
+
+
+
+    geo_json_c97b7b78cbfe625b83337aac9ec211ee.bindTooltip(
+    function(layer){
+    let div = L.DomUtil.create('div');
+
+    let handleObject = feature => {
+        if (feature === null) {
+            return '';
+        } else if (typeof(feature)=='object') {
+            return JSON.stringify(feature);
+        } else {
+            return feature;
+        }
+    }
+    let fields = ["target_h3", "vegetation_supported_weight"];
+    let aliases = ["H3 cell", "Grid value"];
+    let table = '<table>' +
+        String(
+        fields.map(
+        (v,i)=>
+        `<tr>
+            <th>${aliases[i].toLocaleString()}</th>
+
+            <td>${handleObject(layer.feature.properties[v]).toLocaleString()}</td>
+        </tr>`).join(''))
+    +'</table>';
+    div.innerHTML=table;
+
+    return div
+    }
+    ,{
+  "sticky": true,
+  "className": "foliumtooltip",
+});
+
+
+            var image_overlay_cca26f9fbe69d984889c8fd92fd77362 = L.imageOverlay(
+                "data:image/png;base64,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",
+                [[48.433441276291305, -123.12621152560237], [48.62796705884688, -122.86210683207122]],
+                {
+  "opacity": 1.0,
+  "interactive": true,
+  "crossOrigin": false,
+  "zindex": 2,
+}
+            );
+
+
+        function geo_json_7150717e10d84cd73ec3cfadef3e5d7a_styler(feature) {
+            switch(feature.id) {
+                case "0": case "3": case "6": case "7": case "10": case "12": case "13": case "14": case "18": case "22": case "26": case "27": case "28":
+                    return {"color": "#3f3f3f", "fillColor": "#32c7f3ff", "fillOpacity": 0.0, "weight": 0.4};
+                case "1":
+                    return {"color": "#3f3f3f", "fillColor": "#3fccebff", "fillOpacity": 0.78, "weight": 0.4};
+                case "2":
+                    return {"color": "#3f3f3f", "fillColor": "#f58c2eff", "fillOpacity": 0.78, "weight": 0.4};
+                case "4":
+                    return {"color": "#3f3f3f", "fillColor": "#4ed2e2ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "5":
+                    return {"color": "#3f3f3f", "fillColor": "#32c8f3ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "8":
+                    return {"color": "#3f3f3f", "fillColor": "#33c8f3ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "11":
+                    return {"color": "#3f3f3f", "fillColor": "#42cde9ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "15":
+                    return {"color": "#3f3f3f", "fillColor": "#5fd7d5ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "16":
+                    return {"color": "#3f3f3f", "fillColor": "#32c7f3ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "17":
+                    return {"color": "#3f3f3f", "fillColor": "#3acaeeff", "fillOpacity": 0.78, "weight": 0.4};
+                case "19":
+                    return {"color": "#3f3f3f", "fillColor": "#f37c2bff", "fillOpacity": 0.78, "weight": 0.4};
+                case "20":
+                    return {"color": "#3f3f3f", "fillColor": "#3dcbedff", "fillOpacity": 0.78, "weight": 0.4};
+                case "21":
+                    return {"color": "#3f3f3f", "fillColor": "#e8e650ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "23":
+                    return {"color": "#3f3f3f", "fillColor": "#941936ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "24":
+                    return {"color": "#3f3f3f", "fillColor": "#72dcc4ff", "fillOpacity": 0.78, "weight": 0.4};
+                case "25":
+                    return {"color": "#3f3f3f", "fillColor": "#d5e763ff", "fillOpacity": 0.78, "weight": 0.4};
+                default:
+                    return {"color": "#3f3f3f", "fillColor": "#6cdacaff", "fillOpacity": 0.78, "weight": 0.4};
+            }
+        }
+        function geo_json_7150717e10d84cd73ec3cfadef3e5d7a_highlighter(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#111111", "weight": 1.8};
+            }
+        }
+
+        function geo_json_7150717e10d84cd73ec3cfadef3e5d7a_onEachFeature(feature, layer) {
+
+            layer.on({
+                mouseout: function(e) {
+                    if(typeof e.target.setStyle === "function"){
+                            geo_json_7150717e10d84cd73ec3cfadef3e5d7a.resetStyle(e.target);
+                    }
+                },
+                mouseover: function(e) {
+                    if(typeof e.target.setStyle === "function"){
+                        const highlightStyle = geo_json_7150717e10d84cd73ec3cfadef3e5d7a_highlighter(e.target.feature)
+                        e.target.setStyle(highlightStyle);
+                    }
+                },
+            });
+        };
+        var geo_json_7150717e10d84cd73ec3cfadef3e5d7a = L.geoJson(null, {
+                onEachFeature: geo_json_7150717e10d84cd73ec3cfadef3e5d7a_onEachFeature,
+
+                style: geo_json_7150717e10d84cd73ec3cfadef3e5d7a_styler,
+            ...{
+}
+        });
+
+        function geo_json_7150717e10d84cd73ec3cfadef3e5d7a_add (data) {
+            geo_json_7150717e10d84cd73ec3cfadef3e5d7a
+                .addData(data);
+        }
+            geo_json_7150717e10d84cd73ec3cfadef3e5d7a_add({"bbox": [-123.08494735124425, 48.46122761365707, -122.90431521064677, 48.60055305860513], "features": [{"bbox": [-122.94081641660016, 48.498469692294975, -122.90431521064677, 48.51985073295947], "geometry": {"coordinates": [[[-122.91264463369563, 48.50018037002996], [-122.90431521064677, 48.51087081772074], [-122.91423864299033, 48.51985073295947], [-122.93249133605623, 48.51813924443525], [-122.94081641660016, 48.50744865161037], [-122.93089314782422, 48.498469692294975], [-122.91264463369563, 48.50018037002996]]], "type": "Polygon"}, "id": "0", "properties": {"target_h3": "8728d1001ffffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-122.9705957501892, 48.52539877819348, -122.93409027748808, 48.54677489337214], "geometry": {"coordinates": [[[-122.94241707070397, 48.52711478558427], [-122.93409027748808, 48.53780277102796], [-122.9440184792146, 48.54677489337214], [-122.9622733058629, 48.54505807456176], [-122.9705957501892, 48.534369944976135], [-122.96066771799742, 48.52539877819348], [-122.94241707070397, 48.52711478558427]]], "type": "Polygon"}, "id": "1", "properties": {"target_h3": "8728d1008ffffff", "weight_terrain": 0.017551032826304436}, "type": "Feature"}, {"bbox": [-122.99877466781773, 48.53264942006559, -122.9622733058629, 48.55402582190728], "geometry": {"coordinates": [[[-122.9705957501892, 48.534369944976135], [-122.9622733058629, 48.54505807456176], [-122.97220380594413, 48.55402582190728], [-122.99045657648207, 48.55230448431688], [-122.99877466781773, 48.54161621221049], [-122.98884434284541, 48.53264942006559], [-122.9705957501892, 48.534369944976135]]], "type": "Polygon"}, "id": "2", "properties": {"target_h3": "8728d1009ffffff", "weight_terrain": 0.3378780782222748}, "type": "Feature"}, {"bbox": [-122.9440184792146, 48.53780277102796, -122.90750054997439, 48.55917337837279], "geometry": {"coordinates": [[[-122.9158334036004, 48.53951506970952], [-122.90750054997439, 48.55020030011169], [-122.91742891605467, 48.55917337837279], [-122.93568997264984, 48.55746027016563], [-122.9440184792146, 48.54677489337214], [-122.93409027748808, 48.53780277102796], [-122.9158334036004, 48.53951506970952]]], "type": "Polygon"}, "id": "3", "properties": {"target_h3": "8728d100affffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-122.97220380594413, 48.54505807456176, -122.93568997264984, 48.566428973069826], "geometry": {"coordinates": [[[-122.9440184792146, 48.54677489337214], [-122.93568997264984, 48.55746027016563], [-122.94562064266307, 48.566428973069826], [-122.96387965055048, 48.564711343472354], [-122.97220380594413, 48.55402582190728], [-122.9622733058629, 48.54505807456176], [-122.9440184792146, 48.54677489337214]]], "type": "Polygon"}, "id": "4", "properties": {"target_h3": "8728d100bffffff", "weight_terrain": 0.03782274201512337}, "type": "Feature"}, {"bbox": [-122.96898845193161, 48.505733456271734, -122.93249133605623, 48.52711478558427], "geometry": {"coordinates": [[[-122.94081641660016, 48.50744865161037], [-122.93249133605623, 48.51813924443525], [-122.94241707070397, 48.52711478558427], [-122.96066771799742, 48.52539877819348], [-122.96898845193161, 48.514708041855], [-122.95906288642188, 48.505733456271734], [-122.94081641660016, 48.50744865161037]]], "type": "Polygon"}, "id": "5", "properties": {"target_h3": "8728d100cffffff", "weight_terrain": 0.0009417959372512996}, "type": "Feature"}, {"bbox": [-122.99716072607127, 48.5129883302576, -122.96066771799742, 48.534369944976135], "geometry": {"coordinates": [[[-122.96898845193161, 48.514708041855], [-122.96066771799742, 48.52539877819348], [-122.9705957501892, 48.534369944976135], [-122.98884434284541, 48.53264942006559], [-122.99716072607127, 48.52195854183506], [-122.98723286858778, 48.5129883302576], [-122.96898845193161, 48.514708041855]]], "type": "Polygon"}, "id": "6", "properties": {"target_h3": "8728d100dffffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-122.94241707070397, 48.51813924443525, -122.90590750499226, 48.53951506970952], "geometry": {"coordinates": [[[-122.91423864299033, 48.51985073295947], [-122.90590750499226, 48.53053857264108], [-122.9158334036004, 48.53951506970952], [-122.93409027748808, 48.53780277102796], [-122.94241707070397, 48.52711478558427], [-122.93249133605623, 48.51813924443525], [-122.91423864299033, 48.51985073295947]]], "type": "Polygon"}, "id": "7", "properties": {"target_h3": "8728d100effffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-122.99393512220031, 48.4736480816098, -122.95745881060455, 48.49504011445161], "geometry": {"coordinates": [[[-122.96577612577852, 48.47536616468054], [-122.95745881060455, 48.48606211070763], [-122.96738191063875, 48.49504011445161], [-122.98562215317526, 48.49332121680077], [-122.99393512220031, 48.482625130135226], [-122.9840121960746, 48.4736480816098], [-122.96577612577852, 48.47536616468054]]], "type": "Polygon"}, "id": "8", "properties": {"target_h3": "8728d1028ffffff", "weight_terrain": 0.0011069111060351133}, "type": "Feature"}, {"bbox": [-123.02209434515702, 48.48090253467705, -122.98562215317526, 48.50229484717285], "geometry": {"coordinates": [[[-122.99393512220031, 48.482625130135226], [-122.98562215317526, 48.49332121680077], [-122.99554754437685, 48.50229484717285], [-123.01378572636824, 48.50057143587418], [-123.02209434515702, 48.48987521019344], [-123.01216913342628, 48.48090253467705], [-122.99393512220031, 48.482625130135226]]], "type": "Polygon"}, "id": "9", "properties": {"target_h3": "8728d1029ffffff", "weight_terrain": 0.07293286919593811}, "type": "Feature"}, {"bbox": [-122.96738191063875, 48.48606211070763, -122.93089314782422, 48.50744865161037], "geometry": {"coordinates": [[[-122.93921651637277, 48.487776493361366], [-122.93089314782422, 48.498469692294975], [-122.94081641660016, 48.50744865161037], [-122.95906288642188, 48.505733456271734], [-122.96738191063875, 48.49504011445161], [-122.95745881060455, 48.48606211070763], [-122.93921651637277, 48.487776493361366]]], "type": "Polygon"}, "id": "10", "properties": {"target_h3": "8728d102affffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-122.99554754437685, 48.49332121680077, -122.95906288642188, 48.514708041855], "geometry": {"coordinates": [[[-122.96738191063875, 48.49504011445161], [-122.95906288642188, 48.505733456271734], [-122.96898845193161, 48.514708041855], [-122.98723286858778, 48.5129883302576], [-122.99554754437685, 48.50229484717285], [-122.98562215317526, 48.49332121680077], [-122.96738191063875, 48.49504011445161]]], "type": "Polygon"}, "id": "11", "properties": {"target_h3": "8728d102bffffff", "weight_terrain": 0.021738605573773384}, "type": "Feature"}, {"bbox": [-123.02047604840291, 48.46122761365707, -122.9840121960746, 48.482625130135226], "geometry": {"coordinates": [[[-122.99232345900786, 48.462949392640375], [-122.9840121960746, 48.4736480816098], [-122.99393512220031, 48.482625130135226], [-123.01216913342628, 48.48090253467705], [-123.02047604840291, 48.47020370731769], [-123.010553301345, 48.46122761365707], [-122.99232345900786, 48.462949392640375]]], "type": "Polygon"}, "id": "12", "properties": {"target_h3": "8728d102dffffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-122.96577612577852, 48.466384743419084, -122.92929571226242, 48.487776493361366], "geometry": {"coordinates": [[[-122.93761736949173, 48.468098312755075], [-122.92929571226242, 48.47879411652145], [-122.93921651637277, 48.487776493361366], [-122.95745881060455, 48.48606211070763], [-122.96577612577852, 48.47536616468054], [-122.95585549001423, 48.466384743419084], [-122.93761736949173, 48.468098312755075]]], "type": "Polygon"}, "id": "13", "properties": {"target_h3": "8728d102effffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-123.0833127132686, 48.55434800524086, -123.04682378991184, 48.575725247602726], "geometry": {"coordinates": [[[-123.05513316298745, 48.556082074566504], [-123.04682378991184, 48.566770626846626], [-123.05676115644071, 48.575725247602726], [-123.07500770544975, 48.57399036182799], [-123.0833127132686, 48.56330167189693], [-123.07337553857059, 48.55434800524086], [-123.05513316298745, 48.556082074566504]]], "type": "Polygon"}, "id": "14", "properties": {"target_h3": "8728d1042ffffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-123.02857515819626, 48.55954200137931, -122.99206957003211, 48.580913472489826], "geometry": {"coordinates": [[[-123.00038937015098, 48.56126785639464], [-122.99206957003211, 48.57195352111041], [-123.00200483360615, 48.580913472489826], [-123.02025971744969, 48.5791868041701], [-123.02857515819626, 48.56850099792553], [-123.01864007571038, 48.55954200137931], [-123.00038937015098, 48.56126785639464]]], "type": "Polygon"}, "id": "15", "properties": {"target_h3": "8728d1050ffffff", "weight_terrain": 0.05930749326944351}, "type": "Feature"}, {"bbox": [-123.05676115644071, 48.566770626846626, -123.02025971744969, 48.58814237939218], "geometry": {"coordinates": [[[-123.02857515819626, 48.56850099792553], [-123.02025971744969, 48.5791868041701], [-123.03019727064469, 48.58814237939218], [-123.04845007915765, 48.58641119375317], [-123.05676115644071, 48.575725247602726], [-123.04682378991184, 48.566770626846626], [-123.02857515819626, 48.56850099792553]]], "type": "Polygon"}, "id": "16", "properties": {"target_h3": "8728d1051ffffff", "weight_terrain": 0.00011086233280366287}, "type": "Feature"}, {"bbox": [-123.00200483360615, 48.57195352111041, -122.96548675259295, 48.593319489602834], "geometry": {"coordinates": [[[-122.9738126197295, 48.57367567074754], [-122.96548675259295, 48.58435858302779], [-122.97542219207881, 48.593319489602834], [-122.9936833240303, 48.591596528551996], [-123.00200483360615, 48.580913472489826], [-122.99206957003211, 48.57195352111041], [-122.9738126197295, 48.57367567074754]]], "type": "Polygon"}, "id": "17", "properties": {"target_h3": "8728d1052ffffff", "weight_terrain": 0.011163023300468922}, "type": "Feature"}, {"bbox": [-123.03019727064469, 48.5791868041701, -122.9936833240303, 48.60055305860513], "geometry": {"coordinates": [[[-123.00200483360615, 48.580913472489826], [-122.9936833240303, 48.591596528551996], [-123.00362105871908, 48.60055305860513], [-123.0218801227295, 48.59882557761473], [-123.03019727064469, 48.58814237939218], [-123.02025971744969, 48.5791868041701], [-123.00200483360615, 48.580913472489826]]], "type": "Polygon"}, "id": "18", "properties": {"target_h3": "8728d1053ffffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-123.02695380996037, 48.53989117113338, -122.99045657648207, 48.56126785639464], "geometry": {"coordinates": [[[-122.99877466781773, 48.54161621221049], [-122.99045657648207, 48.55230448431688], [-123.00038937015098, 48.56126785639464], [-123.01864007571038, 48.55954200137931], [-123.02695380996037, 48.54885358837442], [-123.01702119697458, 48.53989117113338], [-122.99877466781773, 48.54161621221049]]], "type": "Polygon"}, "id": "19", "properties": {"target_h3": "8728d1054ffffff", "weight_terrain": 0.35298532247543335}, "type": "Feature"}, {"bbox": [-123.05513316298745, 48.54712403249016, -123.01864007571038, 48.56850099792553], "geometry": {"coordinates": [[[-123.02695380996037, 48.54885358837442], [-123.01864007571038, 48.55954200137931], [-123.02857515819626, 48.56850099792553], [-123.04682378991184, 48.566770626846626], [-123.05513316298745, 48.556082074566504], [-123.04519826675862, 48.54712403249016], [-123.02695380996037, 48.54885358837442]]], "type": "Polygon"}, "id": "20", "properties": {"target_h3": "8728d1055ffffff", "weight_terrain": 0.014497937634587288}, "type": "Feature"}, {"bbox": [-123.00038937015098, 48.55230448431688, -122.96387965055048, 48.57367567074754], "geometry": {"coordinates": [[[-122.97220380594413, 48.55402582190728], [-122.96387965055048, 48.564711343472354], [-122.9738126197295, 48.57367567074754], [-122.99206957003211, 48.57195352111041], [-123.00038937015098, 48.56126785639464], [-122.99045657648207, 48.55230448431688], [-122.97220380594413, 48.55402582190728]]], "type": "Polygon"}, "id": "21", "properties": {"target_h3": "8728d1056ffffff", "weight_terrain": 0.21179896593093872}, "type": "Feature"}, {"bbox": [-123.08494735124425, 48.57399036182799, -123.04845007915765, 48.59536239256167], "geometry": {"coordinates": [[[-123.05676115644071, 48.575725247602726], [-123.04845007915765, 48.58641119375317], [-123.05838991719597, 48.59536239256167], [-123.07664064150971, 48.59362669097304], [-123.08494735124425, 48.58294060654068], [-123.07500770544975, 48.57399036182799], [-123.05676115644071, 48.575725247602726]]], "type": "Polygon"}, "id": "22", "properties": {"target_h3": "8728d105cffffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-123.02533322539968, 48.5202343153301, -122.98884434284541, 48.54161621221049], "geometry": {"coordinates": [[[-122.99716072607127, 48.52195854183506], [-122.98884434284541, 48.53264942006559], [-122.99877466781773, 48.54161621221049], [-123.01702119697458, 48.53989117113338], [-123.02533322539968, 48.52920015263335], [-123.01540308070587, 48.5202343153301], [-122.99716072607127, 48.52195854183506]]], "type": "Polygon"}, "id": "23", "properties": {"target_h3": "8728d1072ffffff", "weight_terrain": 0.5762150883674622}, "type": "Feature"}, {"bbox": [-123.05025378104781, 48.488148103701484, -123.01378572636824, 48.50954069260366], "geometry": {"coordinates": [[[-123.02209434515702, 48.48987521019344], [-123.01378572636824, 48.50057143587418], [-123.02371340397734, 48.50954069260366], [-123.04194951657644, 48.50781276901272], [-123.05025378104781, 48.49711640594113], [-123.0403262884718, 48.488148103701484], [-123.02209434515702, 48.48987521019344]]], "type": "Polygon"}, "id": "24", "properties": {"target_h3": "8728d1074ffffff", "weight_terrain": 0.08003228902816772}, "type": "Feature"}, {"bbox": [-123.02371340397734, 48.50057143587418, -122.98723286858778, 48.52195854183506], "geometry": {"coordinates": [[[-122.99554754437685, 48.50229484717285], [-122.98723286858778, 48.5129883302576], [-122.99716072607127, 48.52195854183506], [-123.01540308070587, 48.5202343153301], [-123.02371340397734, 48.50954069260366], [-123.01378572636824, 48.50057143587418], [-122.99554754437685, 48.50229484717285]]], "type": "Polygon"}, "id": "25", "properties": {"target_h3": "8728d1076ffffff", "weight_terrain": 0.18670393526554108}, "type": "Feature"}, {"bbox": [-122.94562064266307, 48.55746027016563, -122.90909434612172, 48.57882565704875], "geometry": {"coordinates": [[[-122.91742891605467, 48.55917337837279], [-122.90909434612172, 48.56985599822874], [-122.91902518088244, 48.57882565704875], [-122.93729042207214, 48.57711173994765], [-122.94562064266307, 48.566428973069826], [-122.93568997264984, 48.55746027016563], [-122.91742891605467, 48.55917337837279]]], "type": "Polygon"}, "id": "26", "properties": {"target_h3": "8728d10e4ffffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-122.9738126197295, 48.564711343472354, -122.93729042207214, 48.586077022780074], "geometry": {"coordinates": [[[-122.94562064266307, 48.566428973069826], [-122.93729042207214, 48.57711173994765], [-122.9472235615808, 48.586077022780074], [-122.96548675259295, 48.58435858302779], [-122.9738126197295, 48.57367567074754], [-122.96387965055048, 48.564711343472354], [-122.94562064266307, 48.566428973069826]]], "type": "Polygon"}, "id": "27", "properties": {"target_h3": "8728d10e5ffffff", "weight_terrain": 0.0}, "type": "Feature"}, {"bbox": [-123.07678185444688, 48.47571834240226, -123.0403262884718, 48.49711640594113], "geometry": {"coordinates": [[[-123.04862885141314, 48.477449139576834], [-123.0403262884718, 48.488148103701484], [-123.05025378104781, 48.49711640594113], [-123.06848364761315, 48.49538478977529], [-123.07678185444688, 48.48468569051106], [-123.06685455205509, 48.47571834240226], [-123.04862885141314, 48.477449139576834]]], "type": "Polygon"}, "id": "28", "properties": {"target_h3": "8728d115bffffff", "weight_terrain": 0.0}, "type": "Feature"}], "type": "FeatureCollection"});
+
+
+
+    geo_json_7150717e10d84cd73ec3cfadef3e5d7a.bindTooltip(
+    function(layer){
+    let div = L.DomUtil.create('div');
+
+    let handleObject = feature => {
+        if (feature === null) {
+            return '';
+        } else if (typeof(feature)=='object') {
+            return JSON.stringify(feature);
+        } else {
+            return feature;
+        }
+    }
+    let fields = ["target_h3", "weight_terrain"];
+    let aliases = ["H3 cell", "Grid value"];
+    let table = '<table>' +
+        String(
+        fields.map(
+        (v,i)=>
+        `<tr>
+            <th>${aliases[i].toLocaleString()}</th>
+
+            <td>${handleObject(layer.feature.properties[v]).toLocaleString()}</td>
+        </tr>`).join(''))
+    +'</table>';
+    div.innerHTML=table;
+
+    return div
+    }
+    ,{
+  "sticky": true,
+  "className": "foliumtooltip",
+});
+
+
+            var image_overlay_8c50fdaaaaba61accc86741527395e64 = L.imageOverlay(
+                "data:image/png;base64,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",
+                [[48.433441276291305, -123.12621152560237], [48.62796705884688, -122.86210683207122]],
+                {
+  "opacity": 1.0,
+  "interactive": true,
+  "crossOrigin": false,
+  "zindex": 2,
+}
+            );
+
+
+        function geo_json_a16e99a1eeb15986a7737e5ac01b4f0a_styler(feature) {
+            switch(feature.id) {
+                case "0": case "1": case "3": case "4": case "5": case "6": case "7": case "8": case "9": case "10": case "11": case "12": case "13": case "14": case "16": case "18": case "20": case "22": case "23": case "24": case "25": case "26": case "27": case "28":
+                    return {"color": "#3f3f3f", "fillColor": "#32c7f3ff", "fillOpacity": 0.0, "weight": 0.4};
+                case "2":
+                    return {"color": "#3f3f3f", "fillColor": "#cde76aff", "fillOpacity": 0.78, "weight": 0.4};
+                case "15":
+                    return {"color": "#3f3f3f", "fillColor": "#40cdeaff", "fillOpacity": 0.78, "weight": 0.4};
+                case "17":
+                    return {"color": "#3f3f3f", "fillColor": "#58d5dbff", "fillOpacity": 0.78, "weight": 0.4};
+                case "19":
+                    return {"color": "#3f3f3f", "fillColor": "#56d5dcff", "fillOpacity": 0.78, "weight": 0.4};
+                default:
+                    return {"color": "#3f3f3f", "fillColor": "#941936ff", "fillOpacity": 0.78, "weight": 0.4};
+            }
+        }
+        function geo_json_a16e99a1eeb15986a7737e5ac01b4f0a_highlighter(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#111111", "weight": 1.8};
+            }
+        }
+
+        function geo_json_a16e99a1eeb15986a7737e5ac01b4f0a_onEachFeature(feature, layer) {
+
+            layer.on({
+                mouseout: function(e) {
+                    if(typeof e.target.setStyle === "function"){
+                            geo_json_a16e99a1eeb15986a7737e5ac01b4f0a.resetStyle(e.target);
+                    }
+                },
+                mouseover: function(e) {
+                    if(typeof e.target.setStyle === "function"){
+                        const highlightStyle = geo_json_a16e99a1eeb15986a7737e5ac01b4f0a_highlighter(e.target.feature)
+                        e.target.setStyle(highlightStyle);
+                    }
+                },
+            });
+        };
+        var geo_json_a16e99a1eeb15986a7737e5ac01b4f0a = L.geoJson(null, {
+                onEachFeature: geo_json_a16e99a1eeb15986a7737e5ac01b4f0a_onEachFeature,
+
+                style: geo_json_a16e99a1eeb15986a7737e5ac01b4f0a_styler,
+            ...{
+}
+        });
+
+        function geo_json_a16e99a1eeb15986a7737e5ac01b4f0a_add (data) {
+            geo_json_a16e99a1eeb15986a7737e5ac01b4f0a
+                .addData(data);
+        }
+            geo_json_a16e99a1eeb15986a7737e5ac01b4f0a_add({"bbox": [-123.08494735124425, 48.46122761365707, -122.90431521064677, 48.60055305860513], "features": [{"bbox": [-122.94081641660016, 48.498469692294975, -122.90431521064677, 48.51985073295947], "geometry": {"coordinates": [[[-122.91264463369563, 48.50018037002996], [-122.90431521064677, 48.51087081772074], [-122.91423864299033, 48.51985073295947], [-122.93249133605623, 48.51813924443525], [-122.94081641660016, 48.50744865161037], [-122.93089314782422, 48.498469692294975], [-122.91264463369563, 48.50018037002996]]], "type": "Polygon"}, "id": "0", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1001ffffff"}, "type": "Feature"}, {"bbox": [-122.9705957501892, 48.52539877819348, -122.93409027748808, 48.54677489337214], "geometry": {"coordinates": [[[-122.94241707070397, 48.52711478558427], [-122.93409027748808, 48.53780277102796], [-122.9440184792146, 48.54677489337214], [-122.9622733058629, 48.54505807456176], [-122.9705957501892, 48.534369944976135], [-122.96066771799742, 48.52539877819348], [-122.94241707070397, 48.52711478558427]]], "type": "Polygon"}, "id": "1", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1008ffffff"}, "type": "Feature"}, {"bbox": [-122.99877466781773, 48.53264942006559, -122.9622733058629, 48.55402582190728], "geometry": {"coordinates": [[[-122.9705957501892, 48.534369944976135], [-122.9622733058629, 48.54505807456176], [-122.97220380594413, 48.55402582190728], [-122.99045657648207, 48.55230448431688], [-122.99877466781773, 48.54161621221049], [-122.98884434284541, 48.53264942006559], [-122.9705957501892, 48.534369944976135]]], "type": "Polygon"}, "id": "2", "properties": {"net_static_weight": 0.028681768104434013, "target_h3": "8728d1009ffffff"}, "type": "Feature"}, {"bbox": [-122.9440184792146, 48.53780277102796, -122.90750054997439, 48.55917337837279], "geometry": {"coordinates": [[[-122.9158334036004, 48.53951506970952], [-122.90750054997439, 48.55020030011169], [-122.91742891605467, 48.55917337837279], [-122.93568997264984, 48.55746027016563], [-122.9440184792146, 48.54677489337214], [-122.93409027748808, 48.53780277102796], [-122.9158334036004, 48.53951506970952]]], "type": "Polygon"}, "id": "3", "properties": {"net_static_weight": 0.0, "target_h3": "8728d100affffff"}, "type": "Feature"}, {"bbox": [-122.97220380594413, 48.54505807456176, -122.93568997264984, 48.566428973069826], "geometry": {"coordinates": [[[-122.9440184792146, 48.54677489337214], [-122.93568997264984, 48.55746027016563], [-122.94562064266307, 48.566428973069826], [-122.96387965055048, 48.564711343472354], [-122.97220380594413, 48.55402582190728], [-122.9622733058629, 48.54505807456176], [-122.9440184792146, 48.54677489337214]]], "type": "Polygon"}, "id": "4", "properties": {"net_static_weight": 0.0, "target_h3": "8728d100bffffff"}, "type": "Feature"}, {"bbox": [-122.96898845193161, 48.505733456271734, -122.93249133605623, 48.52711478558427], "geometry": {"coordinates": [[[-122.94081641660016, 48.50744865161037], [-122.93249133605623, 48.51813924443525], [-122.94241707070397, 48.52711478558427], [-122.96066771799742, 48.52539877819348], [-122.96898845193161, 48.514708041855], [-122.95906288642188, 48.505733456271734], [-122.94081641660016, 48.50744865161037]]], "type": "Polygon"}, "id": "5", "properties": {"net_static_weight": 0.0, "target_h3": "8728d100cffffff"}, "type": "Feature"}, {"bbox": [-122.99716072607127, 48.5129883302576, -122.96066771799742, 48.534369944976135], "geometry": {"coordinates": [[[-122.96898845193161, 48.514708041855], [-122.96066771799742, 48.52539877819348], [-122.9705957501892, 48.534369944976135], [-122.98884434284541, 48.53264942006559], [-122.99716072607127, 48.52195854183506], [-122.98723286858778, 48.5129883302576], [-122.96898845193161, 48.514708041855]]], "type": "Polygon"}, "id": "6", "properties": {"net_static_weight": 0.0, "target_h3": "8728d100dffffff"}, "type": "Feature"}, {"bbox": [-122.94241707070397, 48.51813924443525, -122.90590750499226, 48.53951506970952], "geometry": {"coordinates": [[[-122.91423864299033, 48.51985073295947], [-122.90590750499226, 48.53053857264108], [-122.9158334036004, 48.53951506970952], [-122.93409027748808, 48.53780277102796], [-122.94241707070397, 48.52711478558427], [-122.93249133605623, 48.51813924443525], [-122.91423864299033, 48.51985073295947]]], "type": "Polygon"}, "id": "7", "properties": {"net_static_weight": 0.0, "target_h3": "8728d100effffff"}, "type": "Feature"}, {"bbox": [-122.99393512220031, 48.4736480816098, -122.95745881060455, 48.49504011445161], "geometry": {"coordinates": [[[-122.96577612577852, 48.47536616468054], [-122.95745881060455, 48.48606211070763], [-122.96738191063875, 48.49504011445161], [-122.98562215317526, 48.49332121680077], [-122.99393512220031, 48.482625130135226], [-122.9840121960746, 48.4736480816098], [-122.96577612577852, 48.47536616468054]]], "type": "Polygon"}, "id": "8", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1028ffffff"}, "type": "Feature"}, {"bbox": [-123.02209434515702, 48.48090253467705, -122.98562215317526, 48.50229484717285], "geometry": {"coordinates": [[[-122.99393512220031, 48.482625130135226], [-122.98562215317526, 48.49332121680077], [-122.99554754437685, 48.50229484717285], [-123.01378572636824, 48.50057143587418], [-123.02209434515702, 48.48987521019344], [-123.01216913342628, 48.48090253467705], [-122.99393512220031, 48.482625130135226]]], "type": "Polygon"}, "id": "9", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1029ffffff"}, "type": "Feature"}, {"bbox": [-122.96738191063875, 48.48606211070763, -122.93089314782422, 48.50744865161037], "geometry": {"coordinates": [[[-122.93921651637277, 48.487776493361366], [-122.93089314782422, 48.498469692294975], [-122.94081641660016, 48.50744865161037], [-122.95906288642188, 48.505733456271734], [-122.96738191063875, 48.49504011445161], [-122.95745881060455, 48.48606211070763], [-122.93921651637277, 48.487776493361366]]], "type": "Polygon"}, "id": "10", "properties": {"net_static_weight": 0.0, "target_h3": "8728d102affffff"}, "type": "Feature"}, {"bbox": [-122.99554754437685, 48.49332121680077, -122.95906288642188, 48.514708041855], "geometry": {"coordinates": [[[-122.96738191063875, 48.49504011445161], [-122.95906288642188, 48.505733456271734], [-122.96898845193161, 48.514708041855], [-122.98723286858778, 48.5129883302576], [-122.99554754437685, 48.50229484717285], [-122.98562215317526, 48.49332121680077], [-122.96738191063875, 48.49504011445161]]], "type": "Polygon"}, "id": "11", "properties": {"net_static_weight": 0.0, "target_h3": "8728d102bffffff"}, "type": "Feature"}, {"bbox": [-123.02047604840291, 48.46122761365707, -122.9840121960746, 48.482625130135226], "geometry": {"coordinates": [[[-122.99232345900786, 48.462949392640375], [-122.9840121960746, 48.4736480816098], [-122.99393512220031, 48.482625130135226], [-123.01216913342628, 48.48090253467705], [-123.02047604840291, 48.47020370731769], [-123.010553301345, 48.46122761365707], [-122.99232345900786, 48.462949392640375]]], "type": "Polygon"}, "id": "12", "properties": {"net_static_weight": 0.0, "target_h3": "8728d102dffffff"}, "type": "Feature"}, {"bbox": [-122.96577612577852, 48.466384743419084, -122.92929571226242, 48.487776493361366], "geometry": {"coordinates": [[[-122.93761736949173, 48.468098312755075], [-122.92929571226242, 48.47879411652145], [-122.93921651637277, 48.487776493361366], [-122.95745881060455, 48.48606211070763], [-122.96577612577852, 48.47536616468054], [-122.95585549001423, 48.466384743419084], [-122.93761736949173, 48.468098312755075]]], "type": "Polygon"}, "id": "13", "properties": {"net_static_weight": 0.0, "target_h3": "8728d102effffff"}, "type": "Feature"}, {"bbox": [-123.0833127132686, 48.55434800524086, -123.04682378991184, 48.575725247602726], "geometry": {"coordinates": [[[-123.05513316298745, 48.556082074566504], [-123.04682378991184, 48.566770626846626], [-123.05676115644071, 48.575725247602726], [-123.07500770544975, 48.57399036182799], [-123.0833127132686, 48.56330167189693], [-123.07337553857059, 48.55434800524086], [-123.05513316298745, 48.556082074566504]]], "type": "Polygon"}, "id": "14", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1042ffffff"}, "type": "Feature"}, {"bbox": [-123.02857515819626, 48.55954200137931, -122.99206957003211, 48.580913472489826], "geometry": {"coordinates": [[[-123.00038937015098, 48.56126785639464], [-122.99206957003211, 48.57195352111041], [-123.00200483360615, 48.580913472489826], [-123.02025971744969, 48.5791868041701], [-123.02857515819626, 48.56850099792553], [-123.01864007571038, 48.55954200137931], [-123.00038937015098, 48.56126785639464]]], "type": "Polygon"}, "id": "15", "properties": {"net_static_weight": 0.0030912808142602444, "target_h3": "8728d1050ffffff"}, "type": "Feature"}, {"bbox": [-123.05676115644071, 48.566770626846626, -123.02025971744969, 48.58814237939218], "geometry": {"coordinates": [[[-123.02857515819626, 48.56850099792553], [-123.02025971744969, 48.5791868041701], [-123.03019727064469, 48.58814237939218], [-123.04845007915765, 48.58641119375317], [-123.05676115644071, 48.575725247602726], [-123.04682378991184, 48.566770626846626], [-123.02857515819626, 48.56850099792553]]], "type": "Polygon"}, "id": "16", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1051ffffff"}, "type": "Feature"}, {"bbox": [-123.00200483360615, 48.57195352111041, -122.96548675259295, 48.593319489602834], "geometry": {"coordinates": [[[-122.9738126197295, 48.57367567074754], [-122.96548675259295, 48.58435858302779], [-122.97542219207881, 48.593319489602834], [-122.9936833240303, 48.591596528551996], [-123.00200483360615, 48.580913472489826], [-122.99206957003211, 48.57195352111041], [-122.9738126197295, 48.57367567074754]]], "type": "Polygon"}, "id": "17", "properties": {"net_static_weight": 0.008158678188920021, "target_h3": "8728d1052ffffff"}, "type": "Feature"}, {"bbox": [-123.03019727064469, 48.5791868041701, -122.9936833240303, 48.60055305860513], "geometry": {"coordinates": [[[-123.00200483360615, 48.580913472489826], [-122.9936833240303, 48.591596528551996], [-123.00362105871908, 48.60055305860513], [-123.0218801227295, 48.59882557761473], [-123.03019727064469, 48.58814237939218], [-123.02025971744969, 48.5791868041701], [-123.00200483360615, 48.580913472489826]]], "type": "Polygon"}, "id": "18", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1053ffffff"}, "type": "Feature"}, {"bbox": [-123.02695380996037, 48.53989117113338, -122.99045657648207, 48.56126785639464], "geometry": {"coordinates": [[[-122.99877466781773, 48.54161621221049], [-122.99045657648207, 48.55230448431688], [-123.00038937015098, 48.56126785639464], [-123.01864007571038, 48.55954200137931], [-123.02695380996037, 48.54885358837442], [-123.01702119697458, 48.53989117113338], [-122.99877466781773, 48.54161621221049]]], "type": "Polygon"}, "id": "19", "properties": {"net_static_weight": 0.0078053101897239685, "target_h3": "8728d1054ffffff"}, "type": "Feature"}, {"bbox": [-123.05513316298745, 48.54712403249016, -123.01864007571038, 48.56850099792553], "geometry": {"coordinates": [[[-123.02695380996037, 48.54885358837442], [-123.01864007571038, 48.55954200137931], [-123.02857515819626, 48.56850099792553], [-123.04682378991184, 48.566770626846626], [-123.05513316298745, 48.556082074566504], [-123.04519826675862, 48.54712403249016], [-123.02695380996037, 48.54885358837442]]], "type": "Polygon"}, "id": "20", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1055ffffff"}, "type": "Feature"}, {"bbox": [-123.00038937015098, 48.55230448431688, -122.96387965055048, 48.57367567074754], "geometry": {"coordinates": [[[-122.97220380594413, 48.55402582190728], [-122.96387965055048, 48.564711343472354], [-122.9738126197295, 48.57367567074754], [-122.99206957003211, 48.57195352111041], [-123.00038937015098, 48.56126785639464], [-122.99045657648207, 48.55230448431688], [-122.97220380594413, 48.55402582190728]]], "type": "Polygon"}, "id": "21", "properties": {"net_static_weight": 0.08656324446201324, "target_h3": "8728d1056ffffff"}, "type": "Feature"}, {"bbox": [-123.08494735124425, 48.57399036182799, -123.04845007915765, 48.59536239256167], "geometry": {"coordinates": [[[-123.05676115644071, 48.575725247602726], [-123.04845007915765, 48.58641119375317], [-123.05838991719597, 48.59536239256167], [-123.07664064150971, 48.59362669097304], [-123.08494735124425, 48.58294060654068], [-123.07500770544975, 48.57399036182799], [-123.05676115644071, 48.575725247602726]]], "type": "Polygon"}, "id": "22", "properties": {"net_static_weight": 0.0, "target_h3": "8728d105cffffff"}, "type": "Feature"}, {"bbox": [-123.02533322539968, 48.5202343153301, -122.98884434284541, 48.54161621221049], "geometry": {"coordinates": [[[-122.99716072607127, 48.52195854183506], [-122.98884434284541, 48.53264942006559], [-122.99877466781773, 48.54161621221049], [-123.01702119697458, 48.53989117113338], [-123.02533322539968, 48.52920015263335], [-123.01540308070587, 48.5202343153301], [-122.99716072607127, 48.52195854183506]]], "type": "Polygon"}, "id": "23", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1072ffffff"}, "type": "Feature"}, {"bbox": [-123.05025378104781, 48.488148103701484, -123.01378572636824, 48.50954069260366], "geometry": {"coordinates": [[[-123.02209434515702, 48.48987521019344], [-123.01378572636824, 48.50057143587418], [-123.02371340397734, 48.50954069260366], [-123.04194951657644, 48.50781276901272], [-123.05025378104781, 48.49711640594113], [-123.0403262884718, 48.488148103701484], [-123.02209434515702, 48.48987521019344]]], "type": "Polygon"}, "id": "24", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1074ffffff"}, "type": "Feature"}, {"bbox": [-123.02371340397734, 48.50057143587418, -122.98723286858778, 48.52195854183506], "geometry": {"coordinates": [[[-122.99554754437685, 48.50229484717285], [-122.98723286858778, 48.5129883302576], [-122.99716072607127, 48.52195854183506], [-123.01540308070587, 48.5202343153301], [-123.02371340397734, 48.50954069260366], [-123.01378572636824, 48.50057143587418], [-122.99554754437685, 48.50229484717285]]], "type": "Polygon"}, "id": "25", "properties": {"net_static_weight": 0.0, "target_h3": "8728d1076ffffff"}, "type": "Feature"}, {"bbox": [-122.94562064266307, 48.55746027016563, -122.90909434612172, 48.57882565704875], "geometry": {"coordinates": [[[-122.91742891605467, 48.55917337837279], [-122.90909434612172, 48.56985599822874], [-122.91902518088244, 48.57882565704875], [-122.93729042207214, 48.57711173994765], [-122.94562064266307, 48.566428973069826], [-122.93568997264984, 48.55746027016563], [-122.91742891605467, 48.55917337837279]]], "type": "Polygon"}, "id": "26", "properties": {"net_static_weight": 0.0, "target_h3": "8728d10e4ffffff"}, "type": "Feature"}, {"bbox": [-122.9738126197295, 48.564711343472354, -122.93729042207214, 48.586077022780074], "geometry": {"coordinates": [[[-122.94562064266307, 48.566428973069826], [-122.93729042207214, 48.57711173994765], [-122.9472235615808, 48.586077022780074], [-122.96548675259295, 48.58435858302779], [-122.9738126197295, 48.57367567074754], [-122.96387965055048, 48.564711343472354], [-122.94562064266307, 48.566428973069826]]], "type": "Polygon"}, "id": "27", "properties": {"net_static_weight": 0.0, "target_h3": "8728d10e5ffffff"}, "type": "Feature"}, {"bbox": [-123.07678185444688, 48.47571834240226, -123.0403262884718, 48.49711640594113], "geometry": {"coordinates": [[[-123.04862885141314, 48.477449139576834], [-123.0403262884718, 48.488148103701484], [-123.05025378104781, 48.49711640594113], [-123.06848364761315, 48.49538478977529], [-123.07678185444688, 48.48468569051106], [-123.06685455205509, 48.47571834240226], [-123.04862885141314, 48.477449139576834]]], "type": "Polygon"}, "id": "28", "properties": {"net_static_weight": 0.0, "target_h3": "8728d115bffffff"}, "type": "Feature"}], "type": "FeatureCollection"});
+
+
+
+    geo_json_a16e99a1eeb15986a7737e5ac01b4f0a.bindTooltip(
+    function(layer){
+    let div = L.DomUtil.create('div');
+
+    let handleObject = feature => {
+        if (feature === null) {
+            return '';
+        } else if (typeof(feature)=='object') {
+            return JSON.stringify(feature);
+        } else {
+            return feature;
+        }
+    }
+    let fields = ["target_h3", "net_static_weight"];
+    let aliases = ["H3 cell", "Grid value"];
+    let table = '<table>' +
+        String(
+        fields.map(
+        (v,i)=>
+        `<tr>
+            <th>${aliases[i].toLocaleString()}</th>
+
+            <td>${handleObject(layer.feature.properties[v]).toLocaleString()}</td>
+        </tr>`).join(''))
+    +'</table>';
+    div.innerHTML=table;
+
+    return div
+    }
+    ,{
+  "sticky": true,
+  "className": "foliumtooltip",
+});
+
+
+            geo_json_a16e99a1eeb15986a7737e5ac01b4f0a.addTo(map_30b6fe5bb273c34b2508276afbc91ba0);
+
+
+            var image_overlay_d036879bb6c2d3b0a363f12cb2d3ad4c = L.imageOverlay(
+                "data:image/png;base64,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",
+                [[48.433441276291305, -123.12621152560237], [48.62796705884688, -122.86210683207122]],
+                {
+  "opacity": 1.0,
+  "interactive": true,
+  "crossOrigin": false,
+  "zindex": 2,
+}
+            );
+
+
+            var feature_group_b12323dbdb12ef38acccdc9da1460e2e = L.featureGroup(
+                {
+}
+            );
+
+
+            var circle_marker_1c27ebd7c09abc9da2d711fe7727f9a2 = L.circleMarker(
+                [48.535, -123.015],
+                {"bubblingMouseEvents": true, "color": "#111111", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#ffffff", "fillOpacity": 1.0, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2}
+            ).addTo(feature_group_b12323dbdb12ef38acccdc9da1460e2e);
+
+
+            circle_marker_1c27ebd7c09abc9da2d711fe7727f9a2.bindTooltip(
+                `<div>
+                     Configured source: 48.535000, -123.015000 (8728d1072ffffff)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+
+
+            var circle_cd55ff408e6e7afcd23a435a0b8fd363 = L.circle(
+                [48.535, -123.015],
+                {"bubblingMouseEvents": true, "color": "#6A3D9A", "dashArray": "8 5", "dashOffset": null, "fill": false, "fillColor": "#6A3D9A", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5000.0, "stroke": true, "weight": 2}
+            ).addTo(feature_group_b12323dbdb12ef38acccdc9da1460e2e);
+
+
+        function geo_json_68ff9cd89de84d632f6e78f495d70916_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#111111", "fillColor": "#ffffff", "fillOpacity": 0.05, "weight": 2.5};
+            }
+        }
+
+        function geo_json_68ff9cd89de84d632f6e78f495d70916_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_68ff9cd89de84d632f6e78f495d70916 = L.geoJson(null, {
+                onEachFeature: geo_json_68ff9cd89de84d632f6e78f495d70916_onEachFeature,
+
+                style: geo_json_68ff9cd89de84d632f6e78f495d70916_styler,
+            ...{
+}
+        });
+
+        function geo_json_68ff9cd89de84d632f6e78f495d70916_add (data) {
+            geo_json_68ff9cd89de84d632f6e78f495d70916
+                .addData(data);
+        }
+            geo_json_68ff9cd89de84d632f6e78f495d70916_add({"bbox": [-123.02533322539968, 48.5202343153301, -122.98884434284541, 48.54161621221049], "features": [{"bbox": [-123.02533322539968, 48.5202343153301, -122.98884434284541, 48.54161621221049], "geometry": {"coordinates": [[[-122.99716072607127, 48.52195854183506], [-122.98884434284541, 48.53264942006559], [-122.99877466781773, 48.54161621221049], [-123.01702119697458, 48.53989117113338], [-123.02533322539968, 48.52920015263335], [-123.01540308070587, 48.5202343153301], [-122.99716072607127, 48.52195854183506]]], "type": "Polygon"}, "id": "52", "properties": {"h3_cell": "8728d1072ffffff"}, "type": "Feature"}], "type": "FeatureCollection"});
+
+
+
+    geo_json_68ff9cd89de84d632f6e78f495d70916.bindTooltip(
+    function(layer){
+    let div = L.DomUtil.create('div');
+
+    let handleObject = feature => {
+        if (feature === null) {
+            return '';
+        } else if (typeof(feature)=='object') {
+            return JSON.stringify(feature);
+        } else {
+            return feature;
+        }
+    }
+    let fields = ["h3_cell"];
+    let aliases = ["Source H3"];
+    let table = '<table>' +
+        String(
+        fields.map(
+        (v,i)=>
+        `<tr>
+            <th>${aliases[i]}</th>
+
+            <td>${handleObject(layer.feature.properties[v])}</td>
+        </tr>`).join(''))
+    +'</table>';
+    div.innerHTML=table;
+
+    return div
+    }
+    ,{
+  "sticky": true,
+  "className": "foliumtooltip",
+});
+
+
+            geo_json_68ff9cd89de84d632f6e78f495d70916.addTo(feature_group_b12323dbdb12ef38acccdc9da1460e2e);
+
+
+            feature_group_b12323dbdb12ef38acccdc9da1460e2e.addTo(map_30b6fe5bb273c34b2508276afbc91ba0);
+
+
+        function geo_json_c3049b12170e8c667508cf7a132c97b9_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#555555", "dashArray": "5 4", "fillOpacity": 0.0, "weight": 1.2};
+            }
+        }
+
+        function geo_json_c3049b12170e8c667508cf7a132c97b9_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_c3049b12170e8c667508cf7a132c97b9 = L.geoJson(null, {
+                onEachFeature: geo_json_c3049b12170e8c667508cf7a132c97b9_onEachFeature,
+
+                style: geo_json_c3049b12170e8c667508cf7a132c97b9_styler,
+            ...{
+}
+        });
+
+        function geo_json_c3049b12170e8c667508cf7a132c97b9_add (data) {
+            geo_json_c3049b12170e8c667508cf7a132c97b9
+                .addData(data);
+        }
+            geo_json_c3049b12170e8c667508cf7a132c97b9_add({"features": [{"geometry": {"coordinates": [[[-123.02047604840291, 48.47020370731769], [-123.01216913342628, 48.48090253467705], [-123.02209434515702, 48.48987521019344], [-123.0403262884718, 48.488148103701484], [-123.04862885141314, 48.477449139576834], [-123.06685455205509, 48.47571834240226], [-123.07678185444688, 48.48468569051106], [-123.06848364761315, 48.49538478977529], [-123.05025378104781, 48.49711640594113], [-123.04194951657644, 48.50781276901272], [-123.02371340397734, 48.50954069260366], [-123.01540308070587, 48.5202343153301], [-123.02533322539968, 48.52920015263335], [-123.01702119697458, 48.53989117113338], [-123.02695380996037, 48.54885358837442], [-123.04519826675862, 48.54712403249016], [-123.05513316298745, 48.556082074566504], [-123.07337553857059, 48.55434800524086], [-123.0833127132686, 48.56330167189693], [-123.07500770544975, 48.57399036182799], [-123.08494735124425, 48.58294060654068], [-123.07664064150971, 48.59362669097304], [-123.05838991719597, 48.59536239256167], [-123.04845007915765, 48.58641119375317], [-123.03019727064469, 48.58814237939218], [-123.0218801227295, 48.59882557761473], [-123.00362105871908, 48.60055305860513], [-122.9936833240303, 48.591596528551996], [-122.97542219207881, 48.593319489602834], [-122.96548675259295, 48.58435858302779], [-122.9472235615808, 48.586077022780074], [-122.93729042207214, 48.57711173994765], [-122.91902518088244, 48.57882565704875], [-122.90909434612172, 48.56985599822874], [-122.91742891605467, 48.55917337837279], [-122.90750054997439, 48.55020030011169], [-122.9158334036004, 48.53951506970952], [-122.90590750499226, 48.53053857264108], [-122.91423864299033, 48.51985073295947], [-122.90431521064677, 48.51087081772074], [-122.91264463369563, 48.50018037002996], [-122.93089314782422, 48.498469692294975], [-122.93921651637277, 48.487776493361366], [-122.92929571226242, 48.47879411652145], [-122.93761736949173, 48.468098312755075], [-122.95585549001423, 48.466384743419084], [-122.96577612577852, 48.47536616468054], [-122.9840121960746, 48.4736480816098], [-122.99232345900786, 48.462949392640375], [-123.010553301345, 48.46122761365707], [-123.02047604840291, 48.47020370731769]]], "type": "Polygon"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+
+
+        map_30b6fe5bb273c34b2508276afbc91ba0.on('click', function(event) {
+            const coordinates = event.latlng.lat.toFixed(6) + ', ' +
+                event.latlng.lng.toFixed(6);
+            const wrapper = L.DomUtil.create('div');
+            wrapper.style.minWidth = '230px';
+
+            const label = L.DomUtil.create('div', '', wrapper);
+            label.textContent = 'Latitude, longitude';
+            label.style.marginBottom = '5px';
+            label.style.fontWeight = '600';
+
+            const input = L.DomUtil.create('input', '', wrapper);
+            input.type = 'text';
+            input.readOnly = true;
+            input.value = coordinates;
+            input.setAttribute('aria-label', 'Clicked latitude and longitude');
+            input.style.boxSizing = 'border-box';
+            input.style.width = '100%';
+            input.style.marginBottom = '6px';
+
+            const button = L.DomUtil.create('button', '', wrapper);
+            button.type = 'button';
+            button.textContent = 'Copy coordinates';
+
+            const fallbackCopy = function() {
+                input.focus();
+                input.select();
+                const copied = document.execCommand('copy');
+                button.textContent = copied ? 'Copied' : 'Select and copy';
+            };
+            button.addEventListener('click', function() {
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(coordinates).then(function() {
+                        button.textContent = 'Copied';
+                    }).catch(fallbackCopy);
+                } else {
+                    fallbackCopy();
+                }
+            });
+            L.DomEvent.disableClickPropagation(wrapper);
+
+            L.popup({maxWidth: 280})
+                .setLatLng(event.latlng)
+                .setContent(wrapper)
+                .openOn(map_30b6fe5bb273c34b2508276afbc91ba0);
+        });
+
+
+            var layer_control_7b2641b85b7b4282b0227040acf2d0b9_layers = {
+                base_layers : {
+                    "openstreetmap" : tile_layer_0235eadce69ec8a0fe1accf9fde8378b,
+                },
+                overlays :  {
+                    "Distance diagnostic \u2014 original H3" : geo_json_16e4e419bfc8e92ce30602ab6f9d2291,
+                    "Distance diagnostic \u2014 smooth" : image_overlay_a67854db950e1f7a99f23d52cc26a468,
+                    "Conditional vegetation support \u2014 original H3" : geo_json_c97b7b78cbfe625b83337aac9ec211ee,
+                    "Conditional vegetation support \u2014 smooth" : image_overlay_cca26f9fbe69d984889c8fd92fd77362,
+                    "Terrain support \u2014 original H3" : geo_json_7150717e10d84cd73ec3cfadef3e5d7a,
+                    "Terrain support \u2014 smooth" : image_overlay_8c50fdaaaaba61accc86741527395e64,
+                    "Combined static weight \u2014 original H3" : geo_json_a16e99a1eeb15986a7737e5ac01b4f0a,
+                    "Combined static weight \u2014 smooth" : image_overlay_d036879bb6c2d3b0a363f12cb2d3ad4c,
+                    "Configured point, source H3, and viewshed radius" : feature_group_b12323dbdb12ef38acccdc9da1460e2e,
+                    "Selected-source target footprint" : geo_json_c3049b12170e8c667508cf7a132c97b9,
+                },
+            };
+            let layer_control_7b2641b85b7b4282b0227040acf2d0b9 = L.control.layers(
+                layer_control_7b2641b85b7b4282b0227040acf2d0b9_layers.base_layers,
+                layer_control_7b2641b85b7b4282b0227040acf2d0b9_layers.overlays,
+                {
+  "position": "topright",
+  "collapsed": false,
+  "autoZIndex": true,
+}
+            ).addTo(map_30b6fe5bb273c34b2508276afbc91ba0);
+
+
+
+            map_30b6fe5bb273c34b2508276afbc91ba0.fitBounds(
+                [[48.46122761365707, -123.08494735124425], [48.60055305860513, -122.90431521064677]],
+                {"padding": [18, 18]}
+            );
+
+</script>
+</html>

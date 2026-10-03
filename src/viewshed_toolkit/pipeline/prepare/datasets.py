@@ -22,6 +22,11 @@ def prepare_dataset(app: AppConfig, dataset: str, *, overwrite: bool = False) ->
         raise ValueError(f"Dataset {dataset} is disabled")
     manifest = component_root(app) / "inputs" / dataset / "download.json"
     downloaded = json.loads(manifest.read_text())
+    from ..contracts.components import acquisition_request
+
+    request = acquisition_request(app, dataset)
+    if any(downloaded.get(key) != value for key, value in request.items()):
+        raise ValueError(f"Stale {dataset} download manifest; rerun download-{dataset}")
     inputs = {str(i): Path(value) for i, value in enumerate(downloaded["paths"])}
     contract = provenance(app, f"prepare_{dataset}_v1", inputs)
     if contract["inputs"] != downloaded["checksums"]:

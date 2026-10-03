@@ -31,3 +31,18 @@ __all__ = [
     "SOURCE_TARGET_LOOKUP_SCHEMA",
     "SOURCE_TYPES",
 ]
+
+
+def validate_pair_kernel(frame, *, weight: str | None = None) -> None:
+    """Reject invalid observed values/keys without materializing a regional table."""
+    import polars as pl
+
+    keys = ["source_h3", "target_h3"]
+    invalid = [pl.col(key).is_null() | (pl.col(key) == "") for key in keys]
+    if weight is not None:
+        value = pl.col(weight).cast(pl.Float64, strict=False)
+        invalid.append(value.is_null() | ~value.is_finite() | ~value.is_between(0, 1))
+    if frame.filter(pl.any_horizontal(invalid)).limit(1).collect().height:
+        raise ValueError("Invalid observed pair kernel: keys and finite weights in [0, 1] required")
+    if frame.group_by(keys).len().filter(pl.col("len") > 1).limit(1).collect().height:
+        raise ValueError("Duplicate source-target pairs in pair kernel")

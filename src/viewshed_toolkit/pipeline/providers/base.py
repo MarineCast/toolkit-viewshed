@@ -15,6 +15,7 @@ import rasterio
 import requests
 
 from viewshed_toolkit._internal.artifacts import checksum_path
+from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
 
 from ..config.datasets import DatasetConfig
 from ..contracts.components import cache_matches, fingerprint, record_product
@@ -92,7 +93,10 @@ class FileProvider:
                 try:
                     self.fetch(asset, temp)
                     validate_raster(temp)
-                    if asset.checksum and checksum_path(temp) != asset.checksum:
+                    if (
+                        asset.checksum
+                        and checksum_unchanged_file(temp, raw_bytes=True) != asset.checksum
+                    ):
                         raise ValueError(f"Checksum mismatch for asset {asset.id}")
                     temp.replace(path)
                     record_product(path, contract, downloaded_at=datetime.now(UTC).isoformat())

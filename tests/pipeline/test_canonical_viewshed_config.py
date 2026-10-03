@@ -17,6 +17,7 @@ def test_checkout_config_matches_packaged_default() -> None:
     assert sorted(Path("configs").glob("*.yaml")) == [
         CANONICAL_CONFIG,
         Path("configs/salish_sea_case_study.yaml"),
+        Path("configs/san_juan_demo.yaml"),
     ]
     assert DEFAULT_CONFIG == packaged
     assert yaml.safe_load(CANONICAL_CONFIG.read_text()) == yaml.safe_load(packaged.read_text())

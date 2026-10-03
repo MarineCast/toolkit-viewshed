@@ -146,3 +146,33 @@ def write_component(
     )
     record_product(path, contract, rows=frame.height)
     return path
+
+
+def acquisition_request(app: AppConfig, dataset: str) -> dict[str, Any]:
+    """Normalized provider request shared by acquisition and preparation."""
+    from pyproj import Transformer
+
+    from ..config.datasets import DatasetsConfig
+    from ..config.paths import resolve_path
+
+    if dataset not in {"dem", "chm"}:
+        raise ValueError("dataset must be dem or chm")
+    settings = getattr(DatasetsConfig.model_validate(app.raw_config.get("datasets", {})), dataset)
+    if settings.provider == "local":
+        settings = settings.model_copy(
+            update={
+                "assets": tuple(
+                    str(resolve_path(path, app.config_path.parent)) for path in settings.assets
+                )
+            }
+        )
+    forward = Transformer.from_crs(4326, app.viewshed.crs_projected, always_xy=True)
+    inverse = Transformer.from_crs(app.viewshed.crs_projected, 4326, always_xy=True)
+    west, south, east, north = forward.transform_bounds(
+        *bbox_from_config(app.raw_config), densify_pts=21
+    )
+    margin = app.viewshed.max_distance_m + app.viewshed.aoi_margin_m
+    bounds = inverse.transform_bounds(
+        west - margin, south - margin, east + margin, north + margin, densify_pts=21
+    )
+    return {"dataset": settings.model_dump(mode="json"), "acquisition_bbox": list(bounds)}

@@ -15,6 +15,11 @@ source checksums, then atomically replace the cache entry. Cache hits require ma
 identity and output SHA-256. Mutated local inputs change cache identity; corrupt downloads are
 retrieved again. Failed downloads never expose partial final rasters.
 
+A supplied `Asset.checksum` is the SHA-256 of the source file's raw bytes; temporary filenames
+are excluded. `prepare-dem` and `prepare-chm` compare the download manifest's normalized dataset
+settings and buffered acquisition bounds with the current request. Changed assets, provider
+settings or extent require a fresh download manifest before preparation proceeds.
+
 Each source asset retains its URL/ID, observed download time, and checksum sidecar. The download
 manifest records provider settings, requested/source bounds, toolkit config hash, paths, and input
 checksums. Prepared and weight outputs record software/algorithm versions, configuration hash,
@@ -24,7 +29,9 @@ CRS, analysis resolution, bbox, H3 resolutions, input hashes, and output hash.
 cached source bytes and manifests, or replacing live acquisition with pinned local assets and
 checksums. Local checksum validation cannot prove that an unpinned remote service has not changed.
 
-The refactor's automated integration uses synthetic local rasters. Discovery is tested for the
-real providers; a complete live USGS/ETH source acquisition and Canadian-domain coverage audit
-were not run. Inspect source coverage, vertical units/datums, vintages, and licenses before regional
-promotion. Land/water geometry acquisition remains an external configured input.
+The refactor's automated integration uses synthetic local rasters. The bounded
+[San Juan Islands demo](san-juan-demo.md) additionally exercises live USGS acquisition and ETH
+COG window retrieval, with an explicit coverage audit. This does not establish Canadian-domain
+coverage or validate the full Salish Sea study. Inspect source coverage, vertical units/datums,
+vintages, and licenses before regional promotion. General workflows require configured land/water
+geometry; the demo uses the existing case-study geometry helper.

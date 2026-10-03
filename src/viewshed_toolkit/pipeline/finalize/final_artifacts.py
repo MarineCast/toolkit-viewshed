@@ -655,13 +655,14 @@ def materialize_observation_geometry_output(
     *,
     source_type: str,
     overwrite: bool = False,
+    output_path: Path | None = None,
 ) -> Path:
     """Publish one schema-v3 geometry artifact from retained full diagnostics."""
 
     source_type = normalize_source_type(source_type)
     raw, _config_dir = load_yaml(config_path)
     paths = final_artifact_paths(config_path)
-    output_path = (
+    output_path = output_path or (
         paths.land_observation_geometry
         if source_type == "land"
         else paths.water_observation_geometry
@@ -1023,7 +1024,12 @@ def materialize_static_viewability_outputs(
         "land": paths.land_static_weights,
         "water": paths.water_static_weights,
     }
-    existing = {source_type: path.exists() for source_type, path in outputs.items()}
+    geometry_outputs = {
+        "land_observation_geometry": paths.land_observation_geometry,
+        "water_observation_geometry": paths.water_observation_geometry,
+    }
+    all_outputs = {**outputs, **geometry_outputs}
+    existing = {source_type: path.exists() for source_type, path in all_outputs.items()}
     if not overwrite and any(existing.values()):
         if not all(existing.values()):
             raise FileExistsError(
@@ -1036,9 +1042,12 @@ def materialize_static_viewability_outputs(
                 raw=raw,
                 source_type=source_type,
             )
+        for path in geometry_outputs.values():
+            validate_parquet_schema(path, FINAL_SCHEMAS["observation_geometry"])
         return {
             "land_static_weights": outputs["land"],
             "water_static_weights": outputs["water"],
+            **geometry_outputs,
         }
 
     staged: dict[str, Path] = {}
@@ -1072,11 +1081,23 @@ def materialize_static_viewability_outputs(
                 "row_count": row_count,
             }
 
+        # Build and validate forward geometry before replacing any member of
+        # the durable output set. Geometry failure leaves the previous set intact.
+        for name, output_path in geometry_outputs.items():
+            stage_path = output_path.with_name(f".{output_path.name}.{uuid.uuid4().hex}.staged")
+            staged[name] = stage_path
+            materialize_observation_geometry_output(
+                config_path,
+                source_type=name.split("_", 1)[0],
+                overwrite=True,
+                output_path=stage_path,
+            )
+
         backups: dict[str, Path] = {}
         sidecar_backups: dict[Path, Path] = {}
         promoted: set[str] = set()
         try:
-            for source_type, output_path in outputs.items():
+            for source_type, output_path in all_outputs.items():
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 if output_path.exists():
                     backup = output_path.with_name(f".{output_path.name}.{uuid.uuid4().hex}.backup")
@@ -1089,7 +1110,7 @@ def materialize_static_viewability_outputs(
                         )
                         sidecar.replace(sidecar_backup)
                         sidecar_backups[sidecar] = sidecar_backup
-            for source_type, output_path in outputs.items():
+            for source_type, output_path in all_outputs.items():
                 staged[source_type].replace(output_path)
                 promoted.add(source_type)
             for source_type, output_path in outputs.items():
@@ -1109,7 +1130,7 @@ def materialize_static_viewability_outputs(
                     source_type=source_type,
                 )
         except Exception:
-            for source_type, output_path in outputs.items():
+            for source_type, output_path in all_outputs.items():
                 if source_type in promoted:
                     output_path.unlink(missing_ok=True)
                 for sidecar in metadata_sidecars_for(output_path):
@@ -1131,17 +1152,10 @@ def materialize_static_viewability_outputs(
         for stage_path in staged.values():
             stage_path.unlink(missing_ok=True)
 
-    geometry_outputs = {
-        source_type: materialize_observation_geometry_output(
-            config_path, source_type=source_type, overwrite=True
-        )
-        for source_type in ("land", "water")
-    }
     return {
         "land_static_weights": outputs["land"],
         "water_static_weights": outputs["water"],
-        "land_observation_geometry": geometry_outputs["land"],
-        "water_observation_geometry": geometry_outputs["water"],
+        **geometry_outputs,
     }
 
 

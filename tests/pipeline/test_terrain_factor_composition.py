@@ -109,6 +109,8 @@ def test_scalable_dual_surface_artifacts_preserve_full_lookup(tmp_path: Path) ->
         config_dir=tmp_path,
         bare_config_hash="bare-hash",
         canopy_config_hash="canopy-hash",
+        bare_completed_sources=["s1"],
+        canopy_completed_sources=["s1"],
         canopy_scenario_id="canopy-test-scenario",
         canopy_scenario={"canopy_resampling": "max"},
     )
@@ -179,6 +181,8 @@ def test_dual_surface_composition_validates_uniqueness_in_composition_pass(
             config_dir=tmp_path,
             bare_config_hash="bare-hash",
             canopy_config_hash="canopy-hash",
+            bare_completed_sources=["s1"],
+            canopy_completed_sources=["s1"],
         )
 
 

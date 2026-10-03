@@ -42,6 +42,16 @@ Python bindings. `.github/environment.yml` describes the geospatial CI environme
 
 ## Configure a region
 
+For a small runnable example, start with the [San Juan Islands demo](docs/san-juan-demo.md).
+It includes a real-data configuration, a production-pipeline runner, an interactive map and
+documentation figures, with explicit source coverage and interpretation limits.
+
+```bash
+PYTHONPATH=src python scripts/run_san_juan_demo.py
+```
+
+The demo requires the `analysis` and `acquisition` extras and a compatible GDAL environment.
+
 Start with `configs/salish_sea.yaml`, or the configuration bundled in the wheel:
 
 ```python

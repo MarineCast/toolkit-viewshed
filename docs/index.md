@@ -5,6 +5,8 @@ Viewshed Toolkit exposes a small supported API over a staged geospatial pipeline
 - [Project overview](../README.md): installation, repository layout, case-study scope, and checks.
 - [Supported API](api.md): stable imports, stage-level imports, and execution behavior.
 - [Methodology](methodology.md): scientific model, artifact grain, and interpretation limits.
+- [San Juan Islands demo](san-juan-demo.md): small real-data example, reproducible commands,
+  documentation figures and interactive map.
 - [Salish Sea case study](salish-sea-case-study.md): regional acquisition, components, and report.
 - [Historical OrcaCast snapshot](reports/case-study-salish-sea.md): preserved copied-kernel evidence.
 - [Historical OrcaCast resources](reports/orcacast-history.md): pinned source tree and artifact
