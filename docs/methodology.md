@@ -4,10 +4,10 @@ The pipeline models physical viewing support between an active source area and a
 Both sides use durable H3 identifiers, and the final table grain is one unique
 `source_h3 × target_h3` pair.
 
-![Conceptual workflow from land and water observers through viewsheds, distance weighting, H3 aggregation, and viewability summaries](assets/viewshed-methodology-overview.png)
+![Conceptual workflow from land and water observers through viewsheds, distance weighting, H3 aggregation, and viewability summaries](assets/viewshed-methodology-overview.svg)
 
-The graphic is a conceptual overview. Whale icons identify an illustrative target area; animal
-activity is not an input to the static viewability model.
+The graphic describes the role-specific calculation and missing-data policies. Animal activity
+and sightings are not inputs to the static viewability model.
 
 For reproduction or review, use the [scientific methodology](scientific-methodology.md) as the
 complete numerical reference. It defines the sampling design, observer and target averaging
@@ -28,31 +28,28 @@ The staged calculation is:
 
 ## Component views
 
-The land and water diagrams below illustrate the roles of terrain, canopy, and distance in the
-workflow. Their displayed three-factor multiplication is deliberately simplified: it is **not**
-the literal formula used by the current implementation. The terrain kernel already integrates
-observer-to-pixel distance attenuation, so the separately persisted H3-centroid distance weight is
-inspectable but is not multiplied into the final static weight again. The exact equations are in
-the [scientific methodology](scientific-methodology.md).
+The diagrams show the implemented composition. Terrain integrates observer-to-water distance
+attenuation. Conditional canopy retention applies to the matched land population; the separate
+centroid-distance diagnostic is inspectable and is not multiplied into the final weight again.
+The exact equations are in the [scientific methodology](scientific-methodology.md).
 
 ### Land sources
 
-![Conceptual land-source terrain, canopy, and distance stages](assets/land-viewability-components.png)
+![Land-source integrated terrain/distance and conditional canopy composition](assets/land-viewability-components.svg)
 
 Land processing compares matched bare-earth DEM and DEM+CHM line-of-sight support. Canopy is a
 conditional factor relative to positive terrain support, not an independent visibility surface.
 
 ### Water sources
 
-![Conceptual water-source terrain, shoreline obstruction, and distance stages](assets/water-viewability-components.png)
+![Water-source opaque-land LOS with integrated attenuation and canopy not applicable](assets/water-viewability-components.svg)
 
-Water processing treats mapped land as opaque and records canopy as not applicable. Trees in the
-illustration help communicate shoreline obstruction; they do not imply that water pairs receive a
-measured canopy factor.
+Water processing treats mapped land as opaque and records canopy as not applicable. Water pairs receive no canopy factor. Their kernel integrates opaque-land line of sight
+and distance attenuation directly.
 
 ### Aggregation
 
-![Conceptual aggregation of visible source contributions over water target cells](assets/viewability-aggregation.png)
+![Forward and inverse queries over identical canonical pair records](assets/viewability-aggregation.svg)
 
 Validated pair weights may be summarized by source or target. A target-cell sum is static viewing
 support from the modeled source universe—not observed viewpoint use, observer pressure, animal

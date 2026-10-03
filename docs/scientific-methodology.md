@@ -212,8 +212,9 @@ K_static(s,t) = K_bare × C
 ```
 
 The minimum prevents numerical or surface anomalies from making canopy improve bare-earth
-support. `C = 1` for a terrain-blocked pair is a neutral factor with
-`canopy_support=terrain_blocked_neutral`, not evidence of clear canopy. `canopy_los_raw` retains
+support. `C = 1` when baseline integrated support is zero is a neutral factor with
+`canopy_support=no_baseline_support_neutral`. The cause can be LOS blockage, distance cutoff
+or another modeled constraint; this state is not evidence of clear canopy or terrain blockage. `canopy_los_raw` retains
 `K_canopy` as an intermediate diagnostic; `weight_vegetation` is `C`, not a final static product.
 
 Implementation: [`prepare/elevation/canopy.py`](../src/viewshed_toolkit/pipeline/prepare/elevation/canopy.py),
@@ -317,3 +318,65 @@ the authoritative owners for algorithm details and edge-case behavior.
 Distance-free LOS and late composition from persisted sample-level LOS are possible future model
 designs. They are not implemented by the standalone centroid products and would require a new
 scientific contract and validation evidence.
+
+## Direct unweighted canopy diagnostics and migration
+
+Observation geometry schema `4.0.0-research` publishes `physical_viewability` as the directly
+calculated unweighted canopy joint LOS `J_canopy` for land, and `J_water` for water. It never
+reconstructs that quantity as `J_bare × C_D`. Matched surface factors retain
+`bare_los_fraction`, `canopy_los_fraction`, both integrated kernels and raw canopy excess.
+The compact static formula and pair population are unchanged. The two-sample oracle
+`LOS_bare=[1,1]`, `LOS_canopy=[1,0]`, `D=[0.9,0.1]` gives `J_canopy=0.5`,
+`K_bare=0.5`, `K_canopy=0.45`, `C_D=0.9`, `W=0.45`.
+
+The integrated canopy cap remains `min(K_canopy,K_bare)`; its uncapped value, maximum excess,
+all excess counts and counts exceeding absolute tolerance `1e-6` remain inspectable. Tolerance
+accounts for persisted Float32 rounding; it does not authorize replacing observed invalid
+values. Inputs must be finite and within their declared bounds before coercion. For matched
+populations the validator requires `K <= J + 1e-6`.
+
+Partition identity is now `direct_unweighted_los_v9`. Rebuild both surfaces and final outputs
+with explicit overwrite or a fresh dedicated work/output directory. Do not refresh metadata
+on old values to claim the new method. Legacy partitions without independently calculated
+unweighted diagnostics publish unavailable/null; even a sparse absent weighted row cannot
+prove unweighted zero when the old method could erase positive unweighted evidence.
+The water sparse writer now retains positive unweighted LOS when integrated distance support
+is zero. Decay shape cannot change unweighted diagnostics while hard-range geometry and the
+observer/target population stay fixed.
+
+Experimental xarray window alignment uses zero relative tolerance tied to pixel spacing and
+checks every coordinate. Its fix is separate from the GDAL-backed regional example.
+
+### Durable generation integrity
+
+A paired publication now includes `viewshed-generation.json` beside the four Parquet outputs.
+Its content identity includes the scientific configuration, both source roles' input checksums,
+the geometry method version, and the input coverage audit when available. Access timestamps and
+presentation settings are excluded from the identity. The receipt records byte checksums for all
+four files. Reuse validates typed schemas, unique pair keys, roles, bounds, value states, embedded
+identity, exact compact/geometry pair coverage and final-weight parity. Older output sets without
+a receipt require regeneration; adding a receipt to old outputs does not establish compatibility.
+
+The `viewshed_output_set_v2` receipt also binds checksums of the prepared ground/canopy rasters
+and source geometry to the shared identity. Present inputs and coverage audits are rechecked on
+reuse. Inputs may be pruned under the existing retention policy after validation; the receipt
+retains their original checksums and audit, rather than claiming they were reobserved. Version 1
+receipts must be rebuilt through the model workflow, not relabeled by finalization.
+
+Finalization validates all staged members before promotion and restores the previous files and
+sidecars if promotion or validation fails. This is a single-writer rollback guarantee. Concurrent
+readers must validate the receipt and retry during publication; multiple renames are not a
+filesystem transaction. Cleanup preserves the receipt with the durable files.
+
+Terrain partitions include the content checksum of the canonical candidate lookup and their own
+byte checksum. A lookup edited in place invalidates cached partitions. Current producers evaluate
+only the canonical candidates; an out-of-universe observed row is rejected before densification.
+Successful execution permits modeled sparse zeros within that universe, but does not establish
+complete source data. `DATA_COVERAGE_STATE` is `partial` when the coverage audit records missing
+mapped-land inputs, and `unknown` without an audit. Missing-canopy zero-height and missing-DEM
+barrier policies remain scientific assumptions, not observations. The receipt retains the audit.
+
+Canopy source years come from normalized acquisition records. The global-canopy provider records
+its known 2020 product; local assets require an explicit `datasets.chm.source_year`. Unspecified
+local years remain null. Metadata refresh may change presentation settings only; changed scientific
+settings or disagreement between embedded metadata and sidecars requires rebuilding.

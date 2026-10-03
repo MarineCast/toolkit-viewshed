@@ -17,6 +17,7 @@ from viewshed_toolkit.pipeline.finalize import cleanup as finalize_cleanup
 from viewshed_toolkit.pipeline.finalize.final_artifacts import (
     _effective_physical_assumptions,
     _static_input_paths,
+    _static_parquet_metadata,
     cleanup_viewshed_dir_to_static_outputs,
     static_scientific_config_hash,
     validate_static_artifact_metadata,
@@ -76,7 +77,17 @@ def _write_valid_static_outputs(config_path: Path) -> None:
             if not input_path.exists():
                 input_path.write_text(f"{source_type}:{name}")
         output.parent.mkdir(parents=True, exist_ok=True)
-        frame.write_parquet(output)
+        from viewshed_toolkit._internal.data.parquet import atomic_sink_parquet
+
+        atomic_sink_parquet(
+            frame.lazy(),
+            output,
+            metadata=_static_parquet_metadata(
+                raw,
+                source_type=source_type,
+                input_checksums={name: checksum_path(path) for name, path in inputs.items()},
+            ),
+        )
         assumptions = _effective_physical_assumptions(raw, source_type=source_type)
         write_metadata_sidecar(
             output,

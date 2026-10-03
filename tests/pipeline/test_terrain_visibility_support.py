@@ -172,6 +172,41 @@ def test_visible_accumulation_uses_observer_to_pixel_distance_weights() -> None:
     assert distance_weight_sum[0, 0] > distance_weight_sum[0, 1]
 
 
+def test_decay_shape_changes_integrated_support_but_not_unweighted_population() -> None:
+    """One observer and two equal pixels at 0.5/1.5 km; no range/cutoff change."""
+    outputs = []
+    for scale in (0.8, 2.0):
+        count = np.zeros((1, 2), dtype="uint16")
+        weighted = np.zeros((1, 2), dtype="int64")
+        _accumulate_visible(
+            np.array([[True, True]]),
+            Affine(1000, 0, 0, 0, -1000, 0),
+            observer_x=0,
+            observer_y=-500,
+            sample_index=0,
+            visible_count=count,
+            min_distance=np.full((1, 2), np.inf, dtype="float32"),
+            max_distance=np.zeros((1, 2), dtype="float32"),
+            distance_sum=np.zeros((1, 2), dtype="int64"),
+            distance_weight_sum=weighted,
+            distance_weight_config=DistanceWeightConfig(
+                selected_model="exponential", exponential_lambda_km=scale
+            ),
+            distance_weight_max_km=5,
+            observer_mask=None,
+        )
+        # Independent exponential oracle, not a call to production weighting.
+        oracle = np.exp(-np.array([0.5, 1.5]) / scale)
+        np.testing.assert_allclose(
+            weighted[0] / summarize.DISTANCE_WEIGHT_SUM_SCALE,
+            oracle,
+            atol=0.5 / summarize.DISTANCE_WEIGHT_SUM_SCALE,
+        )
+        outputs.append((count.mean(), weighted.mean() / summarize.DISTANCE_WEIGHT_SUM_SCALE))
+    assert outputs[0][0] == outputs[1][0] == 1
+    assert outputs[0][1] < outputs[1][1]
+
+
 def test_tiled_accumulator_allocates_only_tiles_with_visible_pixels() -> None:
     cfg = DistanceWeightConfig(selected_model="exponential", exponential_lambda_km=8.0)
     transform = Affine.translation(0.0, 0.0) * Affine.scale(10.0, -10.0)

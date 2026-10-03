@@ -116,6 +116,16 @@ def main() -> None:
         action="store_true",
         help="Render existing validated final tables without acquisition",
     )
+    parser.add_argument(
+        "--model-only",
+        action="store_true",
+        help="Build validated scientific outputs without regenerating legacy presentation",
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Rebuild derived products from validated real input caches",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     start = time.monotonic()
@@ -135,11 +145,24 @@ def main() -> None:
         # Inputs were prepared independently above. Use the production stage
         # registry from land-cell preparation through finalization and maps.
         # A selected-stage request retains intermediates for documentation inspection.
-        process(
-            ViewshedRequest(
-                config=args.config, stages=STAGES[1:], run_id=f"san-juan-demo-{app.config_hash}"
+        if args.rebuild:
+            from dataclasses import replace
+            from viewshed_toolkit.pipeline.api.registry import invocations_for_stage
+            from viewshed_toolkit.pipeline.api.stages import run_stage
+
+            for stage in STAGES[1:]:
+                for invocation in invocations_for_stage(stage):
+                    logging.info("Rebuilding %s role=%s", stage, invocation.source_type)
+                    run_stage(app, replace(invocation, overwrite=True))
+        else:
+            process(
+                ViewshedRequest(
+                    config=args.config, stages=STAGES[1:], run_id=f"san-juan-demo-{app.config_hash}"
+                )
             )
-        )
+    if args.model_only:
+        print(component_root(app).parent / "viewshed-generation.json")
+        return
     paths = final_artifact_paths_from_raw(app.raw_config, app.config_path.parent)
     figure, summary = plot_demo(app)
     maps = static_map_output_paths(app)

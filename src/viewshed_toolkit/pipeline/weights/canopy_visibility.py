@@ -16,8 +16,8 @@ The durable factors are::
     weight_vegetation = min(K_canopy, K_bare) / K_bare  when K_bare > 0
     static physical weight = weight_terrain * weight_vegetation
 
-For terrain-blocked pairs, ``weight_vegetation`` is neutral 1 because terrain
-already makes the physical score zero. Land-cover attenuation is deliberately
+For pairs without baseline integrated support, ``weight_vegetation`` is neutral
+1 bookkeeping; this does not establish a terrain obstruction. Land-cover attenuation is deliberately
 outside this pipeline.
 """
 
@@ -44,7 +44,7 @@ from ..contracts.artifacts import (
     FinalArtifactPaths,
     final_artifact_paths_from_raw,
 )
-from ..contracts.pairs import validate_pair_kernel
+from ..contracts.pairs import validate_pair_kernel, validate_los_diagnostics
 from .terrain.runner import run_paired_surface_source_cells
 from .terrain.gdal import expected_partition_metadata, partition_metadata_matches
 from .terrain.cleanup import combine_partitions
@@ -193,6 +193,15 @@ def scan_terrain_partitions(
     return combined.unique(["source_h3", "target_h3"], keep="first")
 
 
+def _has_unweighted_los(paths: Sequence[Path]) -> bool:
+    frame = pl.scan_parquet([str(path) for path in paths])
+    columns = frame.collect_schema().names()
+    return "joint_los_fraction" in columns and (
+        "unweighted_los_observed" not in columns
+        or bool(frame.select(pl.col("unweighted_los_observed").all()).collect().item())
+    )
+
+
 def _terrain_kernel_scan(paths: Sequence[Path], output_name: str) -> pl.LazyFrame:
     """Validate observed keys and weights before composing sparse kernels.
 
@@ -209,7 +218,25 @@ def _terrain_kernel_scan(paths: Sequence[Path], output_name: str) -> pl.LazyFram
     # Parquet reader bound file access internally.
     frame = pl.scan_parquet([str(path) for path in paths])
     validate_pair_kernel(frame, weight="weight_terrain")
+    validate_los_diagnostics(frame)
+    columns = frame.collect_schema().names()
+    observed = (
+        pl.col("unweighted_los_observed")
+        if "unweighted_los_observed" in columns
+        else pl.lit("joint_los_fraction" in columns)
+    )
+    los = (
+        pl.when(observed).then(pl.col("joint_los_fraction")).otherwise(None)
+        if "joint_los_fraction" in columns
+        else pl.lit(None, dtype=pl.Float32)
+    )
     return frame.select(
+        los.cast(pl.Float32).alias(
+            "bare_los_fraction" if output_name == "weight_terrain" else "canopy_los_fraction"
+        ),
+        pl.lit(True).alias(
+            "__bare_observed" if output_name == "weight_terrain" else "__canopy_observed"
+        ),
         pl.col("source_h3").cast(pl.Utf8),
         pl.col("target_h3").cast(pl.Utf8),
         pl.col("weight_terrain").cast(pl.Float32).alias(output_name),
@@ -262,6 +289,22 @@ def compose_dual_surface_artifacts(
             validate="1:1",
         )
         .with_columns(
+            pl.when(pl.col("__bare_observed").is_null())
+            .then(
+                pl.when(pl.lit(_has_unweighted_los(bare_earth_partition_paths)))
+                .then(0.0)
+                .otherwise(None)
+            )
+            .otherwise(pl.col("bare_los_fraction"))
+            .alias("bare_los_fraction"),
+            pl.when(pl.col("__canopy_observed").is_null())
+            .then(
+                pl.when(pl.lit(_has_unweighted_los(canopy_partition_paths)))
+                .then(0.0)
+                .otherwise(None)
+            )
+            .otherwise(pl.col("canopy_los_fraction"))
+            .alias("canopy_los_fraction"),
             pl.col("weight_terrain").fill_null(0.0).clip(0.0, 1.0),
             pl.col("weight_canopy_los_raw").fill_null(0.0).clip(0.0, 1.0),
         )
@@ -320,6 +363,12 @@ def compose_dual_surface_artifacts(
     metrics = (
         persisted.select(
             pl.len().alias("pair_count"),
+            (pl.col("canopy_los_fraction") > pl.col("bare_los_fraction") + 1e-6)
+            .sum()
+            .alias("unweighted_canopy_exceeds_bare_pair_count"),
+            ((pl.col("weight_canopy_los_raw") - pl.col("weight_terrain")) > 1e-6)
+            .sum()
+            .alias("substantial_canopy_excess_pair_count"),
             (pl.col("weight_terrain") > 0.0).sum().alias("bare_earth_visible_pair_count"),
             (pl.col("weight_canopy_los") > 0.0).sum().alias("canopy_visible_pair_count"),
             (pl.col("weight_canopy_los_raw") > pl.col("weight_terrain"))

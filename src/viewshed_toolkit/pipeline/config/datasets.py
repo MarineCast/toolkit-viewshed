@@ -19,6 +19,7 @@ class DatasetConfig(BaseModel):
     enabled: bool = True
     resolution_m: int = Field(gt=0)
     version: str
+    source_year: int | None = Field(default=None, ge=1900, le=2200)
     endpoint: str | None = None
     assets: tuple[str, ...] = ()
     checksums: tuple[str, ...] = ()

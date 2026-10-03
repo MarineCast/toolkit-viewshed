@@ -515,8 +515,11 @@ def apply_curvature_correction_to_dem_da(
 
 
 def _coord_start_index(full_values: np.ndarray, first_window_value: float) -> int:
-    matches = np.where(np.isclose(full_values, first_window_value))[0]
-    if len(matches) == 0:
+    full_values = np.asarray(full_values, dtype=np.float64)
+    spacing = float(np.min(np.abs(np.diff(full_values)))) if len(full_values) > 1 else 1.0
+    tolerance = max(spacing * 1e-7, np.finfo(np.float64).eps * 8)
+    matches = np.where(np.isclose(full_values, first_window_value, rtol=0, atol=tolerance))[0]
+    if len(matches) != 1:
         raise ValueError("Window coordinates do not align with the full DEM grid.")
     return int(matches[0])
 
@@ -526,10 +529,15 @@ def window_offsets_in_full_grid(*, window_da, full_da) -> tuple[int, int]:
     full_y = np.asarray(full_da["y"].values)
     win_x = np.asarray(window_da["x"].values)
     win_y = np.asarray(window_da["y"].values)
-    return (
-        _coord_start_index(full_y, win_y[0]),
-        _coord_start_index(full_x, win_x[0]),
-    )
+    offsets = (_coord_start_index(full_y, win_y[0]), _coord_start_index(full_x, win_x[0]))
+    for full, window, start in ((full_y, win_y, offsets[0]), (full_x, win_x, offsets[1])):
+        spacing = float(np.min(np.abs(np.diff(full)))) if len(full) > 1 else 1.0
+        expected = full[start : start + len(window)]
+        if len(expected) != len(window) or not np.allclose(
+            expected, window, rtol=0, atol=spacing * 1e-7
+        ):
+            raise ValueError("Window coordinates do not align with the full DEM grid.")
+    return offsets
 
 
 def mask_visible_window_to_max_distance(

@@ -38,7 +38,9 @@ def metadata_sidecars_for(path: Path) -> set[Path]:
 
 
 def _known_final_preserve_set(paths: FinalArtifactPaths) -> set[Path]:
-    preserve: set[Path] = set()
+    preserve: set[Path] = {
+        (paths.land_static_weights.parent / "viewshed-generation.json").resolve()
+    }
     for path in paths.all_final_paths().values():
         preserve.add(path.resolve())
         preserve.update(candidate.resolve() for candidate in metadata_sidecars_for(path))
