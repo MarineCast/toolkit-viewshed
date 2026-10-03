@@ -8,7 +8,7 @@ Start with **Observer area A** and **Water area B**, already selected on the rea
 These are modeled areas in the central San Juan Islands. Follow the seven questions in order,
 then explore other areas. No coordinates or map identifiers are needed.
 
-<div class="coverage-badge">Real-data example · 100 m model · 2020 tree heights · {{missing_canopy}} of mapped land pixels lack tree-height data in the buffered input grid. Missing heights use a zero-height fallback. This fraction is about inputs, not affected pairs. Scores describe modeled viewing support, not sighting probability.</div>
+<div class="coverage-badge">Real-data example · {{analysis_resolution}} m model · {{canopy_year}} tree heights · {{missing_canopy}} of mapped land pixels lack tree-height data in the buffered input grid. Missing heights use a zero-height fallback. This fraction is about inputs, not affected pairs. Scores describe modeled viewing support, not sighting probability.</div>
 
 <section class="lesson" id="lesson-inputs" markdown="1">
 
@@ -27,17 +27,17 @@ not evidence of bare ground. Sightings do not enter this calculation.
 
 <details markdown="1"><summary>Reveal ground elevation</summary>
 
-![Real ground elevation in metres on the prepared 100 m grid, displayed every fourth pixel; pink marks unavailable heights](assets/examples/san-juan/previews/ground.svg){ loading=lazy }
+![Real ground elevation in metres on the prepared {{analysis_resolution}} m grid, displayed every fourth pixel; pink marks unavailable heights](assets/examples/san-juan/previews/ground.svg){ loading=lazy }
 
-USGS elevation was acquired at 30 m and prepared at 100 m. The preview samples every fourth pixel.
+USGS elevation was acquired at {{dem_native}} m and prepared at {{analysis_resolution}} m. The preview samples every fourth pixel.
 
 </details>
 <details markdown="1"><summary>Reveal tree height and missing data</summary>
 
-![Real 2020 canopy height above ground in metres; pink shows missing values](assets/examples/san-juan/previews/canopy_height.svg){ loading=lazy }
+![Real {{canopy_year}} canopy height above ground in metres; pink shows missing values](assets/examples/san-juan/previews/canopy_height.svg){ loading=lazy }
 
-ETH 2020 canopy was acquired at 10 m and resampled by maximum height to the 100 m model grid.
-The preview shows 400 m display sampling; it does not add detail to the model.
+ETH {{canopy_year}} canopy was acquired at {{canopy_native}} m and resampled by maximum height to the {{analysis_resolution}} m model grid.
+The preview shows {{display_resolution}} m display sampling; it does not add detail to the model.
 
 </details>
 </div>
@@ -45,7 +45,7 @@ The preview shows 400 m display sampling; it does not add detail to the model.
 <p class="takeaway">Real mapped inputs and modeling assumptions determine the result; sightings are not an input.</p>
 <details markdown="1"><summary>Technical details: inputs and support</summary>
 
-Ground and canopy share a projected EPSG:32610 analysis grid. Land/water boundaries use generalized
+Ground and canopy share a projected {{analysis_crs}} analysis grid. Land/water boundaries use generalized
 Natural Earth 1:10m land. Missing ground is an opaque barrier; missing canopy has zero obstruction.
 The [bundle manifest](assets/examples/san-juan/manifest.json) records source checksums, licenses,
 resolution, observer/target heights, curvature and the full configuration assumptions.
@@ -71,11 +71,11 @@ positions and water pixels, so an open or blocked profile alone cannot establish
 
 {{table_samples}}
 
-Land observers use 1–3 deterministic samples per active land area. Water support uses raster
+Land observers use {{sample_min}}–{{sample_max}} deterministic samples per active land area. Water support uses raster
 water pixels with a geometric water-area denominator. Water-source calculations use a separate
 sample design and opaque-land mask. Profiles sample the real prepared ground and the production
-observer-specific canopy surface at 50 m intervals; the underlying model is 100 m. These are
-explanatory profiles, not GDAL engine diagnostics. Observer clearance is 100 m in this example.
+observer-specific canopy surface at up to {{profile_step}} m intervals; the underlying model is {{analysis_resolution}} m. These are
+explanatory profiles, not GDAL engine diagnostics. Observer clearance is {{clearance}} m in this example.
 
 </details>
 </section>
@@ -99,8 +99,8 @@ compare the two real examples.
 
 {{table_distance}}
 
-The configured logistic rule has a 2.5 km midpoint, a 0.8 km slope scale, normalization at zero
-and a 5 km hard cutoff. `weight_distance` is a centroid diagnostic. `weight_terrain` already
+The configured logistic rule has a {{midpoint}} km midpoint, a {{slope}} km slope scale, normalization at zero
+and a {{cutoff}} km hard cutoff. `weight_distance` is a centroid diagnostic. `weight_terrain` already
 includes attenuation integrated over the observer/target population.
 
 </details>
@@ -142,7 +142,7 @@ landscape. For A → B, unweighted ground support is **{{line_of_sight_support}}
 support is **{{physical_viewability}}**. The retained integrated support is **{{vegetation_attenuation}}**.
 These measure different things because distance weights individual paths. Reveal the nearly
 unaffected comparison too. Missing canopy uses zero height, and the modeled observer has a
-100 m clearance assumption; both can influence the contrast.
+{{clearance}} m clearance assumption; both can influence the contrast.
 
 <figure>{{figure_canopy}}<figcaption>Matched bare/canopy populations with directly calculated unweighted support. The vegetation ratio is distance weighted.</figcaption></figure>
 
@@ -222,8 +222,8 @@ JavaScript disabled and when third-party services are unavailable.
 
 ## Practical assumptions
 
-This is a coarse, bounded example: 100 m terrain, generalized shoreline, sampled positions and
-5 km candidates. Tree heights represent 2020. Missing heights are a fallback, not observed
+This is a coarse, bounded example: {{analysis_resolution}} m terrain, generalized shoreline, sampled positions and
+{{cutoff}} km candidates. Tree heights represent {{canopy_year}}. Missing heights are a fallback, not observed
 absence of trees. Land samples do not establish public access. Water roles use an opaque-land
 model and separate sampling. Results are static physical support, separate from detection,
 effort, animal presence and sightings. Sampling, resolution and clearance sensitivity has not
@@ -240,7 +240,7 @@ The [scientific methodology](scientific-methodology.md) defines populations and 
 Scientific generation: `{{generation}}`.
 
 Sources: [USGS 3DEP](https://www.usgs.gov/3d-elevation-program),
-[ETH 2020 canopy, Lang et al.](https://langnico.github.io/globalcanopyheight/)
+[ETH {{canopy_year}} canopy, Lang et al.](https://langnico.github.io/globalcanopyheight/)
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), and
 [Natural Earth](https://www.naturalearthdata.com/about/terms-of-use/) (public domain).
 Clipping, resampling and modeled LOS create these derived examples; raw datasets are not included.

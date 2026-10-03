@@ -213,7 +213,24 @@ def render(output):
                 svg += (
                     text(568, 60, "Mapped inputs, modeled areas", "title")
                     + text(568, 117, "Ground: height above the elevation datum")
-                    + text(568, 159, "Trees: height above ground (2020)")
+                    + text(
+                        568,
+                        159,
+                        "Trees: height above ground ("
+                        + "/".join(
+                            sorted(
+                                {
+                                    (
+                                        str(record["source_year"])
+                                        if record["source_year"] is not None
+                                        else "unknown"
+                                    )
+                                    for record in manifest["source_vintages"]
+                                }
+                            )
+                        )
+                        + ")",
+                    )
                     + text(568, 201, "Ground + trees: obstruction surface")
                     + text(568, 256, "Dots: actual modeled source samples")
                     + text(568, 303, "Outlines: observer area A and water area B")
@@ -292,7 +309,7 @@ def render(output):
         svg += text(35, 35, label + f" · fixed display range 0\u2013{maximum}", "title") + text(
             35,
             466,
-            "100 m modeled grid · 400 m display sampling · pink: unavailable input · no interpolation",
+            f"{grid['analysis_resolution_m']} m modeled grid · {grid['display_resolution_m']} m display sampling · pink: unavailable input · no interpolation",
             "small",
         )
         (preview / f"{field}.svg").write_text(svg + "</svg>\n")

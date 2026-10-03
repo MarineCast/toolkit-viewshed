@@ -50,7 +50,10 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 context.route("**/*", route)
                 page = context.new_page()
                 errors = []
-                page.on("pageerror", lambda error, errors=errors: errors.append(str(error)))
+                page.on(
+                    "pageerror",
+                    lambda error, errors=errors: errors.append(f"{error.message}\n{error.stack}"),
+                )
                 response = page.goto(origin + "/examples/")
                 root = page.locator('#viewshed-explorer[data-ready="true"]')
                 root.wait_for(timeout=20000)
@@ -118,7 +121,18 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 control("source_type", "land")
                 for factor in ["bare", "canopy", "distance", "integrated", "retention", "combined"]:
                     control("factor", factor)
-                    assert_pair()
+                    record = assert_pair()
+                    field = {
+                        "bare": "line_of_sight_support",
+                        "canopy": "physical_viewability",
+                        "distance": "distance_detection_weight",
+                        "integrated": "distance_weighted_los_support",
+                        "retention": "vegetation_attenuation",
+                        "combined": "distance_adjusted_viewability",
+                    }[factor]
+                    display = page.locator(".vs-status").inner_text().rsplit(": ", 1)[1]
+                    value = float(display.split()[0])
+                    assert abs(value - record[field]) <= max(0.000500001, record[field] * 0.005)
                 neutral = next(
                     p
                     for p in pairs.values()
@@ -169,6 +183,7 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 page.locator('[data-action="canopy-layer"]').click()
                 assert state()["layer"] == "canopy_height"
                 page.locator('[data-action="reset"]').click()
+                page.screenshot(path=str(output / f"{engine}-desktop-light-viewport.png"))
                 page.screenshot(path=str(output / f"{engine}-desktop-light.png"), full_page=True)
                 page.get_by_title("Switch to dark mode", exact=True).click()
                 assert page.locator("body").get_attribute("data-md-color-scheme") == "slate"
@@ -177,6 +192,9 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 page.locator(".vs-explorer-card").scroll_into_view_if_needed()
                 assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
                 page.screenshot(path=str(output / f"{engine}-mobile-dark.png"))
+                page.get_by_title("Switch to light mode", exact=True).click()
+                page.screenshot(path=str(output / f"{engine}-mobile-light.png"))
+                page.get_by_title("Switch to dark mode", exact=True).click()
                 page.locator('[data-action="next"]').click()
                 assert state()["lesson"] == "samples"
                 page.evaluate("document.documentElement.style.zoom='200%'")
@@ -187,6 +205,7 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 page.set_viewport_size({"width": 1440, "height": 1000})
                 page.get_by_role("link", name="Overview", exact=True).first.click()
                 page.wait_for_url(origin + "/")
+                page.get_by_role("heading", name="Documentation", exact=True).wait_for()
                 page.go_back()
                 page.wait_for_url(lambda url: url.split("#")[0] == origin + "/examples/")
                 root.wait_for(timeout=20000)

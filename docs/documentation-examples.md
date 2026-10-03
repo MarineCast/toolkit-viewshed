@@ -67,3 +67,7 @@ lesson, pair parity, role/factor changes, missing results, keyboard selection, r
 mobile layout, 200% zoom, navigation back and JavaScript-disabled reading. Screenshots and a
 machine-readable receipt are saved in the output directory. These are automated checks,
 not a human novice review.
+
+The [executed validation and limitations report](reports/real-data-examples-validation.md)
+records full model/export operations, both supported Python checks, browser evidence and the
+remaining sensitivity and human-review gaps.

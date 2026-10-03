@@ -12,6 +12,9 @@ BUNDLE = ROOT / "docs/assets/examples/san-juan"
 
 
 def on_pre_build(config):
+    config.extra["source_revision"] = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+    ).strip()
     subprocess.run(
         [
             sys.executable,
@@ -38,8 +41,9 @@ def on_page_markdown(markdown, page, config, files):
         ):
             kind = "tree" if resolved.is_dir() else "blob"
             path = quote(str(resolved.relative_to(ROOT)))
+            revision = config.extra["source_revision"]
             return (
-                f"](https://github.com/MarineCast/toolkit-viewshed/{kind}/main/{path}"
+                f"](https://github.com/MarineCast/toolkit-viewshed/{kind}/{revision}/{path}"
                 + ("#" + anchor if anchor else "")
                 + ")"
             )
@@ -54,6 +58,29 @@ def on_page_markdown(markdown, page, config, files):
     default = pairs[manifest["defaults"]["pair_id"]]
     lessons = json.loads((BUNDLE / "lessons.json").read_text())
     coverage = json.loads((BUNDLE / "coverage.json").read_text())
+    grid = json.loads((BUNDLE / "inputs/display-grid.json").read_text())
+    profiles = json.loads((BUNDLE / "profiles.json").read_text())
+    assumptions = manifest["assumptions"]
+    years = {record["source_year"] for record in manifest["source_vintages"]}
+    parameters = {
+        "analysis_resolution": manifest["analysis_resolution_m"],
+        "dem_native": manifest["native_resolution_m"]["dem"],
+        "canopy_native": manifest["native_resolution_m"]["canopy"],
+        "canopy_year": (
+            next(iter(years)) if len(years) == 1 and None not in years else "unknown or mixed"
+        ),
+        "display_resolution": grid["display_resolution_m"],
+        "profile_step": profiles[0]["display_step_m"],
+        "sample_min": assumptions["h3"]["min_sample_points_per_source_cell"],
+        "sample_max": assumptions["h3"]["sample_points_per_source_cell"],
+        "clearance": assumptions["viewshed"]["observer_canopy_clearance_radius_m"],
+        "midpoint": assumptions["distance_weight"]["logistic_d50_km"],
+        "slope": assumptions["distance_weight"]["logistic_slope_km"],
+        "cutoff": assumptions["distance_weight"]["hard_cutoff_km"],
+        "analysis_crs": manifest["crs"],
+    }
+    for key, value in parameters.items():
+        markdown = markdown.replace("{{" + key + "}}", str(value))
 
     def fmt(value):
         if value is None:

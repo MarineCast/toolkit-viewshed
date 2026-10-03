@@ -653,13 +653,14 @@
         node(
           "figcaption",
           {},
-          "Gray: ground; teal: ground + trees; dark: explanatory ray. Real 100 m surfaces sampled for display at 50 m. This path does not establish the cell aggregate.",
+          `Gray: ground; teal: ground + trees; dark: explanatory ray. Real ${profile.analysis_resolution_m} m surfaces sampled for display at up to ${profile.display_step_m} m. This path does not establish the cell aggregate.`,
         ),
       );
       return wrap;
     }
     function distanceView(pair) {
       const figure = node("figure", { class: "vs-profile" });
+      const extent = Math.max(...data["distance-curve.json"].map((p) => p.distance_km));
       const svg = node(
         "svg",
         {
@@ -678,7 +679,7 @@
             points: data["distance-curve.json"]
               .map(
                 (p) =>
-                  `${40 + (p.distance_km / 5) * 650},${235 - p.weight * 190}`,
+                  `${40 + (p.distance_km / extent) * 650},${235 - p.weight * 190}`,
               )
               .join(" "),
             fill: "none",
@@ -694,7 +695,7 @@
           node(
             "circle",
             {
-              cx: 40 + (pair.distance_km / 5) * 650,
+              cx: 40 + (pair.distance_km / extent) * 650,
               cy: 235 - pair.distance_detection_weight * 190,
               r: "6",
               fill: "#16889e",
@@ -713,7 +714,7 @@
         node(
           "text",
           { x: "40", y: "275", class: "vs-plot-text" },
-          "Centroid distance 0–5 km",
+          `Centroid distance 0–${extent} km`,
           true,
         ),
       );
@@ -780,7 +781,7 @@
       else {
         const img = node("img", {
           src: new URL(`previews/${state.layer}.svg`, url),
-          alt: "Real prepared height grid; pink marks missing inputs; 400 m display sampling",
+          alt: "Real prepared height grid with declared display decimation; pink marks missing inputs",
           loading: "lazy",
         });
         visual.append(img);
