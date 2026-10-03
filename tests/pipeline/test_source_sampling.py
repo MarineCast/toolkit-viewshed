@@ -450,7 +450,7 @@ def test_partition_metadata_tracks_sampling_contract_and_model_hash() -> None:
     assert expected["source_sampling_projected_crs"] == "EPSG:32610"
     assert expected["source_sampling_candidate_grid_side"] == 32
     assert expected["source_sampling_max_design_points"] == 10
-    assert expected["terrain_partition_schema_version"] == "adaptive_active_fraction_v8"
+    assert expected["terrain_partition_schema_version"] == "direct_unweighted_los_v9"
     assert _metadata_values_match(expected, expected)
     assert same_model_new_full_hash == expected
 

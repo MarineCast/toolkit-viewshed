@@ -81,6 +81,7 @@ from ...config import (
     timer,
 )
 from ...contracts.artifacts import final_artifact_paths
+from ...contracts.pairs import validate_los_diagnostics
 from ...prepare.area import domains, sample_points_in_source_geometry
 from ...prepare.area.geometry import (
     h3_geometry_artifact_path,
@@ -262,7 +263,7 @@ def expected_partition_metadata(app: AppConfig) -> dict[str, Any]:
         "target_water_area_equal_area_crs": str(
             water_viewing.get("target_area_equal_area_crs", "EPSG:6933")
         ),
-        "terrain_partition_schema_version": "adaptive_active_fraction_v8",
+        "terrain_partition_schema_version": "direct_unweighted_los_v9",
         "source_type": _source_type_for_app(app),
     }
     if _source_type_for_app(app) == "land":
@@ -1109,7 +1110,7 @@ def _water_terrain_prefilter_for_source(
         # Terrain partitions are sparse. Zero-support pairs are represented by
         # absence and restored as zero when the authoritative lookup is joined
         # with the water factor table.
-        if float(kernel["terrain_visibility_support"]) > 0.0:
+        if float(kernel["joint_los_fraction"]) > 0.0:
             open_rows.append(
                 {
                     "source_h3_cell": str(source_cell),
@@ -1171,6 +1172,9 @@ def _terrain_weight_partition_for_storage(
     GDAL.
     """
 
+    validate_los_diagnostics(
+        pl.from_pandas(pd.DataFrame(df.drop(columns="geometry", errors="ignore"))).lazy()
+    )
     index = getattr(df, "index", None)
     terrain_support = df.get(
         "distance_weighted_los_fraction",
@@ -1245,8 +1249,10 @@ def _terrain_weight_partition_for_storage(
         out["aggregation_method"] = df["aggregation_method"].fillna("dem_raster").astype("string")
     else:
         out["aggregation_method"] = pd.Series("dem_raster", index=out.index, dtype="string")
+    out["unweighted_los_observed"] = bool("joint_los_fraction" in df.columns or df.empty)
     ordered = [
         "source_h3",
+        "unweighted_los_observed",
         "target_h3",
         "terrain_binary",
         "aggregation_method",
@@ -1284,6 +1290,8 @@ def _terrain_weight_partition_for_storage(
             continue
         if col == "terrain_binary":
             out[col] = pd.Series(False, index=out.index, dtype="bool")
+        elif col == "joint_los_fraction":
+            out[col] = pd.Series(np.nan, index=out.index, dtype="float32")
         elif col in integer_columns:
             out[col] = pd.Series(0, index=out.index, dtype="int64")
         else:

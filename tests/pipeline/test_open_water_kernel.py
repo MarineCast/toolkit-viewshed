@@ -300,7 +300,8 @@ def test_water_prefilter_uses_normalized_denominator_and_keeps_sparse_zeroes(
             target_cell: {
                 "terrain_visibility_support": np.float32(
                     0.0 if target_cell in {"zero", "blocked"} else 0.25
-                )
+                ),
+                "joint_los_fraction": np.float32(0.0 if target_cell == "blocked" else 0.5),
             }
             for target_cell in target_cells
         }
@@ -314,7 +315,7 @@ def test_water_prefilter_uses_normalized_denominator_and_keeps_sparse_zeroes(
         source_points_wgs84=[Point(0.0, 0.0)],
     )
 
-    assert rows["target_h3_cell"].to_list() == ["positive"]
+    assert rows["target_h3_cell"].to_list() == ["positive", "zero"]
     assert dem_targets == set()
     assert observed_areas == {"blocked": 300.0, "positive": 200.0, "zero": 100.0}
 
@@ -324,7 +325,7 @@ def test_water_prefilter_uses_normalized_denominator_and_keeps_sparse_zeroes(
         source_points_wgs84=[Point(0.0, 0.0)],
         target_distances_override={"zero": 20.0, "positive": 2.0, "blocked": 3.0},
     )
-    assert cached_rows["target_h3_cell"].to_list() == ["positive"]
+    assert cached_rows["target_h3_cell"].to_list() == ["positive", "zero"]
     assert cached_dem_targets == set()
     assert observed_areas == {"blocked": 300.0, "positive": 200.0, "zero": 100.0}
 

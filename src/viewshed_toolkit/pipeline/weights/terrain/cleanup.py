@@ -29,7 +29,7 @@ from ...config import (
     BatchContext,
     metadata_sidecar_candidates,
 )
-from ...contracts.pairs import validate_pair_kernel
+from ...contracts.pairs import validate_pair_kernel, validate_los_diagnostics
 from ...contracts.artifacts import (
     FINAL_SCHEMAS,
     final_artifact_paths,
@@ -134,6 +134,7 @@ def combine_partitions(
 
     def _normalized_lookup_pairs(path: Path) -> pl.LazyFrame:
         lf = pl.scan_parquet(str(path))
+        validate_los_diagnostics(lf)
         cols = _lazy_schema_names(lf)
         required = {"source_h3", "target_h3", "distance_km", "source_type"}
         missing = sorted(required - cols)
@@ -153,6 +154,7 @@ def combine_partitions(
 
     def _normalized_visible_terrain(parts_: list[Path]) -> pl.LazyFrame:
         lf = pl.scan_parquet([str(path) for path in parts_])
+        validate_los_diagnostics(lf)
         cols = _lazy_schema_names(lf)
 
         if {"source_h3", "target_h3", "weight_terrain"}.issubset(cols):
@@ -177,6 +179,7 @@ def combine_partitions(
 
     def _normalized_clear_sky(parts_: list[Path]) -> pl.LazyFrame:
         lf = pl.scan_parquet([str(path) for path in parts_])
+        validate_los_diagnostics(lf)
         cols = _lazy_schema_names(lf)
         if not {"source_h3", "target_h3", "weight_terrain"}.issubset(cols):
             raise ValueError(
@@ -185,7 +188,7 @@ def combine_partitions(
 
         def f32_col(name: str, default: float = 0.0) -> pl.Expr:
             if name in cols:
-                return pl.col(name).cast(pl.Float32, strict=False).fill_null(default)
+                return pl.col(name).cast(pl.Float32, strict=True)
             return pl.lit(default, dtype=pl.Float32)
 
         def i64_col(name: str, default: int = 0) -> pl.Expr:
@@ -211,7 +214,7 @@ def combine_partitions(
         joint_los = (
             f32_col("joint_los_fraction")
             if "joint_los_fraction" in cols
-            else f32_col("weight_terrain")
+            else pl.lit(None, dtype=pl.Float32)
         )
         distance_weighted_los = (
             f32_col("distance_weighted_los_fraction")
@@ -229,14 +232,18 @@ def combine_partitions(
             if "aggregation_method" in cols
             else pl.lit("dem_raster", dtype=pl.Utf8)
         )
-        unweighted_los_observed = "joint_los_fraction" in cols
+        unweighted_los_observed = (
+            pl.col("unweighted_los_observed")
+            if "unweighted_los_observed" in cols
+            else pl.lit("joint_los_fraction" in cols)
+        )
         return (
             lf.select(
                 pl.col("source_h3").cast(pl.Utf8),
                 pl.col("target_h3").cast(pl.Utf8),
                 terrain_binary.alias("terrain_binary"),
                 aggregation_method.alias("aggregation_method"),
-                pl.lit(unweighted_los_observed, dtype=pl.Boolean).alias("unweighted_los_observed"),
+                unweighted_los_observed.alias("unweighted_los_observed"),
                 any_observer_support.clip(0.0, 1.0).alias("any_observer_support_fraction"),
                 union_visible_target.clip(0.0, 1.0).alias("union_visible_target_fraction"),
                 joint_los.clip(0.0, 1.0).alias("joint_los_fraction"),
@@ -360,9 +367,7 @@ def combine_partitions(
     clear_tmp.unlink(missing_ok=True)
     try:
         sparse = _normalized_clear_sky(parts)
-        observed_los = (
-            "joint_los_fraction" in pl.scan_parquet([str(p) for p in parts]).collect_schema()
-        )
+        observed_los = bool(sparse.select(pl.col("unweighted_los_observed").all()).collect().item())
         diagnostics = lookup_pairs.join(
             sparse, on=["source_h3", "target_h3"], how="left", validate="1:1"
         )
@@ -379,7 +384,11 @@ def combine_partitions(
                     else "no_visible_support" if dtype == pl.String else 0
                 )
             )
-            defaults.append(pl.col(name).fill_null(default))
+            defaults.append(
+                pl.col(name).fill_null(default)
+                if name != "joint_los_fraction" or observed_los
+                else pl.col(name)
+            )
         diagnostics.with_columns(defaults).select(
             FINAL_SCHEMAS["source_target_clear_sky"]
         ).sink_parquet(str(clear_tmp))

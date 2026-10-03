@@ -580,7 +580,29 @@ def build_observation_geometry_lazy(
             require_complete=True,
         ),
     }
+    if source_type == "land" and paths.dual_surface_factors.exists():
+        canopy_frame = pl.scan_parquet(paths.dual_surface_factors)
+        if "canopy_los_fraction" in canopy_frame.collect_schema().names():
+            clear_sky = clear_sky.join(
+                canopy_frame.select(*keys, "canopy_los_fraction"),
+                on=keys,
+                how="left",
+                validate="1:1",
+            )
+        else:
+            clear_sky = clear_sky.with_columns(
+                pl.lit(None, dtype=pl.Float32).alias("canopy_los_fraction")
+            )
+    else:
+        clear_sky = clear_sky.with_columns(
+            (
+                pl.col("joint_los_fraction")
+                if source_type == "water"
+                else pl.lit(None, dtype=pl.Float32)
+            ).alias("canopy_los_fraction")
+        )
     unweighted_available = pl.col("unweighted_los_observed")
+    physical_available = unweighted_available & pl.col("canopy_los_fraction").is_not_null()
     vegetation_applicable = pl.col("vegetation_status") == VEGETATION_STATUS_COMPUTED
     vegetation_factor = (
         pl.col("weight_vegetation") if source_type == "land" else pl.lit(1.0, dtype=pl.Float32)
@@ -604,8 +626,8 @@ def build_observation_geometry_lazy(
             .otherwise(pl.lit(None, dtype=pl.Float32))
             .cast(pl.Float32)
             .alias("vegetation_attenuation"),
-            pl.when(unweighted_available)
-            .then(pl.col("joint_los_fraction") * vegetation_factor)
+            pl.when(physical_available)
+            .then(pl.col("canopy_los_fraction"))
             .otherwise(pl.lit(None, dtype=pl.Float32))
             .cast(pl.Float32)
             .alias("physical_viewability"),
@@ -625,11 +647,15 @@ def build_observation_geometry_lazy(
     )
     composed = composed.with_columns(
         (
-            _controlled_weight_state("vegetation_attenuation", available=vegetation_applicable)
+            pl.when(pl.col("distance_weighted_los_fraction") == 0)
+            .then(pl.lit("no_baseline_support_neutral"))
+            .otherwise(
+                _controlled_weight_state("vegetation_attenuation", available=vegetation_applicable)
+            )
             if source_type == "land"
             else pl.lit("not_applicable")
         ).alias("vegetation_state"),
-        _controlled_weight_state("physical_viewability", available=unweighted_available).alias(
+        _controlled_weight_state("physical_viewability", available=physical_available).alias(
             "physical_viewability_state"
         ),
         _controlled_weight_state("distance_adjusted_viewability").alias(
@@ -675,6 +701,8 @@ def materialize_observation_geometry_output(
             else paths.ocean_source_target_clear_sky
         ),
     }
+    if source_type == "land" and paths.dual_surface_factors.exists():
+        input_paths["dual_surface_factors"] = paths.dual_surface_factors
     input_checksums = {name: checksum_path(path) for name, path in input_paths.items()}
     config_hash = static_scientific_config_hash(raw)
     generation_id = f"{source_type}_{stable_config_hash({'config': config_hash, 'inputs': input_checksums}, length=20)}"
