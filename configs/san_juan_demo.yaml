@@ -5,7 +5,7 @@ provenance:
   producer: human.viewshed
 run:
   name: san_juan_demo
-  version: san_juan_demo_r7_100m_v1
+  version: san_juan_demo_r7_100m_v2
   overwrite: false
   skip_existing_partitions: true
   combine_final_parquet: false
@@ -26,6 +26,7 @@ datasets:
     provider: local
     resolution_m: 10
     version: ETH_2020_window_v1
+    source_year: 2020
     assets:
     - data/san_juan_demo/raw/chm/N48W126.tif
     - data/san_juan_demo/raw/chm/N48W123.tif
