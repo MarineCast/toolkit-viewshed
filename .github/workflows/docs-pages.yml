@@ -1,0 +1,59 @@
+name: Publish documentation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - .github/workflows/docs-pages.yml
+      - docs/**
+      - mkdocs.yml
+      - requirements-docs.txt
+      - scripts/docs_hooks.py
+      - scripts/build_documentation_examples.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+      - name: Install documentation dependencies
+        run: python -m pip install -r requirements-docs.txt
+      - name: Validate committed San Juan bundle
+        run: python -S scripts/build_documentation_examples.py --check --output docs/assets/examples/san-juan
+      - name: Build documentation
+        run: python -m mkdocs build --strict
+      - name: Upload Pages site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Deploy documentation
+        id: deployment
+        uses: actions/deploy-pages@v4

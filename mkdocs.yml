@@ -1,4 +1,5 @@
 site_name: Viewshed Toolkit
+site_url: https://marinecast.github.io/toolkit-viewshed/
 site_description: Static physical viewing support over land and water
 repo_url: https://github.com/MarineCast/toolkit-viewshed
 edit_uri: blob/main/docs/
