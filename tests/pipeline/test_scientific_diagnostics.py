@@ -1,6 +1,5 @@
 """Independent tiny numerical oracles for directly measured LOS diagnostics."""
 
-
 import numpy as np
 import pandas as pd
 import polars as pl
