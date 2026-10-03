@@ -1,0 +1,2 @@
+# Isolated documentation/browser QA; no geospatial dependencies.
+playwright==1.63.0

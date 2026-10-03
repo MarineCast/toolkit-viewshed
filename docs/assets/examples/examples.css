@@ -22,3 +22,34 @@
 
 .viewshed-examples figure {width:100%;max-width:none;text-align:left}
 @media(max-width:600px){.viewshed-examples figure{overflow-x:auto}.viewshed-examples figure svg{min-width:720px}.viewshed-examples figcaption{position:sticky;left:0;min-width:0}}
+.viewshed-examples .vs-explorer-card {border:1px solid var(--example-border);border-radius:8px;padding:1rem;margin-top:1rem;scroll-margin-top:5rem}
+.viewshed-examples .vs-controls {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem}
+.viewshed-examples .vs-controls label {display:flex;flex-direction:column;font-size:.88em;gap:.3rem}
+.viewshed-examples .vs-controls select {width:100%;max-width:100%}
+.viewshed-examples .vs-actions,.viewshed-examples .vs-lesson-actions {display:flex;gap:.5rem;flex-wrap:wrap;margin:.8rem 0}
+.viewshed-examples .vs-status {display:block;padding:.7rem;border-left:3px solid #198196;font-weight:600;font-size:.9em}
+.viewshed-examples .vs-map {display:block;width:100%;height:auto;overflow:hidden;border:1px solid var(--example-border);margin-top:.7rem}
+.viewshed-examples .vs-sea {fill:#eaf3f6}
+.viewshed-examples .vs-land {fill:#e9eae3;stroke:#465e67;stroke-width:1}
+.viewshed-examples .vs-cell {stroke:#647d86;stroke-width:.7;cursor:pointer}
+.viewshed-examples .vs-cell:focus {outline:none;stroke:#101d27;stroke-width:4}
+.viewshed-examples .vs-observer {fill:#192c37;stroke:#fff;stroke-width:1.4}
+.viewshed-examples .vs-legend {font-size:.8em;line-height:1.5}
+.viewshed-examples .vs-visual img {width:100%;height:auto}
+.viewshed-examples .vs-summary {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem;font-size:.88em}
+.viewshed-examples .vs-summary p {border:1px solid var(--example-border);padding:.6rem;border-radius:5px;margin:.3rem 0}
+.viewshed-examples .vs-plot-text {font-size:16px;fill:var(--md-default-fg-color)}
+.viewshed-examples .vs-profile {width:100%;margin:.6rem 0}
+.viewshed-examples .vs-static-fallback {display:none}
+.viewshed-examples .vs-explorer-card pre {max-height:24rem;overflow:auto;font-size:.75em}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-sea {fill:#263842}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-land {fill:#3d4545;stroke:#b6c5c9}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-source-outline {stroke:#d2e4e9}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-target-outline {stroke:#59bfd8}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-cell:focus {stroke:#f0f5f6}
+@media(max-width:600px){.viewshed-examples .vs-controls,.viewshed-examples .vs-summary{grid-template-columns:1fr}.viewshed-examples .vs-explorer-card{padding:.7rem}.viewshed-examples .vs-profile svg{min-width:500px}.viewshed-examples .vs-actions button{flex:1 1 42%}}
+.viewshed-examples [hidden] {display:none!important}
+.viewshed-examples .vs-cell[aria-pressed="true"] {stroke:#0a2734;stroke-width:3}
+.viewshed-examples .vs-advanced summary {cursor:pointer}
+#lesson-inputs .vs-explorer-card > h3,
+#lesson-inputs .vs-explorer-card > .coverage-badge {display:none}

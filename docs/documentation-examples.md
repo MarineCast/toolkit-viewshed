@@ -49,3 +49,21 @@ Schindler and Wegner (2023). These derivatives include clipping, reprojection, m
 resampling and modeled LOS. Raw regional assets are not committed. No new third-party imagery is
 redistributed. Offline checks validate bundled integrity and scientific assertions; they do not
 independently reproduce the real model from raw data.
+
+## Browser checks
+
+The explorer filters the committed pair records. It never recalculates LOS in the browser.
+Install documentation and browser tools separately from the geospatial runtime:
+
+```bash
+python -m pip install -r requirements-docs.txt -r requirements-browser.txt
+python -m playwright install chromium webkit
+python -m mkdocs build --strict
+python scripts/check_documentation_browser.py --engines chromium webkit --output work/browser-qa
+```
+
+The checker serves the built site locally and blocks third-party requests. It checks every
+lesson, pair parity, role/factor changes, missing results, keyboard selection, reset, theme,
+mobile layout, 200% zoom, navigation back and JavaScript-disabled reading. Screenshots and a
+machine-readable receipt are saved in the output directory. These are automated checks,
+not a human novice review.
