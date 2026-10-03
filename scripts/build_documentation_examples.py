@@ -142,6 +142,7 @@ def _export(config, output):
 
     from viewshed_toolkit import load_app_config
     from viewshed_toolkit.pipeline.config import apply_source_type_policy
+    from viewshed_toolkit.pipeline.config.distance import load_distance_weight_config
     from viewshed_toolkit.pipeline.config.paths import bbox_from_config
     from viewshed_toolkit.pipeline.contracts.artifacts import final_artifact_paths
     from viewshed_toolkit.pipeline.contracts.generation import (
@@ -156,6 +157,7 @@ def _export(config, output):
     from viewshed_toolkit.pipeline.prepare.area.sampling import prepare_source_samples
     from viewshed_toolkit.pipeline.prepare.elevation.canopy import isolate_observer_canopy_surface
     from viewshed_toolkit.pipeline.weights.canopy_visibility import make_terrain_variant_app
+    from viewshed_toolkit.pipeline.weights.distance.compute import distance_weight_values
     from viewshed_toolkit.pipeline.weights.terrain.gdal import (
         _load_terrain_source_cells,
         _projected_water_target_samples_for_app,
@@ -611,6 +613,18 @@ def _export(config, output):
         "target-support.geojson": {"type": "FeatureCollection", "features": support},
         "coverage.json": receipt["input_coverage"],
         "profiles.json": profiles,
+        "distance-curve.json": [
+            {"distance_km": float(d), "weight": float(w)}
+            for d, w in zip(
+                np.linspace(0, 5, 101),
+                distance_weight_values(
+                    np.linspace(0, 5, 101),
+                    load_distance_weight_config(app.raw_config),
+                    max_distance_km=5,
+                ),
+                strict=True,
+            )
+        ],
         "lessons.json": lessons,
         "indexes.json": indexes,
         "inputs/display-grid.json": grid,
@@ -703,6 +717,18 @@ def _export(config, output):
             for p in sorted(output.rglob("*"))
             if p.is_file() and p.name != "manifest.json"
         },
+    }
+    manifest["bundle_id"] = digest(
+        encode({key: manifest[key] for key in ("export_contract", "generation_id", "files")})
+    )
+    write(output / "manifest.json", manifest)
+    from render_documentation_examples import render
+
+    render(output)
+    manifest["files"] = {
+        str(p.relative_to(output)): digest(p.read_bytes())
+        for p in sorted(output.rglob("*"))
+        if p.is_file() and p.name != "manifest.json"
     }
     manifest["bundle_id"] = digest(
         encode({key: manifest[key] for key in ("export_contract", "generation_id", "files")})

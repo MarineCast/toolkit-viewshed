@@ -198,3 +198,8 @@ formatting/import-order debt remains outside those incremental gates.
 
 Code is Apache-2.0 licensed. Source data and derived products retain their original terms and
 are not redistributed with the package.
+
+The [guided Examples page](docs/examples.md) explains the real San Juan model without coding.
+For a local documentation preview, install `requirements-docs.txt`, run `python -m mkdocs serve`,
+and open the Examples navigation item. The [reproduction guide](docs/documentation-examples.md)
+separates model execution, scientific export and offline validation.

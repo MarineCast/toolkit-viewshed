@@ -52,3 +52,6 @@ data/salish_sea/
 
 # Bounded documentation demo inputs and intermediates
 data/san_juan_demo/
+
+# Local documentation build
+/site/

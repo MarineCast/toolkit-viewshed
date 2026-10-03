@@ -1,0 +1,61 @@
+site_name: Viewshed Toolkit
+site_description: Static physical viewing support over land and water
+repo_url: https://github.com/MarineCast/toolkit-viewshed
+edit_uri: blob/main/docs/
+use_directory_urls: true
+theme:
+  name: material
+  font: false
+  palette:
+    - scheme: default
+      primary: blue grey
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue grey
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+nav:
+  - Overview: index.md
+  - Examples: examples.md
+  - Use the toolkit:
+      - API: api.md
+      - Pipelines: pipelines.md
+      - Configuration: configuration.md
+      - Acquisition: data-acquisition.md
+      - Distance products: distance-products.md
+  - Science:
+      - Methodology: scientific-methodology.md
+      - Performance: performance.md
+      - Salish Sea case study: salish-sea-case-study.md
+  - Development:
+      - Architecture: architecture.md
+      - Reproduce the example: documentation-examples.md
+not_in_nav: |
+  reports/**
+  methodology.md
+  san-juan-demo.md
+validation:
+  nav:
+    omitted_files: warn
+  links:
+    not_found: warn
+    unrecognized_links: warn
+    anchors: warn
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+extra_css:
+  - assets/examples/examples.css
+hooks:
+  - scripts/docs_hooks.py

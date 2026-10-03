@@ -2,7 +2,7 @@
 
 Viewshed Toolkit exposes a small supported API over a staged geospatial pipeline.
 
-- [Project overview](../README.md): installation, repository layout, case-study scope, and checks.
+- [Project overview](https://github.com/MarineCast/toolkit-viewshed#readme): installation, repository layout, case-study scope, and checks.
 - [Supported API](api.md): stable imports, stage-level imports, and execution behavior.
 - [Methodology](methodology.md): scientific model, artifact grain, and interpretation limits.
 - [San Juan Islands demo](san-juan-demo.md): small real-data example, reproducible commands,
@@ -31,3 +31,5 @@ primitives live under the private `viewshed_toolkit._internal` namespace.
 - [Performance](performance.md)
 - [Salish Sea case study](salish-sea-case-study.md)
 - [Refactor validation](reports/productionization.md)
+
+- [Examples: understand what can be seen](examples.md): a real San Juan walkthrough, no coding required.
