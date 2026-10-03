@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import polars as pl
 import pyarrow.parquet as pq
@@ -27,7 +27,9 @@ def byte_checksum(path: Path) -> str:
 
 
 def parquet_metadata(path: Path) -> dict[str, str]:
-    metadata = pq.read_metadata(path).metadata  # type: ignore[no-untyped-call]
+    # PyArrow's callable annotations differ across supported dependency versions.
+    read_metadata = cast(Callable[[Path], Any], pq.read_metadata)
+    metadata = read_metadata(path).metadata
     return {
         k.decode(): v.decode() for k, v in (metadata or {}).items() if k.startswith(b"orcacast.")
     }
