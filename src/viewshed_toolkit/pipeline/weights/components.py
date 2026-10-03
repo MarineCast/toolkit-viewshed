@@ -22,6 +22,7 @@ from ..contracts.components import (
     validate_pairs,
     write_component,
 )
+from ..contracts.pairs import validate_los_diagnostics
 
 
 def _distance_component_contract(app: AppConfig, source_type: str) -> dict[str, Any]:
@@ -161,10 +162,9 @@ def _surface_component(
     ]
     sparse = pl.read_parquet(paths)
     validate_pairs(sparse, ("weight_terrain",))
+    validate_los_diagnostics(sparse.lazy())
     if sparse.join(lookup.select(PAIR_KEYS), on=PAIR_KEYS, how="anti").height:
-        # Existing runners may retain targets outside the candidate cutoff; prune
-        # explicitly after validating uniqueness, preserving the authoritative universe.
-        sparse = sparse.join(lookup.select(PAIR_KEYS), on=PAIR_KEYS, how="semi")
+        raise ValueError("LOS partition contains pairs outside its canonical evaluated universe")
     # Absence in successfully completed sparse partitions means observed no LOS.
     # Nulls within an observed row are rejected above and never converted to zero.
     columns = [*PAIR_KEYS, "weight_terrain"]
@@ -202,7 +202,7 @@ def _surface_contract(app: AppConfig, source_type: str, canopy: bool = False) ->
         inputs.update(dem=app.paths.regional_dem_path, sources=app.paths.land_h3_path)
         if canopy:
             inputs.update(chm=app.paths.canopy_height_path, dem_weights=component_path(app, "dem"))
-    contract = provenance(app, f"{'chm' if canopy else 'dem'}_component_v1", inputs)
+    contract = provenance(app, f"{'chm' if canopy else 'dem'}_component_v2_direct_los", inputs)
     contract["source_type"] = source_type
     return contract
 
@@ -239,7 +239,11 @@ def build_chm_component(
         canopy, _ = _surface_component(app, "canopy", source_type="land", overwrite=overwrite)
         validate_pairs(bare, ("weight_terrain",))
         frame = bare.join(
-            canopy.select(*PAIR_KEYS, pl.col("weight_terrain").alias("canopy_los_raw")),
+            canopy.select(
+                *PAIR_KEYS,
+                pl.col("weight_terrain").alias("canopy_los_raw"),
+                pl.col("terrain_visibility").alias("canopy_visibility"),
+            ),
             on=PAIR_KEYS,
             validate="1:1",
         )
@@ -252,7 +256,7 @@ def build_chm_component(
             .alias("weight_vegetation"),
             pl.when(pl.col("weight_terrain") > 0)
             .then(pl.lit("computed"))
-            .otherwise(pl.lit("terrain_blocked_neutral"))
+            .otherwise(pl.lit("no_baseline_support_neutral"))
             .alias("canopy_support"),
         ).drop("weight_terrain")
     return write_component(frame, path, contract, weights=("weight_vegetation",))

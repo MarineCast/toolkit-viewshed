@@ -1,0 +1,56 @@
+{
+  "run_at_utc": "2026-10-03T14:44:07.590645+00:00",
+  "results": [
+    {
+      "engine": "chromium",
+      "status": "passed",
+      "checks": [
+        "seven lessons",
+        "forward/inverse parity",
+        "mixed land/water role",
+        "six factors",
+        "neutral and not-applicable states",
+        "tiny positive",
+        "noncandidate",
+        "keyboard map",
+        "reset/back/next",
+        "real input layers",
+        "dark theme",
+        "mobile",
+        "200 percent zoom",
+        "instant navigation back",
+        "third-party blocked",
+        "JavaScript disabled"
+      ],
+      "initial_payload_bytes": 2716238,
+      "blocked_third_party_requests": 2,
+      "page_errors": []
+    },
+    {
+      "engine": "webkit",
+      "status": "passed",
+      "checks": [
+        "seven lessons",
+        "forward/inverse parity",
+        "mixed land/water role",
+        "six factors",
+        "neutral and not-applicable states",
+        "tiny positive",
+        "noncandidate",
+        "keyboard map",
+        "reset/back/next",
+        "real input layers",
+        "dark theme",
+        "mobile",
+        "200 percent zoom",
+        "instant navigation back",
+        "third-party blocked",
+        "JavaScript disabled"
+      ],
+      "initial_payload_bytes": 2716238,
+      "blocked_third_party_requests": 2,
+      "page_errors": []
+    }
+  ],
+  "evidence": "automated browser checks and screenshots; not a human usability study"
+}

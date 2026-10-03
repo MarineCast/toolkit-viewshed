@@ -3,6 +3,9 @@ on: [push, pull_request]
 jobs:
   geospatial:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.14']
     defaults:
       run:
         shell: bash -el {0}
@@ -11,6 +14,7 @@ jobs:
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-file: .github/environment.yml
+          create-args: python=${{ matrix.python }}
           cache-environment: true
       - run: python -m pip install -e '.[dev,analysis]'
       - run: viewshed-toolkit --help
@@ -18,3 +22,25 @@ jobs:
       - run: ruff check src tests
       - run: python scripts/check_components.py
       - run: python -m compileall -q src
+      - run: python scripts/check_installed_wheel.py
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements-docs.txt -r requirements-browser.txt
+      - run: python -S scripts/build_documentation_examples.py --check --output docs/assets/examples/san-juan
+      - run: node --check docs/assets/examples/explorer.js
+      - run: python -m mkdocs build --strict
+      - run: python -m playwright install --with-deps chromium webkit
+      - run: python scripts/check_documentation_browser.py --engines chromium webkit --output work/browser-qa
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: documentation-browser-evidence
+          path: work/browser-qa/

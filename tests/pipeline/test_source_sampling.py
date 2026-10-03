@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import geopandas as gpd
@@ -436,7 +437,11 @@ def _fake_app(config_hash: str, sampling_mode: str = "active_fraction") -> Simpl
     )
 
 
-def test_partition_metadata_tracks_sampling_contract_and_model_hash() -> None:
+def test_partition_metadata_tracks_sampling_contract_and_model_hash(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "viewshed_toolkit.pipeline.weights.terrain.gdal._area_lookup_path_for_app",
+        lambda app: Path(__file__),
+    )
     expected = expected_partition_metadata(_fake_app("hash-a"))
     same_model_new_full_hash = expected_partition_metadata(_fake_app("hash-b"))
 
@@ -450,7 +455,7 @@ def test_partition_metadata_tracks_sampling_contract_and_model_hash() -> None:
     assert expected["source_sampling_projected_crs"] == "EPSG:32610"
     assert expected["source_sampling_candidate_grid_side"] == 32
     assert expected["source_sampling_max_design_points"] == 10
-    assert expected["terrain_partition_schema_version"] == "adaptive_active_fraction_v8"
+    assert expected["terrain_partition_schema_version"] == "direct_unweighted_los_v9"
     assert _metadata_values_match(expected, expected)
     assert same_model_new_full_hash == expected
 

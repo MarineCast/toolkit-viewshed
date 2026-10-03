@@ -88,6 +88,7 @@ from ...config import (
 )
 from ...config.distance import load_distance_runtime
 from ...contracts.artifacts import FINAL_SCHEMAS
+from ...contracts.pairs import validate_los_diagnostics
 from ...prepare.area.geometry import (
     ensure_h3_geometry_artifact,
     load_h3_geometry_frame,
@@ -625,6 +626,7 @@ def add_terrain_visibility_support(
     """Add terrain-support diagnostics while retaining the grouped table in Polars."""
 
     out = df
+    validate_los_diagnostics(out.lazy())
     schema = set(out.columns)
 
     def numeric_expr(column: str, default: float = 0.0) -> pl.Expr:

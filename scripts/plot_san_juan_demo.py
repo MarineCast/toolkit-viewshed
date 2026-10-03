@@ -130,7 +130,7 @@ def plot_demo(app) -> tuple[Path, dict]:
             fontsize=16,
         )
         fig.supxlabel(
-            "Stars: source cells. Pale blue: zero. Uncolored water: no candidate pair. Hatched: terrain blocked, canopy factor neutral 1.\nMissing canopy uses a zero-height fallback; see the coverage audit. These are not detection probabilities.\nSources: USGS 3DEP; ETH 2020 canopy (Lang et al., CC BY 4.0); Natural Earth (public domain).",
+            "Stars: source cells. Pale blue: zero. Uncolored water: no candidate pair. Hatched: no baseline support; canopy factor is not interpretable.\nMissing canopy uses a zero-height fallback; see the coverage audit. These are not detection probabilities.\nSources: USGS 3DEP; ETH 2020 canopy (Lang et al., CC BY 4.0); Natural Earth (public domain).",
             fontsize=9,
         )
         output = resolve_path("docs/assets/san-juan-demo.png")

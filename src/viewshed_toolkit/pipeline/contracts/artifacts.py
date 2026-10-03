@@ -28,6 +28,8 @@ FINAL_SCHEMAS: dict[str, tuple[str, ...]] = {
         "target_h3",
         "weight_terrain",
         "weight_canopy_los_raw",
+        "bare_los_fraction",
+        "canopy_los_fraction",
         "weight_canopy_los",
         "source_type",
         "weight_vegetation",
@@ -103,7 +105,7 @@ FINAL_SCHEMAS: dict[str, tuple[str, ...]] = {
 }
 
 STATIC_ARTIFACT_SCHEMA_VERSION = "viewshed_static_pair_v2"
-OBSERVATION_GEOMETRY_SCHEMA_VERSION = "3.0.0-research"
+OBSERVATION_GEOMETRY_SCHEMA_VERSION = "4.0.0-research"
 
 
 @dataclass(frozen=True)
