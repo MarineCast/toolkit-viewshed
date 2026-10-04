@@ -261,3 +261,13 @@ def test_checker_rejects_rehashed_curve_calculation(tmp_path):
     reseal(output)
     with pytest.raises(ValueError, match="curve values"):
         EXPORT.check(output)
+
+
+@pytest.mark.parametrize(
+    "field, value", [("provider", "local"), ("version", "ETH_other"), ("source_year", 2019)]
+)
+def test_attributed_exporter_rejects_unsupported_provider_evidence(field, value):
+    evidence = EXPORT.read(BUNDLE / "production-evidence.json")["acquisition"]
+    evidence["dem" if field == "provider" else "chm"]["dataset"][field] = value
+    with pytest.raises(ValueError, match="unsupported provider evidence"):
+        EXPORT.validate_provider_preset(evidence)

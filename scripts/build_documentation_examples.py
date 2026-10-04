@@ -115,6 +115,17 @@ def curve_weight(distance, contract):
     return min(1, max(0, raw))
 
 
+def validate_provider_preset(acquisitions):
+    if (
+        acquisitions["dem"]["dataset"]["provider"] != "usgs_3dep"
+        or acquisitions["chm"]["dataset"]["version"] != "ETH_2020_window_v1"
+        or acquisitions["chm"]["dataset"]["source_year"] != 2020
+    ):
+        raise ValueError(
+            "Teaching exporter supports the attributed USGS / ETH_2020_window_v1 preset only; unsupported provider evidence"
+        )
+
+
 def validate_semantics(manifest, output):
     semantic = {key: manifest[key] for key in SEMANTIC_FIELDS}
     if semantic != manifest.get("semantic_contract"):
@@ -174,6 +185,7 @@ def validate_semantics(manifest, output):
     ):
         raise ValueError("Source metadata contradicts retained acquisition evidence")
     acquisition = evidence["acquisition"]
+    validate_provider_preset(acquisition)
     for label, name in (("dem", "dem"), ("canopy", "chm")):
         if manifest["native_resolution_m"][label] != acquisition[name]["dataset"]["resolution_m"]:
             raise ValueError("Native resolution contradicts provider acquisition request")
@@ -421,14 +433,7 @@ def _export(config, output):
         name: read(paths.final_output_dir / f"components/inputs/{name}/download.json")
         for name in ("dem", "chm")
     }
-    # This bounded example carries provider-specific redistribution attribution.
-    if (
-        acquisitions["dem"]["dataset"]["provider"] != "usgs_3dep"
-        or acquisitions["chm"]["dataset"]["version"] != "ETH_2020_window_v1"
-    ):
-        raise ValueError(
-            "Teaching exporter supports the attributed USGS / ETH_2020_window_v1 preset only"
-        )
+    validate_provider_preset(acquisitions)
     outputs = materialize_static_viewability_outputs(config)
     receipts = {
         "land": outputs["land_static_weights"],

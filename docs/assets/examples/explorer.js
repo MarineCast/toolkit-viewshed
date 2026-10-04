@@ -139,6 +139,7 @@
     if (m.source_vintages.some(v => !e.acquisition.chm.source_byte_sha256.includes(v.observed_sha256) || v.source_year !== e.acquisition.chm.dataset.source_year || v.source_version !== e.acquisition.chm.dataset.version)) throw new Error("Acquisition vintage mismatch");
     for (const [label, key] of [["ground", "regional_dem_path"], ["canopy", "canopy_height_path"]])
       if (m.prepared_input_sha256[label] !== land.input_byte_sha256[key]) throw new Error("Prepared surface identity mismatch");
+    if (e.acquisition.dem.dataset.provider !== "usgs_3dep" || e.acquisition.chm.dataset.version !== "ETH_2020_window_v1" || e.acquisition.chm.dataset.source_year !== 2020) throw new Error("Unsupported provider attribution preset");
     const columns = data["pairs.json"].columns, rows = data["pairs.json"].rows;
     const scope = m.candidate_universe, science = g.producer_evidence.land.terrain.settings;
     const bbox = science.region.bbox_wgs84;
