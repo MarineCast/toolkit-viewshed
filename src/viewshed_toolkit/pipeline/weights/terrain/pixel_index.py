@@ -405,9 +405,3 @@ def canonical_pixel_h3_window(
         code_grid_path=artifact.code_grid_path,
         lookup_path=artifact.lookup_path,
     )
-
-
-def clear_canonical_pixel_h3_cache() -> None:
-    """Release process-local artifact metadata without deleting the grid."""
-
-    _ARTIFACT_CACHE.clear()

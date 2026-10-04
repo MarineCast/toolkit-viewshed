@@ -1161,6 +1161,37 @@ def _input_coverage(paths: FinalArtifactPaths) -> dict[str, object]:
     return coverage
 
 
+def validate_static_viewability_outputs(config_path: str | Path) -> None:
+    """Read-only validation of retained paired outputs and current available inputs."""
+    raw, _config_dir = load_yaml(config_path)
+    paths = final_artifact_paths(config_path)
+    outputs = {"land": paths.land_static_weights, "water": paths.water_static_weights}
+    all_outputs = {
+        **outputs,
+        "land_observation_geometry": paths.land_observation_geometry,
+        "water_observation_geometry": paths.water_observation_geometry,
+    }
+    receipt = paths.land_static_weights.parent / "viewshed-generation.json"
+    for source_type, output_path in outputs.items():
+        validate_static_artifact_metadata(
+            output_path,
+            raw=raw,
+            source_type=source_type,
+        )
+    previous = validate_generation_receipt(
+        receipt, all_outputs, config_hash=static_scientific_config_hash(raw)
+    )
+    records = previous.get("prepared_sources", {})
+    if not isinstance(records, dict):
+        raise ValueError("Invalid prepared source lineage")
+    for name, current in _prepared_source_records(config_path).items():
+        if records.get(name) != current:
+            raise ValueError(f"Prepared source inputs changed: {name}; rebuild the model")
+    audit = paths.final_output_dir / "components" / "analysis" / "input-coverage.json"
+    if audit.exists() and _input_coverage(paths) != previous["input_coverage"]:
+        raise ValueError("Input coverage audit changed; rebuild the model")
+
+
 def materialize_static_viewability_outputs(
     config_path: str | Path, *, overwrite: bool = False
 ) -> dict[str, Path]:
@@ -1190,24 +1221,7 @@ def materialize_static_viewability_outputs(
                 "Static viewshed output set is incomplete and cannot be reused: "
                 f"{existing}. Rebuild with overwrite=True."
             )
-        for source_type, output_path in outputs.items():
-            validate_static_artifact_metadata(
-                output_path,
-                raw=raw,
-                source_type=source_type,
-            )
-        previous = validate_generation_receipt(
-            receipt, all_outputs, config_hash=static_scientific_config_hash(raw)
-        )
-        records = previous.get("prepared_sources", {})
-        if not isinstance(records, dict):
-            raise ValueError("Invalid prepared source lineage")
-        for name, current in _prepared_source_records(config_path).items():
-            if records.get(name) != current:
-                raise ValueError(f"Prepared source inputs changed: {name}; rebuild the model")
-        audit = paths.final_output_dir / "components" / "analysis" / "input-coverage.json"
-        if audit.exists() and _input_coverage(paths) != previous["input_coverage"]:
-            raise ValueError("Input coverage audit changed; rebuild the model")
+        validate_static_viewability_outputs(config_path)
         return {
             "land_static_weights": outputs["land"],
             "water_static_weights": outputs["water"],

@@ -561,9 +561,7 @@ def surface_transmission_array(
     return out
 
 
-def write_weight_rasters(
-    cfg: VegetationWeightsConfig, *, skip_existing: bool = False
-) -> dict[str, Path]:
+def write_weight_rasters(cfg: VegetationWeightsConfig) -> dict[str, Path]:
     chm_obs_path = ensure_chm_obstruction(cfg)
     assert_weight_rasters_aligned(
         [cfg.inputs["dem"], cfg.inputs["chm"], chm_obs_path, cfg.inputs["landcover"]]

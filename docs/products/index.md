@@ -31,3 +31,5 @@ per-role outputs do not promise a combined atomic generation pointer.
 
 [Compare workflow contracts](../pipelines.md#workflow-contracts) before choosing paths or retention
 rules. For a concrete result you can inspect now, open the [San Juan example](../examples.md).
+
+Use the [artifact dictionary](artifacts.md) for columns, units, state meanings and validation evidence.

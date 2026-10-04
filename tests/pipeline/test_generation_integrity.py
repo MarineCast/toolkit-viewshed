@@ -535,3 +535,55 @@ def test_view_score_report_failure_preserves_previous_publication(generation, mo
     with pytest.raises(RuntimeError, match="report failure"):
         view_score.finalize_view_score(config, source_type=role, overwrite=True)
     assert all(path.read_bytes() == b"previous durable publication" for path in outputs)
+
+
+@pytest.mark.parametrize("mutation", ["none", "pruned", "dem", "receipt", "sidecar"])
+def test_process_resume_validates_retained_generation(generation, monkeypatch, mutation):
+    from viewshed_toolkit._internal.artifacts import RunManifest
+    from viewshed_toolkit.pipeline.api import service
+    from viewshed_toolkit.pipeline.contracts import workflow_identity_from_config
+    from viewshed_toolkit.pipeline.contracts.artifacts import final_artifact_paths
+    from viewshed_toolkit.pipeline.contracts.cleanup import metadata_sidecars_for
+
+    config, outputs = generation
+    app = load_app_config(config)
+    request = service.ViewshedRequest(config, run_id="resume", resume=True)
+    expected = tuple(path.resolve() for path in outputs.values())
+    # Map creation is irrelevant to this regression; real model generation and
+    # production generation validation remain in use.
+    monkeypatch.setattr(service, "_expected_stage_outputs", lambda request: expected)
+    monkeypatch.setattr(
+        service, "execute_stages", lambda *args: pytest.fail("Unexpected execution")
+    )
+    identity = workflow_identity_from_config(app.raw_config)
+    refs = service._artifact_refs(expected, request=request, config_hash=app.config_hash)
+    paths = final_artifact_paths(config)
+    manifest = app.paths.map_dir / f"h3r{paths.h3_resolution}" / "manifests/resume.json"
+    RunManifest(
+        run_id=request.run_id,
+        workflow=identity.workflow,
+        config_hash=app.config_hash,
+        resolved_config=app.raw_config,
+        outputs=refs,
+        stage_signature=service._stage_signature(
+            app.config_hash, request.stages, identity=identity
+        ),
+    ).write(manifest)
+    if mutation == "pruned":
+        app.paths.regional_dem_path.unlink()
+        app.paths.canopy_height_path.unlink()
+        paths.terrain_weights.unlink()
+    elif mutation == "dem":
+        app.paths.regional_dem_path.write_bytes(b"changed prepared DEM")
+    elif mutation == "receipt":
+        (paths.land_static_weights.parent / "viewshed-generation.json").unlink()
+    elif mutation == "sidecar":
+        for sidecar in metadata_sidecars_for(paths.land_static_weights):
+            sidecar.unlink(missing_ok=True)
+    before = manifest.read_bytes()
+    if mutation in {"none", "pruned"}:
+        assert service.process(request).skipped
+    else:
+        with pytest.raises(ValueError):
+            service.process(request)
+    assert manifest.read_bytes() == before

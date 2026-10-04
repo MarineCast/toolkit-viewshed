@@ -39,12 +39,11 @@ source role is explicit (`--source-type land|water`). Map geometry/data are embe
 still uses Folium's external Leaflet/CDN JavaScript. Maps provide no current weather or observer
 activity interpretation.
 
-For water, the implementation behind the individual `build-dem-weights` stage uses mapped land as
-an opaque blocker and does not need DEM or CHM rasters. The shared `build` dependency graph is
-broader: a water `build dem|chm|all` still resolves its registered raster acquisition/preparation
-dependencies. Use exact `stage` commands with already prepared geometry and lookup artifacts when
-a raster-free water run is intended. The `build distance` target remains raster-independent for
-both source roles.
+For water, `build dem|chm|all --source-type water` resolves geometry and pair dependencies,
+but omits DEM/CHM download and preparation: mapped land is the opaque blocker and canopy is
+explicitly not applicable. Explicit `stage download-dem` or `stage download-chm` still does the
+requested acquisition. Land builds retain their raster dependencies. The `build distance` target
+remains raster-independent for both roles.
 
 `build-distance-weights` is a compatibility stage: it applies the integrated model's existing
 default profile to `build-pair-distances` and adapts that product to the established component
@@ -68,7 +67,7 @@ This is rollback safety within one writer, not an atomic generation pointer for 
 Water partition identity and in-process geometry caches include land/water geometry and lookup
 content, so changes at the same path invalidate reuse.
 
-Run manifests are per source type and run ID. Reusing an ID with a different configuration or
+Component run manifests are per source type and run ID. Reusing an ID with a different configuration or
 plan fails before stages execute unless `--overwrite` is explicit. An interrupted run records
 completed outputs and a failed stage; it does not claim completion. Concurrent writers to the
 same logical run are not supported; use separate run/output directories.
@@ -114,3 +113,24 @@ those stages before replacement.
 Terrain workers consume one expected-metadata snapshot per stage. A new run recomputes content
 identity; the stage checks fresh identity before combination/publication and rejects changed
 inputs. This is a measured reduction in hash calls, not a measured regional speedup.
+
+## Manifest-backed paired orchestration
+
+`process(ViewshedRequest(...))` validates a simple run ID and checks manifest identity **before**
+execution or cleanup. Reusing an ID with different configuration/stages requires `force=True`;
+`resume=True` alone is not overwrite authorization. A same-identity invocation may refresh its
+manifest after normal cache-aware execution.
+
+Complete-run resume validates the durable generation receipt, typed products, metadata and
+currently available input identity before accepting the stored output checksums. Permitted
+input pruning remains supported by the retained receipt. Invalid generation evidence fails
+without running stages or replacing the manifest. Partial runs have no equivalent complete
+generation contract, so resume re-enters stage-specific checks instead of skipping from a
+manifest checksum alone. No stage formulas or paired cleanup rules change.
+
+Partial-run manifests use schema version 3 to record canonical local input checksums, including
+missing inputs and shapefile sidecars. Partial resume rejects changed/missing input identity and
+historical manifests without that inventory before entering stage checks. It does not silently
+certify older cached outputs. Rebuild affected producers with their explicit overwrite controls
+or a fresh workspace, then create a new manifest. Remote source freshness is not certified by
+local checksum validation.

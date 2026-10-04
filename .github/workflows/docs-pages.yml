@@ -6,6 +6,9 @@ on:
   pull_request:
     paths:
       - .github/workflows/docs-pages.yml
+      - .github/workflows/docs-quality.yml
+      - requirements-browser.txt
+      - scripts/check_documentation_browser.py
       - docs/**
       - mkdocs.yml
       - requirements-docs.txt
@@ -22,24 +25,9 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-          cache: pip
-          cache-dependency-path: requirements-docs.txt
-      - name: Install documentation dependencies
-        run: python -m pip install -r requirements-docs.txt
-      - name: Validate committed San Juan bundle
-        run: python -S scripts/build_documentation_examples.py --check --output docs/assets/examples/san-juan
-      - name: Build documentation
-        run: python -m mkdocs build --strict
-      - name: Upload Pages site
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: site
+    uses: ./.github/workflows/docs-quality.yml
+    with:
+      upload-pages: true
 
   deploy:
     if: github.ref == 'refs/heads/main'

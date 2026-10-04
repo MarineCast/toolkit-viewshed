@@ -39,12 +39,15 @@ nav:
   - Get started:
       - Installation: getting-started/installation.md
       - Quick start: getting-started/quick-start.md
+      - Troubleshooting: getting-started/troubleshooting.md
   - Understand:
       - Viewing concepts: understand/index.md
       - Method overview: methodology.md
       - Data sources: data-acquisition.md
+      - San Juan dataset card: dataset-card.md
   - Products:
       - Product guide: products/index.md
+      - Artifact dictionary: products/artifacts.md
       - Distance products: distance-products.md
   - Examples:
       - Choose a workflow: workflows/index.md
@@ -64,6 +67,7 @@ nav:
       - Architecture: architecture.md
       - Reproduce the example: documentation-examples.md
       - Validation evidence: development/evidence.md
+      - Acceptance and releases: development/acceptance.md
 not_in_nav: |
   reports/**
 validation:

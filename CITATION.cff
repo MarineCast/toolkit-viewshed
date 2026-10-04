@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "Please cite Viewshed Toolkit and the exact release or commit used, alongside its source datasets."
+title: "Viewshed Toolkit"
+type: software
+authors:
+  - family-names: Stevenson
+    given-names: Tyler
+repository-code: "https://github.com/MarineCast/toolkit-viewshed"
+url: "https://marinecast.github.io/toolkit-viewshed/"
+license: Apache-2.0
+abstract: "Static physical viewing support from coastal land and water, with explicit terrain, canopy, distance and artifact provenance contracts."

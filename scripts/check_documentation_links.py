@@ -12,6 +12,8 @@ def check(root=ROOT):
     references = 0
     for path in [
         root / "README.md",
+        root / "CONTRIBUTING.md",
+        root / "CHANGELOG.md",
         *sorted((root / "docs").rglob("*.md")),
         root / "docs/assets/san-juan-demo.html",
     ]:

@@ -60,6 +60,12 @@ def _validate_distance_product(args: argparse.Namespace) -> None:
 def register_commands(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser], *, default_config: str
 ) -> None:
+    doctor = subparsers.add_parser(
+        "doctor", help="Read-only environment and local-input readiness checks."
+    )
+    doctor.add_argument("--config", default=default_config)
+    doctor.add_argument("--workflow", choices=("land", "water", "distance"), default="land")
+    doctor.set_defaults(func=_doctor)
     region = subparsers.add_parser(
         "validate-region", help="Read-only canonical Salish Sea readiness and output validation."
     )
@@ -134,5 +140,14 @@ def _validate_region(args: argparse.Namespace) -> None:
 
     report = validate_region(args.config, require_outputs=not args.inputs_only)
     print(json.dumps(report, indent=2))
+    if not report["valid"]:
+        raise SystemExit(1)
+
+
+def _doctor(args: argparse.Namespace) -> None:
+    from ..api.preflight import inspect_environment
+
+    report = inspect_environment(args.config, workflow=args.workflow)
+    print(json.dumps(report, indent=2, sort_keys=True))
     if not report["valid"]:
         raise SystemExit(1)

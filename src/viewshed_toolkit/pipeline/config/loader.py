@@ -1,45 +1,8 @@
-"""Load and normalize viewshed pipeline configuration.
+"""Load and normalize configuration, runtime settings, and stage telemetry.
 
-Scientific and operational role
--------------------------------
-This module supports the viewshed scientific stages without owning their core
-model equations. It provides common configuration dataclasses, raster helpers,
-H3 geometry helpers, batching logic, water-domain preparation, input validation,
-Parquet utilities, and final lookup materialization.
-
-The central scientific contract supported here is:
-
-    viewability_weight =
-        weight_terrain * weight_vegetation
-
-The terrain kernel integrates observer-to-pixel distance decay. The centroid
-distance artifact is retained as a diagnostic; final composition multiplies
-the terrain kernel only by conditional vegetation attenuation.
-
-Current compact factor-table schemas are:
-
-    terrain:    source_h3, target_h3, weight_terrain
-    distance:   source_h3, target_h3, distance_km, weight_distance
-    vegetation: source_h3, target_h3, source_type, weight_vegetation,
-                vegetation_status
-
-Major responsibilities
-----------------------
-- Load the viewshed YAML config into typed runtime dataclasses.
-- Prepare projected DEM and batch-level water masks for terrain viewsheds.
-- Generate source-cell sample points and source-cell batches.
-- Validate required DEM, water, and land/source H3 inputs.
-- Stream/merge Parquet partition outputs without eager full Pandas reads where
-  possible.
-- Compose final terrain, distance, vegetation, and viewability lookup tables.
-- Optionally clean intermediate partitions after safe finalization.
-
-Boundary of responsibility
---------------------------
-Do not add terrain line-of-sight math, distance-decay models, or vegetation
-attenuation science here. Those belong in `weights.terrain`, `weights.distance`,
-and `weights.vegetation`. This module should remain shared plumbing plus the
-explicit final composition step.
+Configuration loading is read-only. Runtime initialization owns directory creation.
+Scientific kernels, raster preparation, batching, artifact composition and cleanup
+live in their respective pipeline owners; see ARCHITECTURE.md.
 """
 
 from __future__ import annotations

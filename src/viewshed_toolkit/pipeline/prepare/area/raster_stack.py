@@ -17,7 +17,6 @@ import numpy as np
 import rasterio
 from shapely.geometry import box
 
-from viewshed_toolkit._internal.artifacts import checksum_path
 from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
 from viewshed_toolkit._internal.geo import raster as core_raster
 from viewshed_toolkit._internal.geo.geometry import (
@@ -198,19 +197,6 @@ def _canonical_dataset_signature(path: Path) -> dict[str, Any]:
             if member.is_file()
         ],
     }
-
-
-@lru_cache(maxsize=32)
-def _checksum_for_unchanged_member(path_str: str, size: int, mtime_ns: int) -> str:
-    del size, mtime_ns
-    return checksum_path(path_str)
-
-
-def _cached_member_checksum(path: Path) -> str:
-    stat = path.stat()
-    return _checksum_for_unchanged_member(
-        str(path.resolve()), int(stat.st_size), int(stat.st_mtime_ns)
-    )
 
 
 def _canonical_contract_fingerprint(contract: dict[str, Any]) -> str:

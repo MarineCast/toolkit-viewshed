@@ -831,7 +831,6 @@ def _projected_water_target_samples_for_app(
 
 
 def _water_sample_kernel_result(
-    distances_m: np.ndarray,
     visible: np.ndarray,
     distance_weights: np.ndarray,
     *,
@@ -1002,7 +1001,6 @@ def _water_land_mask_supports_for_targets(
     results: dict[str, dict[str, Any]] = {}
     for target_cell, shape_, start, stop in target_specs:
         results[target_cell] = _water_sample_kernel_result(
-            all_distances_m[start:stop].reshape(shape_),
             all_visible[start:stop].reshape(shape_),
             all_weights[start:stop].reshape(shape_),
             target_water_area_m2=target_area_lookup.get(target_cell, 0.0),

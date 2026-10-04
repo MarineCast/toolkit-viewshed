@@ -1,5 +1,7 @@
 # Contributing and validation
 
+Start with [CONTRIBUTING](../../CONTRIBUTING.md) for the human contribution workflow,
+[change history](../../CHANGELOG.md), and [acceptance checklist](acceptance.md).
 Work from the repository root and read [AGENTS.md](../../AGENTS.md) for the local scientific,
 artifact and validation rules. Keep generated source data and model products out of routine
 documentation changes.

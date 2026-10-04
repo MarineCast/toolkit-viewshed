@@ -60,3 +60,6 @@ data/san_juan_demo/
 
 # Explicit retired demo output
 work/legacy-demo/
+
+# Local experiments and offline first-result outputs
+/work/

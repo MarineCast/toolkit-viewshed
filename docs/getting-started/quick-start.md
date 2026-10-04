@@ -1,56 +1,64 @@
-# Quick start
+# Your first result
 
-Start by reading a result, then inspect the configuration before choosing a model workflow.
+Get a small, validated distance product before acquiring regional terrain or canopy data.
+After [installation](installation.md), run from the repository root:
 
-## 1. Follow a result without running code
-
-Open the [San Juan guided example](../examples.md). Follow **Observer area A → Water area B**
-through the seven questions. Compare ground and tree-height inputs, the sampled profile and
-the pair-level values. The explorer filters stored results; it does not run LOS in the browser.
-
-## 2. Inspect the packaged configuration
-
-After [installation](installation.md), run this read-only Python example:
-
-```python
-from viewshed_toolkit import load_app_config
-from viewshed_toolkit.resources import default_config_path
-
-config = load_app_config(default_config_path())
-print(config.region.bbox_wgs84)
-print(config.config_hash)
+```bash
+python examples/offline_distance.py --output work/my-first-distance
 ```
 
-Loading a configuration does not create output directories or start acquisition. Before a run,
-review the [configuration guide](../configuration.md): region, geometry paths, providers,
-resolution, physical assumptions, and separate working and durable output directories.
+Use a **new directory**. The example refuses to overwrite one that already exists. It creates an
+invented straight coastline and calls the production geometry, pair-distance and profile APIs.
+It does not download data, require the GDAL Python bindings, or calculate terrain/canopy LOS.
+Rasterio and the package's other dependencies are still required.
 
-## 3. Choose your next operation
+## What success looks like
 
-<div class="grid cards" markdown="1">
+The final JSON prints `valid: true`, a positive `rows` count, and two absolute product paths.
+`result.json` records the same checks in your output directory:
 
--   **Reproduce the bounded example**
+| File | What it contains |
+| --- | --- |
+| `config.yaml` | Fully inspectable configuration with synthetic input/output paths |
+| `land.geojson`, `water.parquet` | Invented geometry, not observed coastline |
+| `products/components/distance/land/pair_distances.parquet` | Unique candidate pairs with centroid distances |
+| `products/components/distance/land/profiles/five-km-*.parquet` | Exponential distance weights, with checksum/provenance sidecar |
+| `result.json` | Synthetic provenance, artifact paths and successful checks |
 
-    Run the real San Juan model with compatible native tools and available source inputs, then
-    export its checked documentation derivatives.
+The example validates both products and checks `weight_distance = exp(-distance_km / 5)` for
+pairs with centroid distance at most 1 km, and zero beyond that hard cutoff. The geometry-based
+candidate universe may retain cells whose centroids fall outside the cutoff. This is a distance-only diagnostic, not physical viewability or
+detection probability. The profile's cutoff cannot exceed the pair product's modeled coverage.
 
-    [San Juan model setup](../san-juan-demo.md) · [Export and checks](../documentation-examples.md)
+Inspect the path printed as `profile`:
 
--   **Build one component**
+```python
+import polars as pl
 
-    Choose DEM, CHM or distance and its registered dependency closure. Review acquisition and
-    lifecycle effects before calling a build target.
+# Substitute the exact profile path printed by the example.
+frame = pl.read_parquet("<profile-path>")
+print(frame.select("source_h3", "target_h3", "distance_km", "weight_distance").head())
+```
 
-    [Pipeline stages](../pipelines.md) · [Python and CLI](../api.md)
+## Inspect readiness without running a model
 
--   **Reuse distance independently**
+```bash
+viewshed-toolkit doctor --config work/my-first-distance/config.yaml --workflow distance
+```
 
-    Build distances from a validated lookup, then create profiles using only the persisted
-    pair product and its sidecar.
+`doctor` checks local input presence, reports Python/native-library versions, and inspects output
+permission hints without creating directories, downloading or executing a stage. It exits 1 when
+required inputs or directory permissions are missing. It does not certify raster schemas, CRS,
+source coverage, or binary compatibility. For a prepared land run use `--workflow land`; for an
+opaque-land water run use `--workflow water`.
 
-    [Distance products](../distance-products.md)
+## Move from invented geometry to a real place
 
-</div>
+Read the [San Juan guided example](../examples.md) without installing anything. It uses committed
+real-data model results and explains ground, canopy, sampled viewpoints and modeled support.
+Then follow [reproduction](../documentation-examples.md) for a bounded real model with native GDAL
+and available source inputs. That run has different data and scientific requirements from this
+first distance result.
 
-The [workflow guide](../workflows/index.md) explains these choices. A full run is an explicit
-operation with data and output requirements, rather than part of this read-only quick start.
+[Product dictionary](../products/artifacts.md) · [Troubleshooting](troubleshooting.md) ·
+[Workflow choices](../workflows/index.md) · [Python and CLI](../api.md)

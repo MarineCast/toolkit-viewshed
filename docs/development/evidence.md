@@ -4,6 +4,11 @@ These reports retain evidence from specific changes and runs. Read their dates, 
 limitations before using them. Current behavior is defined by source/tests and the
 [scientific contracts](../scientific-methodology.md), rather than by a historical report.
 
+## Reliability and onboarding
+
+- [Reliability improvements](../reports/reliability-improvements.md): manifest/resume and acquisition
+  regressions, synthetic first result, native suite, documentation and unperformed acceptance work.
+
 ## San Juan instructional work
 
 - [Real-data example validation](../reports/real-data-examples-validation.md): model, export,

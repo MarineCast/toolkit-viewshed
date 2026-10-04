@@ -4,6 +4,8 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
+
 from ..config import AppConfig, load_app_config
 from ..config.datasets import DatasetConfig
 from ..config.paths import bbox_from_config
@@ -32,11 +34,19 @@ def download_dataset(
         if dataset != "chm" or settings.provider != "global_canopy_height" or settings.assets:
             raise ValueError("land_tiles_only requires discovered global canopy tiles")
         import geopandas as gpd
+        from pyproj import Transformer
         from shapely.geometry import box
 
         from ..prepare.vegetation.sources import eth_tile_bounds
 
-        land = gpd.read_file(app.paths.land_polygon_path, bbox=acquisition_bbox).to_crs(4326)
+        source_crs = gpd.read_file(app.paths.land_polygon_path, rows=0).crs
+        if not source_crs:
+            raise ValueError("Land geometry requires an explicit CRS for canopy tile selection")
+        west, south, east, north = acquisition_bbox
+        source_bbox = Transformer.from_crs(4326, source_crs, always_xy=True).transform_bounds(
+            west, south, east, north, densify_pts=21
+        )
+        land = gpd.read_file(app.paths.land_polygon_path, bbox=source_bbox).to_crs(4326)
         land.geometry = land.geometry.make_valid().intersection(box(*acquisition_bbox))
         selected = []
         for asset in assets:
@@ -63,12 +73,16 @@ def download_dataset(
                     else (2020 if settings.provider == "global_canopy_height" else None)
                 ),
                 "source_version": settings.version,
-                "observed_sha256": checksums[str(index)],
+                "observed_sha256": checksum_unchanged_file(path, raw_bytes=True),
+                "artifact_checksum": checksums[str(index)],
+                "artifact_checksum_algorithm": "sha256_filename_then_bytes",
             }
         )
     write_json(
         root / "download.json",
         {
+            "manifest_schema_version": 2,
+            "observed_checksum_algorithm": "sha256_raw_bytes",
             "dataset": settings.model_dump(mode="json"),
             "bbox": list(bbox_from_config(app.raw_config)),
             "config_hash": app.config_hash,

@@ -20,6 +20,7 @@ from ..contracts.components import (
     validate_pairs,
     write_json,
 )
+from ..contracts.provenance import validate_run_id
 from ..finalize.composition import compose_components
 from ..prepare.datasets import prepare_dataset
 from ..providers import get_provider
@@ -190,9 +191,8 @@ def run_components(
     }
     if target not in targets:
         raise ValueError(f"Unknown build target: {target}")
-    if not run_id or Path(run_id).name != run_id or run_id in {".", ".."}:
-        raise ValueError("run_id must be a simple filename identifier")
-    plan = component_plan((targets[target],))
+    validate_run_id(run_id)
+    plan = component_plan((targets[target],), source_type=source_type)
     manifest = component_root(app) / "manifests" / f"{run_id}-{source_type}.json"
     identity = {"config_hash": app.config_hash, "stages": list(plan), "source_type": source_type}
     if manifest.exists() and not overwrite:
