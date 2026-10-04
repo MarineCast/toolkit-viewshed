@@ -15,7 +15,7 @@ from .artifacts import FINAL_SCHEMAS, OBSERVATION_GEOMETRY_SCHEMA_VERSION
 from .components import fingerprint
 from .pairs import LOS_NUMERICAL_TOLERANCE, validate_pair_kernel
 
-GENERATION_CONTRACT = "viewshed_output_set_v2"
+GENERATION_CONTRACT = "viewshed_output_set_v3"
 
 
 def byte_checksum(path: Path) -> str:
@@ -223,6 +223,29 @@ def validate_generation_receipt(
         raise ValueError("Viewshed generation identity is invalid")
     if set(payload.get("files", {})) != set(paths):
         raise ValueError("Viewshed generation file set mismatch")
+    if set(payload.get("producer_evidence", {})) != {"land", "water"}:
+        raise ValueError("Viewshed generation lacks producer lineage; rebuild producing stages")
+    for role, factors in payload["producer_evidence"].items():
+        expected = {"terrain", "distance", "vegetation", "clear_sky"}
+        if role == "land":
+            expected.add("dual_surface")
+        if set(factors) != expected:
+            raise ValueError("Viewshed generation producer file set mismatch")
+        for name, evidence in factors.items():
+            sealed = {key: value for key, value in evidence.items() if key != "receipt_id"}
+            if (
+                evidence.get("receipt_id") != fingerprint(sealed)
+                or evidence.get("contract") != "viewshed_factor_producer_v1"
+                or evidence.get("source_type") != role
+                or evidence.get("output_checksum")
+                != payload["source_hashes"].get(
+                    role
+                    + ":"
+                    + name
+                    + ("_weights" if name in {"terrain", "distance", "vegetation"} else "")
+                )
+            ):
+                raise ValueError("Viewshed generation producer lineage integrity mismatch: " + name)
     records = payload.get("prepared_sources")
     if not isinstance(records, dict) or any(
         not isinstance(record, dict)

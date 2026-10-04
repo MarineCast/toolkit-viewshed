@@ -192,6 +192,8 @@ def _surface_component(
 
 
 def _surface_contract(app: AppConfig, source_type: str, canopy: bool = False) -> dict[str, Any]:
+    from ..contracts.lineage import factor_contract
+
     lookup_path, _ = _lookup(app, source_type)
     inputs = {
         "lookup": lookup_path,
@@ -203,6 +205,10 @@ def _surface_contract(app: AppConfig, source_type: str, canopy: bool = False) ->
         if canopy:
             inputs.update(chm=app.paths.canopy_height_path, dem_weights=component_path(app, "dem"))
     contract = provenance(app, f"{'chm' if canopy else 'dem'}_component_v2_direct_los", inputs)
+    contract.pop("config_hash")
+    contract["producer_science"] = factor_contract(
+        app.raw_config, app.config_path.parent, source_type, "canopy" if canopy else "terrain"
+    )
     contract["source_type"] = source_type
     return contract
 

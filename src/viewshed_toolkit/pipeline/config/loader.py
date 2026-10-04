@@ -264,6 +264,7 @@ class AppConfig:
     raster: RasterConfig
     source_type: str = "land"
     observer_height_class: str | None = None
+    partition_metadata_snapshot: dict[str, Any] | None = None
 
 
 def apply_source_type_policy(app: AppConfig, source_type: str) -> AppConfig:

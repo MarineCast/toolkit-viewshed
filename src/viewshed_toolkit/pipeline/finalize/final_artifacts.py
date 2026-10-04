@@ -44,7 +44,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 import polars as pl
 import pyarrow.parquet as pq
@@ -90,6 +90,12 @@ from ..contracts.generation import (
     validate_generation_receipt,
 )
 from ..contracts.pairs import SOURCE_TYPES
+from ..contracts.lineage import (
+    factor_contract,
+    record_factor,
+    validate_factor,
+    validate_role_factors,
+)
 
 
 def materialize_distance_weights(
@@ -104,6 +110,10 @@ def materialize_distance_weights(
     source_type = normalize_source_type(source_type)
     paths = final_artifact_paths(config_path)
     output_path = paths.weights_path("distance_weights", source_type=source_type)
+    raw, config_dir = load_yaml(config_path)
+    contract = factor_contract(raw, config_dir, source_type, "distance")
+    for path in input_paths:
+        validate_factor(path, contract)
 
     lf = (
         scan_required(input_paths, FINAL_SCHEMAS["distance_weights"])
@@ -118,6 +128,9 @@ def materialize_distance_weights(
 
     rows = atomic_sink_parquet(lf, output_path, overwrite=overwrite)
     validate_parquet_schema(output_path, FINAL_SCHEMAS["distance_weights"])
+    record_factor(
+        output_path, contract, dependencies={str(i): path for i, path in enumerate(input_paths)}
+    )
     return output_path, rows
 
 
@@ -448,6 +461,7 @@ def build_static_viewability_lazy(
     source_type = normalize_source_type(source_type)
     paths = final_artifact_paths(config_path)
     keys = ["source_h3", "target_h3"]
+    raw, config_dir = load_yaml(config_path)
     lookup = (
         scan_required(paths.source_target_lookup, FINAL_SCHEMAS["source_target_lookup"])
         .filter(pl.col("source_type") == source_type)
@@ -542,6 +556,7 @@ def build_observation_geometry_lazy(
 
     source_type = normalize_source_type(source_type)
     paths = final_artifact_paths(config_path)
+    raw, config_dir = load_yaml(config_path)
     keys = ["source_h3", "target_h3"]
     lookup = (
         scan_required(paths.source_target_lookup, FINAL_SCHEMAS["source_target_lookup"])
@@ -711,6 +726,7 @@ def materialize_observation_geometry_output(
     source_type = normalize_source_type(source_type)
     raw, _config_dir = load_yaml(config_path)
     paths = final_artifact_paths(config_path)
+    evidence = validate_role_factors(raw, _config_dir, source_type)
     output_path = output_path or (
         paths.land_observation_geometry
         if source_type == "land"
@@ -786,10 +802,11 @@ def materialize_observation_geometry_output(
     geometry = geometry.with_columns(
         pl.lit(state).alias("DATA_COVERAGE_STATE"), pl.lit(state).alias("SOURCE_COVERAGE_STATE")
     )
+    stage = output_path.with_name(f".{output_path.name}.{uuid.uuid4().hex}.staged")
     atomic_sink_parquet(
         geometry,
-        output_path,
-        overwrite=overwrite,
+        stage,
+        overwrite=True,
         metadata={
             "orcacast.artifact_kind": "human.viewshed.observation_geometry",
             "orcacast.schema_version": OBSERVATION_GEOMETRY_SCHEMA_VERSION,
@@ -799,7 +816,17 @@ def materialize_observation_geometry_output(
             "orcacast.input_checksums": lineage["SOURCE_HASHES_JSON"],
         },
     )
-    validate_parquet_schema(output_path, FINAL_SCHEMAS["observation_geometry"])
+    try:
+        validate_parquet_schema(stage, FINAL_SCHEMAS["observation_geometry"])
+        if validate_role_factors(raw, _config_dir, source_type) != evidence:
+            raise ValueError(
+                "Producer lineage changed before geometry publication; rebuild producing stages"
+            )
+        if output_path.exists() and not overwrite:
+            raise FileExistsError(output_path)
+        stage.replace(output_path)
+    finally:
+        stage.unlink(missing_ok=True)
     return output_path
 
 
@@ -1187,6 +1214,7 @@ def materialize_static_viewability_outputs(
             **geometry_outputs,
         }
 
+    producer_evidence = {role: validate_role_factors(raw, _config_dir, role) for role in outputs}
     source_hashes = {}
     for role in outputs:
         inputs = _static_input_paths(paths, role)
@@ -1258,6 +1286,7 @@ def materialize_static_viewability_outputs(
             json.dumps(
                 {
                     **generation,
+                    "producer_evidence": producer_evidence,
                     "prepared_sources": prepared_sources,
                     "files": {
                         name: {"name": path.name, "sha256": byte_checksum(staged[name])}
@@ -1276,6 +1305,12 @@ def materialize_static_viewability_outputs(
         )
 
         backups: dict[str, Path] = {}
+        if {
+            role: validate_role_factors(raw, _config_dir, role) for role in outputs
+        } != producer_evidence:
+            raise ValueError(
+                "Producer lineage changed before publication; rebuild producing stages"
+            )
         sidecar_backups: dict[Path, Path] = {}
         promoted: set[str] = set()
         try:
@@ -1344,6 +1379,38 @@ def materialize_static_viewability_outputs(
     }
 
 
+def _promote_artifact_set(
+    staged: Mapping[Path, Path], publish_metadata: Callable[[], None]
+) -> None:
+    """Restore the previous files and sidecars if standalone publication fails."""
+    backups: dict[Path, Path] = {}
+    promoted: set[Path] = set()
+    try:
+        for output in staged:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            for path in (output, *metadata_sidecars_for(output)):
+                if path.exists():
+                    backup = path.with_name(f".{path.name}.{uuid.uuid4().hex}.backup")
+                    path.replace(backup)
+                    backups[path] = backup
+        for output, stage in staged.items():
+            stage.replace(output)
+            promoted.add(output)
+        publish_metadata()
+    except Exception:
+        for output in staged:
+            if output in promoted:
+                output.unlink(missing_ok=True)
+                for sidecar in metadata_sidecars_for(output):
+                    sidecar.unlink(missing_ok=True)
+        for path, backup in backups.items():
+            backup.replace(path)
+        raise
+    finally:
+        for backup in backups.values():
+            backup.unlink(missing_ok=True)
+
+
 def materialize_static_viewability_output(
     config_path: str | Path,
     *,
@@ -1357,36 +1424,111 @@ def materialize_static_viewability_output(
     paths = final_artifact_paths(config_path)
     output_path = paths.land_static_weights if source_type == "land" else paths.water_static_weights
     raw, _config_dir = load_yaml(config_path)
-    composed, coverage = build_static_viewability_lazy(
-        config_path,
-        source_type=source_type,
+    geometry_path = (
+        paths.land_observation_geometry
+        if source_type == "land"
+        else paths.water_observation_geometry
     )
-    input_paths = _static_input_paths(paths, source_type)
-    input_checksums = {name: checksum_path(path) for name, path in input_paths.items()}
-    parquet_metadata = _static_parquet_metadata(
-        raw,
-        source_type=source_type,
-        input_checksums=input_checksums,
-    )
-    row_count = atomic_sink_parquet(
-        composed,
-        output_path,
-        overwrite=overwrite,
-        metadata=parquet_metadata,
-    )
-    validate_parquet_schema(output_path, FINAL_SCHEMAS["static_weights"])
-    _write_static_artifact_metadata(
-        output_path,
-        raw=raw,
-        source_type=source_type,
-        input_paths=input_paths,
-        input_checksums=input_checksums,
-        coverage=coverage,
-        row_count=row_count,
-    )
-    materialize_observation_geometry_output(
-        config_path, source_type=source_type, overwrite=overwrite
-    )
+    role_receipt = output_path.parent / f"{source_type}-viewshed-generation.json"
+    if not overwrite and output_path.exists():
+        validate_static_artifact_metadata(output_path, raw=raw, source_type=source_type)
+        if not geometry_path.exists():
+            raise ValueError("Standalone output set incomplete; rebuild finalization")
+        if role_receipt.exists():
+            from ..contracts.components import fingerprint
+
+            retained = json.loads(role_receipt.read_text())
+            if (
+                retained.get("contract") != "viewshed_single_role_v1"
+                or retained.get("source_type") != source_type
+                or retained.get("config_hash") != static_scientific_config_hash(raw)
+                or retained.get("receipt_id")
+                != fingerprint(
+                    {key: value for key, value in retained.items() if key != "receipt_id"}
+                )
+            ):
+                raise ValueError(
+                    "Standalone producer lineage receipt mismatch; rebuild finalization"
+                )
+            for path in (output_path, geometry_path):
+                if retained["files"].get(path.name) != byte_checksum(path):
+                    raise ValueError("Standalone artifact checksum mismatch; rebuild finalization")
+            for name, current in _prepared_source_records(config_path).items():
+                if retained["prepared_sources"].get(name) != current:
+                    raise ValueError("Prepared source changed; rebuild producing stages")
+        else:
+            # A paired durable generation can also certify a read-only single-role query.
+            materialize_static_viewability_outputs(config_path)
+        if all(path.exists() for path in _static_input_paths(paths, source_type).values()):
+            validate_role_factors(raw, _config_dir, source_type)
+        return output_path
+    evidence = validate_role_factors(raw, _config_dir, source_type)
+    staged = {
+        path: path.with_name(f".{path.name}.{uuid.uuid4().hex}.staged")
+        for path in (output_path, geometry_path, role_receipt)
+    }
+    try:
+        composed, coverage = build_static_viewability_lazy(
+            config_path,
+            source_type=source_type,
+        )
+        input_paths = _static_input_paths(paths, source_type)
+        input_checksums = {name: checksum_path(path) for name, path in input_paths.items()}
+        parquet_metadata = _static_parquet_metadata(
+            raw,
+            source_type=source_type,
+            input_checksums=input_checksums,
+        )
+        row_count = atomic_sink_parquet(
+            composed,
+            staged[output_path],
+            overwrite=True,
+            metadata=parquet_metadata,
+        )
+        validate_parquet_schema(staged[output_path], FINAL_SCHEMAS["static_weights"])
+        materialize_observation_geometry_output(
+            config_path,
+            source_type=source_type,
+            overwrite=True,
+            output_path=staged[geometry_path],
+        )
+        if validate_role_factors(raw, _config_dir, source_type) != evidence:
+            raise ValueError(
+                "Producer lineage changed before publication; rebuild producing stages"
+            )
+        from ..contracts.components import fingerprint
+
+        retained = {
+            "contract": "viewshed_single_role_v1",
+            "source_type": source_type,
+            "config_hash": static_scientific_config_hash(raw),
+            "producer_evidence": evidence,
+            "prepared_sources": _prepared_source_records(config_path),
+            "files": {
+                path.name: byte_checksum(staged[path]) for path in (output_path, geometry_path)
+            },
+        }
+        retained["receipt_id"] = fingerprint(retained)
+        staged[role_receipt].write_text(
+            json.dumps(retained, sort_keys=True, allow_nan=False) + "\n"
+        )
+
+        def publish_metadata() -> None:
+            _write_static_artifact_metadata(
+                output_path,
+                raw=raw,
+                source_type=source_type,
+                input_paths=input_paths,
+                input_checksums=input_checksums,
+                coverage=coverage,
+                row_count=row_count,
+            )
+            validate_static_artifact_metadata(output_path, raw=raw, source_type=source_type)
+
+        _promote_artifact_set(staged, publish_metadata)
+    finally:
+        for stage in staged.values():
+            stage.unlink(missing_ok=True)
     return output_path
 
 

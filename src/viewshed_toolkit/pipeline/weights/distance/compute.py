@@ -355,6 +355,11 @@ def build_distance_weight_partitions_from_lookup(
     """Transform canonical lookup distances into distance-weight partitions."""
 
     source_type = _validate_source_type(source_type)
+    from ...contracts.lineage import factor_contract, record_factor, validate_factor
+
+    contract = factor_contract(
+        runtime.raw_config, runtime.config_path.parent, source_type, "distance"
+    )
     if start < 0:
         raise ValueError("start must be >= 0")
     if limit is not None and limit <= 0:
@@ -411,6 +416,7 @@ def build_distance_weight_partitions_from_lookup(
         out_path = _partition_path(paths, global_chunk_number)
 
         if out_path.exists() and not cfg.overwrite:
+            validate_factor(out_path, contract)
             existing_schema = tuple(pl.scan_parquet(str(out_path)).collect_schema().names())
             if existing_schema != DISTANCE_OUTPUT_SCHEMA:
                 raise ValueError(
@@ -436,6 +442,16 @@ def build_distance_weight_partitions_from_lookup(
             out_lf.sink_parquet(str(out_path))
             stats = _partition_manifest_stats(out_path)
             status = "ok"
+            if (
+                factor_contract(
+                    runtime.raw_config, runtime.config_path.parent, source_type, "distance"
+                )
+                != contract
+            ):
+                raise ValueError(
+                    "Producer inputs changed during distance stage; rebuild build-distance-weights"
+                )
+            record_factor(out_path, contract)
 
         manifest_rows.append(
             {

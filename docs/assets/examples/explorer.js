@@ -75,6 +75,81 @@
       byte.toString(16).padStart(2, "0"),
     ).join("");
   }
+  function stable(value) {
+    if (Array.isArray(value)) return value.map(stable);
+    if (value && typeof value === "object")
+      return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
+    return value;
+  }
+  function equal(a, b) { return JSON.stringify(stable(a)) === JSON.stringify(stable(b)); }
+  async function validateManifest(manifest) {
+    if (manifest.export_contract !== "san_juan_lessons_v2") throw new Error("Unsupported bundle contract");
+    const identity = JSON.parse(manifest.identity_json);
+    if (!equal(identity, {export_contract: manifest.export_contract, semantic_contract: manifest.semantic_contract, files: manifest.files})
+      || await sha(new TextEncoder().encode(manifest.identity_json)) !== manifest.bundle_id)
+      throw new Error("Bundle identity mismatch");
+    const fields = ["method", "generation_id", "config_hash", "source_hashes", "prepared_input_sha256", "artifacts", "producer_revision", "source_vintages", "crs", "native_resolution_m", "analysis_resolution_m", "assumptions", "target_support_scope", "candidate_universe", "defaults", "rights", "limitations", "curve_contract"];
+    if (!equal(Object.keys(manifest.semantic_contract).sort(), fields.sort())) throw new Error("Incomplete semantic contract");
+    for (const [key, value] of Object.entries(manifest.semantic_contract))
+      if (!equal(manifest[key], value)) throw new Error("Scientific manifest semantic mismatch: " + key);
+  }
+  function validateEvidence(data) {
+    const m = data.manifest, e = data["production-evidence.json"], g = e.generation;
+    for (const [label, key] of [["generation_id", "generation_id"], ["config_hash", "scientific_config_hash"], ["method", "method"], ["source_hashes", "source_hashes"], ["artifacts", "files"]])
+      if (!equal(m[label], g[key])) throw new Error("Generation evidence mismatch: " + label);
+    const land = g.producer_evidence.land.dual_surface, distance = g.producer_evidence.land.distance;
+    const grid = data["inputs/display-grid.json"], original = land.grids.regional_dem_path;
+    if (m.producer_revision !== land.producer_revision || m.crs !== original.crs || grid.crs !== m.crs
+      || m.analysis_resolution_m !== land.settings.viewshed.dem_resolution_m
+      || grid.analysis_resolution_m !== m.analysis_resolution_m
+      || grid.display_resolution_m !== grid.display_stride * m.analysis_resolution_m
+      || !equal(grid.source_shape, original.shape) || !equal(grid.affine, original.affine)
+      || !equal(m.source_vintages, e.source_vintages) || !equal(m.native_resolution_m, e.native_resolution_m))
+      throw new Error("Source/grid evidence mismatch");
+    for (const [group, recorded] of [["viewshed", land.settings.viewshed], ["h3", land.settings.h3],
+      ["source_target_lookup", land.settings.source_target_lookup], ["distance_weight", distance.settings.distance],
+      ["water_viewing", g.producer_evidence.water.terrain.settings.water_viewing]])
+      for (const [key, value] of Object.entries(m.assumptions[group])) {
+        if (group === "distance_weight" && ["version", "source_chunk_size", "overwrite", "compute_exact_p90", "p90_method"].includes(key)) continue;
+        if (!equal(recorded[key], value)) throw new Error("Scientific assumption evidence mismatch");
+      }
+    if (!equal(m.curve_contract, {settings: distance.settings.distance, extent_km: distance.settings.distance_extent_km}))
+      throw new Error("Curve evidence mismatch");
+    const curve = data["distance-curve.json"];
+    if (curve.length !== 101 || curve[0].distance_km !== 0 || curve.at(-1).distance_km !== m.curve_contract.extent_km)
+      throw new Error("Curve extent mismatch");
+    const settings = m.curve_contract.settings;
+    function expectedWeight(d) {
+      if (d > m.curve_contract.extent_km) return 0;
+      let value;
+      if (settings.selected_model === "logistic") {
+        value = 1 / (1 + Math.exp((d-settings.logistic_d50_km)/settings.logistic_slope_km));
+        if (settings.normalize_at_zero) value /= 1/(1+Math.exp(-settings.logistic_d50_km/settings.logistic_slope_km));
+      } else if (settings.selected_model === "exponential") value = Math.exp(-d/settings.exponential_lambda_km);
+      else if (settings.selected_model === "piecewise") {
+        const near = settings.piecewise_near_km ?? settings.piecewise_full_weight_km;
+        const far = settings.piecewise_far_km ?? settings.piecewise_zero_weight_km;
+        value = d <= near ? 1 : d >= far ? 0 : 1-(d-near)/(far-near);
+      } else throw new Error("Unsupported recorded curve");
+      return Math.min(1, Math.max(0, value));
+    }
+    if (curve.some(point => !Number.isFinite(point.weight) || Math.abs(point.weight-expectedWeight(point.distance_km)) > 1e-6)) throw new Error("Curve calculation mismatch");
+    for (const [label, name] of [["dem", "dem"], ["canopy", "chm"]])
+      if (m.native_resolution_m[label] !== e.acquisition[name].dataset.resolution_m) throw new Error("Native resolution mismatch");
+    if (m.source_vintages.some(v => !e.acquisition.chm.source_byte_sha256.includes(v.observed_sha256) || v.source_year !== e.acquisition.chm.dataset.source_year || v.source_version !== e.acquisition.chm.dataset.version)) throw new Error("Acquisition vintage mismatch");
+    for (const [label, key] of [["ground", "regional_dem_path"], ["canopy", "canopy_height_path"]])
+      if (m.prepared_input_sha256[label] !== land.input_byte_sha256[key]) throw new Error("Prepared surface identity mismatch");
+    const columns = data["pairs.json"].columns, rows = data["pairs.json"].rows;
+    const scope = m.candidate_universe, science = g.producer_evidence.land.terrain.settings;
+    const bbox = science.region.bbox_wgs84;
+    if (scope.pairs !== rows.length || scope.cells !== data["cells.geojson"].features.length || !equal(scope.cutoffs_km, science.source_target_lookup) || scope.coastal_buffer_m !== science.region.coastal_buffer_m || !equal(scope.source_bbox_wgs84, [bbox.min_lon, bbox.min_lat, bbox.max_lon, bbox.max_lat])) throw new Error("Candidate universe mismatch");
+    const row = rows.find(item => item[columns.indexOf("id")] === m.defaults.pair_id);
+    if (!row || row[columns.indexOf("source_type")] !== m.defaults.source_type || m.defaults.scenario !== "baseline")
+      throw new Error("Invalid default pair reference");
+    const ids = new Set(rows.map(item => item[columns.indexOf("id")]));
+    if (data["lessons.json"].some(lesson => lesson.pair_ids.some(id => !ids.has(id))))
+      throw new Error("Invalid lesson reference");
+  }
   async function load(url) {
     if (!cache.has(url))
       cache.set(
@@ -83,8 +158,7 @@
           const response = await fetch(new URL("manifest.json", url));
           if (!response.ok) throw new Error("Bundle manifest is unavailable");
           const manifest = await response.json();
-          if (manifest.export_contract !== "san_juan_lessons_v1")
-            throw new Error("Unsupported bundle contract");
+          await validateManifest(manifest);
           const names = [
             "pairs.json",
             "cells.geojson",
@@ -95,6 +169,8 @@
             "indexes.json",
             "coverage.json",
             "distance-curve.json",
+            "production-evidence.json",
+            "inputs/display-grid.json",
           ];
           const items = await Promise.all(
             names.map(async (name) => {
@@ -107,7 +183,9 @@
               return [name, JSON.parse(new TextDecoder().decode(bytes))];
             }),
           );
-          return { manifest, ...Object.fromEntries(items) };
+          const data = { manifest, ...Object.fromEntries(items) };
+          validateEvidence(data);
+          return data;
         })().catch((error) => {
           cache.delete(url);
           throw error;

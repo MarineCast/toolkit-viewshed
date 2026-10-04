@@ -86,3 +86,31 @@ final tables, and manifests live in the separate durable component namespace. Ke
 work inputs until required validation/reproduction is complete. Existing legacy cleanup tests and
 rollback-safe legacy land/water promotion remain unchanged. Do not run legacy cleanup against a
 custom root that also contains the new durable namespace.
+
+
+## Producer lineage and replacement
+
+Working terrain, clear-sky, centroid distance, dual-surface canopy and neutral water vegetation
+products carry `viewshed_factor_producer_v1` receipts beside their Parquet files. Successful
+producer stages write them after product validation. Their dependency scopes retain effective
+scientific settings, role, lookup content identity, prepared surfaces and grid/sampling/denominator
+contracts. File identities use the repository checksum (filename plus bytes); independent byte
+SHA-256 values are explicitly recorded for exported surface identity.
+
+Finalization validates all required producers before staging, including with `overwrite=True`.
+Overwrite replaces durable outputs; it cannot certify that upstream computations ran. Missing or
+stale lineage names the artifact and required rebuild stage. Historical products without these
+receipts require a genuine producer rebuild, rather than receipt backfilling. Pure lazy joins are
+calculation helpers; publication entry points enforce lineage. The directly observed LOS method
+and `weight_terrain * weight_vegetation` formula are unchanged.
+
+Paired durable receipts use `viewshed_output_set_v3` and retain all producer evidence. Single-role
+publication stages its compact table, geometry and `viewshed_single_role_v1` receipt together.
+A promotion error restores previous files and sidecars; this does not promise a concurrent-reader
+snapshot. Valid retained durable receipts support read-only reuse after permitted intermediate
+cleanup. New finalization requires working producer evidence. A pruned generation must rebuild
+those stages before replacement.
+
+Terrain workers consume one expected-metadata snapshot per stage. A new run recomputes content
+identity; the stage checks fresh identity before combination/publication and rejects changed
+inputs. This is a measured reduction in hash calls, not a measured regional speedup.

@@ -6,6 +6,7 @@ import polars as pl
 import pytest
 import yaml
 
+from tests.pipeline.test_generation_integrity import generation as generation
 from viewshed_toolkit.pipeline.contracts.artifacts import (
     FINAL_SCHEMAS,
     final_artifact_paths_from_raw,
@@ -35,8 +36,14 @@ def _config(tmp_path: Path) -> tuple[Path, object]:
             }
         },
         "h3": {"source_resolution": 8, "target_resolution": 8},
-        "paths": {"output_dir": str(tmp_path / "viewshed")},
+        "paths": {
+            "output_dir": str(tmp_path / "viewshed"),
+            "land_polygon_path": str(tmp_path / "land.txt"),
+            "water_polygon_path": str(tmp_path / "water.txt"),
+        },
     }
+    (tmp_path / "land.txt").write_text("synthetic land fixture")
+    (tmp_path / "water.txt").write_text("synthetic water fixture")
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
     return config_path, final_artifact_paths_from_raw(raw, tmp_path)
@@ -120,7 +127,7 @@ def test_model_finalizer_rejects_missing_terrain_pair(tmp_path: Path) -> None:
         }
     ).write_parquet(paths.vegetation_weights)
 
-    with pytest.raises(ValueError, match="land terrain.*exact coverage"):
+    with pytest.raises(ValueError, match=r"land terrain.*exact coverage"):
         build_static_viewability_lazy(config_path, source_type="land")
 
 
@@ -160,7 +167,7 @@ def test_model_finalizer_rejects_missing_exact_factor(tmp_path: Path) -> None:
         }
     ).write_parquet(paths.vegetation_weights)
 
-    with pytest.raises(ValueError, match="land vegetation.*exact coverage"):
+    with pytest.raises(ValueError, match=r"land vegetation.*exact coverage"):
         build_static_viewability_lazy(config_path, source_type="land")
 
 
@@ -257,53 +264,9 @@ def test_static_assumptions_are_source_specific() -> None:
     assert water["h3"]["source_samples_per_cell"] == 3
 
 
-def test_paired_static_promotion_rolls_back_artifacts_and_sidecars(
-    tmp_path: Path, monkeypatch
-) -> None:
-    config_path, paths = _config(tmp_path)
-    paths.source_target_lookup.parent.mkdir(parents=True, exist_ok=True)
-    pl.DataFrame(
-        {
-            "source_h3": ["land-source", "water-source"],
-            "target_h3": ["target", "target"],
-            "distance_km": [1.0, 1.0],
-            "source_type": ["land", "water"],
-        }
-    ).write_parquet(paths.source_target_lookup)
-    for source_type in ("land", "water"):
-        weight_dir = paths.land_weights_dir if source_type == "land" else paths.ocean_weights_dir
-        weight_dir.mkdir(parents=True, exist_ok=True)
-        source_h3 = f"{source_type}-source"
-        pl.DataFrame(
-            {"source_h3": [source_h3], "target_h3": ["target"], "weight_terrain": [0.5]}
-        ).write_parquet(paths.weights_path("terrain_weights", source_type=source_type))
-        pl.DataFrame(
-            {"source_h3": [source_h3], "target_h3": ["target"], "weight_distance": [0.8]}
-        ).write_parquet(paths.weights_path("distance_weights", source_type=source_type))
-        pl.DataFrame(
-            {
-                "source_h3": [source_h3],
-                "target_h3": ["target"],
-                "source_type": [source_type],
-                "weight_vegetation": [1.0],
-                "vegetation_status": ["computed" if source_type == "land" else "not_applicable"],
-            }
-        ).write_parquet(paths.weights_path("vegetation_weights", source_type=source_type))
-
-    for role in ("land", "water"):
-        clear = (
-            paths.source_target_clear_sky if role == "land" else paths.ocean_source_target_clear_sky
-        )
-        pl.DataFrame(
-            {
-                "source_h3": [f"{role}-source"],
-                "target_h3": ["target"],
-                "unweighted_los_observed": [True],
-                "joint_los_fraction": [0.6],
-                "distance_weighted_los_fraction": [0.5],
-            }
-        ).write_parquet(clear)
-
+def test_paired_static_promotion_rolls_back_artifacts_and_sidecars(generation, monkeypatch) -> None:
+    config_path, _outputs = generation
+    paths = final_artifacts.final_artifact_paths(config_path)
     originals = {}
     for output in (
         paths.land_static_weights,
@@ -403,6 +366,20 @@ def test_water_vegetation_is_explicitly_neutral_and_not_applicable(
         }
     ).write_parquet(paths.ocean_terrain_weights)
 
+    from viewshed_toolkit.pipeline.contracts.lineage import factor_contract, record_factor
+
+    raw = yaml.safe_load(config_path.read_text())
+    paths.source_target_lookup.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "source_h3": ["water-source"],
+            "target_h3": ["target"],
+            "distance_km": [1.0],
+            "source_type": ["water"],
+        }
+    ).write_parquet(paths.source_target_lookup)
+    # Synthetic producer fixture: seal the factor immediately after producing it.
+    record_factor(paths.ocean_terrain_weights, factor_contract(raw, tmp_path, "water", "terrain"))
     build_water_neutral_vegetation_weights(config_path, overwrite=True)
 
     result = pl.read_parquet(paths.ocean_vegetation_weights)

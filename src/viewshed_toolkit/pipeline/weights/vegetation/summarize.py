@@ -257,6 +257,14 @@ def build_water_neutral_vegetation_weights(
     """Persist neutral water-source vegetation weights aligned to water terrain rows."""
 
     paths = final_artifact_paths(config_path)
+    from ...config import load_yaml
+    from ...contracts.lineage import factor_contract, record_factor, validate_factor
+
+    raw, config_dir = load_yaml(config_path)
+    contract = factor_contract(raw, config_dir, "water", "vegetation")
+    validate_factor(
+        paths.ocean_terrain_weights, factor_contract(raw, config_dir, "water", "terrain")
+    )
     if not paths.ocean_terrain_weights.exists():
         raise FileNotFoundError(
             "Missing water-source terrain weights: "
@@ -277,4 +285,9 @@ def build_water_neutral_vegetation_weights(
     )
     atomic_sink_parquet(lf, paths.ocean_vegetation_weights, overwrite=overwrite)
     validate_parquet_schema(paths.ocean_vegetation_weights, FINAL_SCHEMAS["vegetation_weights"])
+    record_factor(
+        paths.ocean_vegetation_weights,
+        contract,
+        dependencies={"terrain": paths.ocean_terrain_weights},
+    )
     return {"water_vegetation_weights": paths.ocean_vegetation_weights}

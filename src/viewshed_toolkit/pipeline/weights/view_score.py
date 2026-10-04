@@ -18,6 +18,8 @@ from viewshed_toolkit._internal.data.parquet import atomic_sink_parquet
 
 from ..config import DEFAULT_CONFIG
 from ..contracts.artifacts import final_artifact_paths
+from ..contracts.lineage import validate_role_factors
+from ..config.schema import load_yaml
 from ..finalize.final_artifacts import (
     build_static_viewability_lazy,
 )
@@ -39,6 +41,8 @@ def _write_join_report(output_path: Path, report: dict[str, Any]) -> None:
 
 def finalize_land_view_score(config_path: str | Path, *, overwrite: bool = False) -> Path:
     paths = final_artifact_paths(config_path)
+    raw, directory = load_yaml(config_path)
+    validate_role_factors(raw, directory, "land", geometry=False)
     joined, coverage = build_static_viewability_lazy(config_path, source_type="land")
     joined = joined.with_columns(
         pl.col("weight_static_viewability").alias("land_pair_physical_view_score")
@@ -67,6 +71,8 @@ def finalize_land_view_score(config_path: str | Path, *, overwrite: bool = False
 
 def finalize_water_view_score(config_path: str | Path, *, overwrite: bool = False) -> Path:
     paths = final_artifact_paths(config_path)
+    raw, directory = load_yaml(config_path)
+    validate_role_factors(raw, directory, "water", geometry=False)
     physical, coverage = build_static_viewability_lazy(config_path, source_type="water")
     physical = physical.with_columns(
         [

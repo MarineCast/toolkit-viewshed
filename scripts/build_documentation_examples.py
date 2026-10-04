@@ -13,7 +13,27 @@ import tempfile
 import time
 from pathlib import Path
 
-VERSION = "san_juan_lessons_v1"
+VERSION = "san_juan_lessons_v2"
+SEMANTIC_FIELDS = (
+    "method",
+    "generation_id",
+    "config_hash",
+    "source_hashes",
+    "prepared_input_sha256",
+    "artifacts",
+    "producer_revision",
+    "source_vintages",
+    "crs",
+    "native_resolution_m",
+    "analysis_resolution_m",
+    "assumptions",
+    "target_support_scope",
+    "candidate_universe",
+    "defaults",
+    "rights",
+    "limitations",
+    "curve_contract",
+)
 METRICS = (
     "line_of_sight_support",
     "physical_viewability",
@@ -51,6 +71,142 @@ def load_pairs(output):
     return [dict(zip(data["columns"], row, strict=True)) for row in data["rows"]]
 
 
+def seal_manifest(manifest):
+    manifest["semantic_contract"] = {key: manifest[key] for key in SEMANTIC_FIELDS}
+    identity = {
+        "export_contract": manifest["export_contract"],
+        "semantic_contract": manifest["semantic_contract"],
+        "files": manifest["files"],
+    }
+    # Persist the exact canonical UTF-8 JSON so browser hashing has no float-format ambiguity.
+    manifest["identity_json"] = encode(identity).decode()
+    manifest["bundle_id"] = digest(manifest["identity_json"].encode())
+
+
+def curve_weight(distance, contract):
+    cfg = contract["settings"]
+    if distance > contract["extent_km"]:
+        return 0.0
+    if cfg["selected_model"] == "logistic":
+        exponent = (distance - cfg["logistic_d50_km"]) / cfg["logistic_slope_km"]
+        raw = 1 / (1 + math.exp(exponent)) if exponent < 700 else 0.0
+        if cfg["normalize_at_zero"]:
+            raw /= 1 / (1 + math.exp(-cfg["logistic_d50_km"] / cfg["logistic_slope_km"]))
+    elif cfg["selected_model"] == "exponential":
+        raw = math.exp(-distance / cfg["exponential_lambda_km"])
+    elif cfg["selected_model"] == "piecewise":
+        near = (
+            cfg["piecewise_near_km"]
+            if cfg["piecewise_near_km"] is not None
+            else cfg["piecewise_full_weight_km"]
+        )
+        far = (
+            cfg["piecewise_far_km"]
+            if cfg["piecewise_far_km"] is not None
+            else cfg["piecewise_zero_weight_km"]
+        )
+        raw = (
+            1
+            if distance <= near
+            else 0 if distance >= far else 1 - (distance - near) / (far - near)
+        )
+    else:
+        raise ValueError("Unsupported recorded distance curve")
+    return min(1, max(0, raw))
+
+
+def validate_semantics(manifest, output):
+    semantic = {key: manifest[key] for key in SEMANTIC_FIELDS}
+    if semantic != manifest.get("semantic_contract"):
+        raise ValueError("Scientific manifest semantic contract mismatch")
+    evidence = read(output / "production-evidence.json")
+    generation = evidence["generation"]
+    for label, key in (
+        ("generation_id", "generation_id"),
+        ("config_hash", "scientific_config_hash"),
+        ("method", "method"),
+        ("source_hashes", "source_hashes"),
+        ("artifacts", "files"),
+    ):
+        if manifest[label] != generation[key]:
+            raise ValueError("Manifest contradicts retained generation evidence: " + label)
+    land = generation["producer_evidence"]["land"]["dual_surface"]
+    distance = generation["producer_evidence"]["land"]["distance"]
+    water = generation["producer_evidence"]["water"]["terrain"]
+    if manifest["producer_revision"] != land["producer_revision"]:
+        raise ValueError("Original producer revision contradicts evidence")
+    for group, recorded in (
+        ("viewshed", land["settings"]["viewshed"]),
+        ("h3", land["settings"]["h3"]),
+        ("source_target_lookup", land["settings"]["source_target_lookup"]),
+        ("distance_weight", distance["settings"]["distance"]),
+        ("water_viewing", water["settings"]["water_viewing"]),
+    ):
+        for key, value in manifest["assumptions"][group].items():
+            if group == "distance_weight" and key in {
+                "version",
+                "source_chunk_size",
+                "overwrite",
+                "compute_exact_p90",
+                "p90_method",
+            }:
+                continue
+            if recorded.get(key) != value:
+                raise ValueError(
+                    f"Scientific assumption contradicts producer evidence: {group}.{key}"
+                )
+    grid = read(output / "inputs/display-grid.json")
+    model_grid = land["grids"]["regional_dem_path"]
+    if (
+        manifest["crs"] != model_grid["crs"]
+        or grid["crs"] != manifest["crs"]
+        or grid["source_shape"] != model_grid["shape"]
+        or grid["affine"] != model_grid["affine"]
+        or manifest["analysis_resolution_m"] != land["settings"]["viewshed"]["dem_resolution_m"]
+        or grid["analysis_resolution_m"] != manifest["analysis_resolution_m"]
+        or grid["display_resolution_m"]
+        != grid["display_stride"] * manifest["analysis_resolution_m"]
+    ):
+        raise ValueError("Resolution/CRS/display grid contradicts producer evidence")
+    if (
+        manifest["source_vintages"] != evidence["source_vintages"]
+        or manifest["native_resolution_m"] != evidence["native_resolution_m"]
+    ):
+        raise ValueError("Source metadata contradicts retained acquisition evidence")
+    acquisition = evidence["acquisition"]
+    for label, name in (("dem", "dem"), ("canopy", "chm")):
+        if manifest["native_resolution_m"][label] != acquisition[name]["dataset"]["resolution_m"]:
+            raise ValueError("Native resolution contradicts provider acquisition request")
+    for vintage in manifest["source_vintages"]:
+        if (
+            vintage["observed_sha256"] not in acquisition["chm"]["source_byte_sha256"]
+            or vintage["source_year"] != acquisition["chm"]["dataset"]["source_year"]
+            or vintage["source_version"] != acquisition["chm"]["dataset"]["version"]
+        ):
+            raise ValueError("Vintage contradicts acquisition content evidence")
+    for name, key in (("ground", "regional_dem_path"), ("canopy", "canopy_height_path")):
+        if manifest["prepared_input_sha256"][name] != land["input_byte_sha256"][key]:
+            raise ValueError("Prepared surface identity contradicts producer evidence")
+    expected_curve = {
+        "settings": distance["settings"]["distance"],
+        "extent_km": distance["settings"]["distance_extent_km"],
+    }
+    if manifest["curve_contract"] != expected_curve:
+        raise ValueError("Curve configuration contradicts producer evidence")
+    curve = read(output / "distance-curve.json")
+    if (
+        len(curve) != 101
+        or curve[0]["distance_km"] != 0
+        or curve[-1]["distance_km"] != expected_curve["extent_km"]
+    ):
+        raise ValueError("Distance curve extent contradicts effective configuration")
+    if any(
+        abs(point["weight"] - curve_weight(point["distance_km"], expected_curve)) > 1e-6
+        for point in curve
+    ):
+        raise ValueError("Distance curve values contradict recorded calculation")
+
+
 def check(output):
     """Integrity and internal scientific assertions; not a raw-data reproduction."""
     manifest = read(output / "manifest.json")
@@ -60,9 +216,12 @@ def check(output):
         path = (output / name).resolve()
         if not path.is_relative_to(output.resolve()) or digest(path.read_bytes()) != checksum:
             raise ValueError(f"Bundle checksum mismatch: {name}")
-    identity = {key: manifest[key] for key in ("export_contract", "generation_id", "files")}
-    if manifest["bundle_id"] != digest(encode(identity)):
+    identity = {key: manifest[key] for key in ("export_contract", "semantic_contract", "files")}
+    if manifest.get("identity_json") != encode(identity).decode() or manifest[
+        "bundle_id"
+    ] != digest(encode(identity)):
         raise ValueError("Bundle identity mismatch")
+    validate_semantics(manifest, output)
     pairs = load_pairs(output)
     indexed = {}
     for pair in pairs:
@@ -140,11 +299,34 @@ def check(output):
         if indexes[direction] != expected:
             raise ValueError("Forward/inverse indexes disagree with canonical pairs")
     cells = {feature["id"] for feature in read(output / "cells.geojson")["features"]}
+    scope = manifest["candidate_universe"]
+    settings = read(output / "production-evidence.json")["generation"]["producer_evidence"]["land"][
+        "terrain"
+    ]["settings"]
+    bbox = settings["region"]["bbox_wgs84"]
+    if (
+        scope["pairs"] != len(pairs)
+        or scope["cells"] != len(cells)
+        or scope["cutoffs_km"] != settings["source_target_lookup"]
+        or scope["coastal_buffer_m"] != settings["region"]["coastal_buffer_m"]
+        or scope["source_bbox_wgs84"]
+        != [bbox[key] for key in ("min_lon", "min_lat", "max_lon", "max_lat")]
+    ):
+        raise ValueError("Candidate universe contradicts producer evidence")
     for pair in pairs:
         if pair["source_h3"] not in cells or pair["target_h3"] not in cells:
             raise ValueError("Pair references missing cell geometry")
     lessons = read(output / "lessons.json")
+    defaults = manifest["defaults"]
+    if (
+        defaults["pair_id"] not in indexed
+        or indexed[defaults["pair_id"]]["source_type"] != defaults["source_type"]
+        or defaults["scenario"] != "baseline"
+    ):
+        raise ValueError("Invalid default pair/role/scenario reference")
     for lesson in lessons:
+        if any(pair_id not in indexed for pair_id in lesson["pair_ids"]):
+            raise ValueError("Invalid lesson pair reference")
         for assertion in lesson["assertions"]:
             pair = indexed[assertion["pair_id"]]
             if pair[assertion["field"]] != assertion["value"]:
@@ -156,6 +338,28 @@ def check(output):
             raise ValueError("Profile references missing actual observation design")
         if profile["kind"] != "explanatory_sampled_profile_not_engine_or_cell_diagnostic":
             raise ValueError("Profile diagnostic status is invalid")
+    lesson_by_id = {lesson["id"]: lesson for lesson in lessons}
+    near, far = [indexed[key] for key in lesson_by_id["distance"]["pair_ids"]]
+    if near["distance_km"] >= far["distance_km"]:
+        raise ValueError("Near/far lesson claim is unsupported")
+    effect, little = [indexed[key] for key in lesson_by_id["canopy"]["pair_ids"]]
+    if (
+        effect["line_of_sight_support"] <= 0.02
+        or effect["physical_viewability"] / effect["line_of_sight_support"] > 0.2
+        or little["line_of_sight_support"] <= 0.02
+        or little["physical_viewability"] / little["line_of_sight_support"] < 0.98
+    ):
+        raise ValueError("Canopy lesson effect thresholds are unsupported")
+    blocked = indexed[lesson_by_id["terrain"]["pair_ids"][-1]]
+    profile = next((p for p in profiles if p["pair_id"] == blocked["id"]), None)
+    if (
+        blocked["line_of_sight_support"] != 0
+        or profile is None
+        or not any(s["ground_m"] > s["ray_m"] for s in profile["samples"][1:-1])
+    ):
+        raise ValueError("Ground-obstruction lesson needs aggregate and sampled-profile evidence")
+    if len({indexed[key]["target_h3"] for key in lesson_by_id["inverse"]["pair_ids"]}) != 1:
+        raise ValueError("Inverse examples must share their stated target")
     data_bytes = sum(
         len(gzip.compress((output / name).read_bytes(), mtime=0))
         for name in manifest["files"]
@@ -213,6 +417,18 @@ def _export(config, output):
     start = time.monotonic()
     app = load_app_config(config)
     paths = final_artifact_paths(config)
+    acquisitions = {
+        name: read(paths.final_output_dir / f"components/inputs/{name}/download.json")
+        for name in ("dem", "chm")
+    }
+    # This bounded example carries provider-specific redistribution attribution.
+    if (
+        acquisitions["dem"]["dataset"]["provider"] != "usgs_3dep"
+        or acquisitions["chm"]["dataset"]["version"] != "ETH_2020_window_v1"
+    ):
+        raise ValueError(
+            "Teaching exporter supports the attributed USGS / ETH_2020_window_v1 preset only"
+        )
     outputs = materialize_static_viewability_outputs(config)
     receipts = {
         "land": outputs["land_static_weights"],
@@ -231,6 +447,20 @@ def _export(config, output):
         raise ValueError("Real teaching export requires a retained input coverage audit")
     if receipt["method"] != "4.0.0-research":
         raise ValueError("Teaching export requires directly observed unweighted canopy LOS")
+    distance_evidence = receipt["producer_evidence"]["land"]["distance"]["settings"]
+    curve_contract = {
+        "settings": distance_evidence["distance"],
+        "extent_km": distance_evidence["distance_extent_km"],
+    }
+    curve_distances = np.linspace(0, curve_contract["extent_km"], 101)
+    source_vintages = [
+        {key: record.get(key) for key in ("source_year", "source_version", "observed_sha256")}
+        for record in acquisitions["chm"]["assets"]
+    ]
+    native_resolution = {
+        name: acquisitions[name]["dataset"]["resolution_m"] for name in acquisitions
+    }
+    public_generation = {key: value for key, value in receipt.items() if key != "prepared_sources"}
     dual = pl.read_parquet(paths.dual_surface_factors).to_dicts()
     canopy_k = {(p["source_h3"], p["target_h3"]): p["weight_canopy_los_raw"] for p in dual}
     pairs = []
@@ -660,11 +890,11 @@ def _export(config, output):
         "distance-curve.json": [
             {"distance_km": float(d), "weight": float(w)}
             for d, w in zip(
-                np.linspace(0, 5, 101),
+                curve_distances,
                 distance_weight_values(
-                    np.linspace(0, 5, 101),
+                    curve_distances,
                     load_distance_weight_config(app.raw_config),
-                    max_distance_km=5,
+                    max_distance_km=curve_contract["extent_km"],
                 ),
                 strict=True,
             )
@@ -672,6 +902,28 @@ def _export(config, output):
         "lessons.json": lessons,
         "indexes.json": indexes,
         "inputs/display-grid.json": grid,
+        "production-evidence.json": {
+            "generation": public_generation,
+            "source_vintages": source_vintages,
+            "native_resolution_m": {
+                "dem": native_resolution["dem"],
+                "canopy": native_resolution["chm"],
+            },
+            "acquisition": {
+                name: {
+                    "dataset": {
+                        key: value
+                        for key, value in acquisitions[name]["dataset"].items()
+                        if key != "assets"
+                    },
+                    "source_content": acquisitions[name]["checksums"],
+                    "source_byte_sha256": [
+                        asset.get("observed_sha256") for asset in acquisitions[name]["assets"]
+                    ],
+                }
+                for name in acquisitions
+            },
+        },
         "validation.json": {
             "artifact_rows_validated": len(pairs),
             "four_file_receipt_validated": True,
@@ -698,14 +950,16 @@ def _export(config, output):
         },
         "artifacts": receipt["files"],
         "code_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
-        "source_vintages": [
-            {key: record.get(key) for key in ("source_year", "source_version", "observed_sha256")}
-            for record in read(paths.final_output_dir / "components/inputs/chm/download.json")[
-                "assets"
-            ]
+        "producer_revision": receipt["producer_evidence"]["land"]["dual_surface"][
+            "producer_revision"
         ],
+        "source_vintages": source_vintages,
         "crs": app.viewshed.crs_projected,
-        "native_resolution_m": {"dem": 30, "canopy": 10},
+        "native_resolution_m": {
+            "dem": native_resolution["dem"],
+            "canopy": native_resolution["chm"],
+        },
+        "curve_contract": curve_contract,
         "analysis_resolution_m": app.viewshed.dem_resolution_m,
         "assumptions": {
             key: app.raw_config[key]
@@ -719,8 +973,11 @@ def _export(config, output):
         },
         "target_support_scope": "Actual support for curated lesson targets only; all candidate pair records are retained",
         "candidate_universe": {
-            "extent": "configured source bbox plus 6 km target buffer, 5 km centroid candidate cutoff",
+            "extent": "configured source bbox, coastal buffer and role-specific centroid candidate cutoff",
             "bbox_wgs84": bounds,
+            "source_bbox_wgs84": list(bbox_from_config(app.raw_config)),
+            "coastal_buffer_m": app.raw_config["region"]["coastal_buffer_m"],
+            "cutoffs_km": app.raw_config["source_target_lookup"],
             "pairs": len(pairs),
             "cells": len(ids),
         },
@@ -751,7 +1008,7 @@ def _export(config, output):
         ],
         "limitations": [
             "Static physical support; not sighting probability or actual observer activity",
-            "100 m analysis and generalized coastline; not fine shoreline accuracy",
+            f"{app.viewshed.dem_resolution_m} m analysis and generalized coastline; not fine shoreline accuracy",
             "Missing canopy uses zero height, not observed absence of trees",
             "Profiles sample real surfaces but are not engine rays or cell aggregate diagnostics",
             "Curated cases are not regional statistics",
@@ -762,9 +1019,7 @@ def _export(config, output):
             if p.is_file() and p.name != "manifest.json"
         },
     }
-    manifest["bundle_id"] = digest(
-        encode({key: manifest[key] for key in ("export_contract", "generation_id", "files")})
-    )
+    seal_manifest(manifest)
     write(output / "manifest.json", manifest)
     from render_documentation_examples import render
 
@@ -774,9 +1029,7 @@ def _export(config, output):
         for p in sorted(output.rglob("*"))
         if p.is_file() and p.name != "manifest.json"
     }
-    manifest["bundle_id"] = digest(
-        encode({key: manifest[key] for key in ("export_contract", "generation_id", "files")})
-    )
+    seal_manifest(manifest)
     write(output / "manifest.json", manifest)
     result = check(output)
     print(json.dumps({**result, "export_seconds": round(time.monotonic() - start, 2)}))

@@ -471,6 +471,16 @@ def run_source_cells(
     limit: int | None = None,
     start: int = 0,
 ) -> pd.DataFrame:
+    """Consume one immutable identity per stage and reject mid-stage input changes."""
+    snapshot = expected_partition_metadata(app, refresh=True)
+    current = replace(app, partition_metadata_snapshot=snapshot)
+    result = _run_source_cells(current, limit=limit, start=start)
+    if expected_partition_metadata(current, refresh=True) != snapshot:
+        raise ValueError("Producer inputs changed during terrain stage; rebuild terrain-weight")
+    return result
+
+
+def _run_source_cells(app: AppConfig, limit: int | None = None, start: int = 0) -> pd.DataFrame:
     validate_viewshed_inputs(app)
     domain_target_water_area_by_h3(app, app.h3.output_resolution)
     source_cells_gdf = _load_terrain_source_cells(app)
@@ -994,6 +1004,27 @@ def run_paired_surface_source_cells(
     *,
     limit: int | None = None,
     start: int = 0,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    snapshots = [
+        expected_partition_metadata(app, refresh=True) for app in (bare_earth_app, canopy_app)
+    ]
+    apps = [
+        replace(app, partition_metadata_snapshot=snapshot)
+        for app, snapshot in zip((bare_earth_app, canopy_app), snapshots, strict=True)
+    ]
+    result = _run_paired_surface_source_cells(*apps, limit=limit, start=start)
+    if any(
+        expected_partition_metadata(app, refresh=True) != snapshot
+        for app, snapshot in zip(apps, snapshots, strict=True)
+    ):
+        raise ValueError(
+            "Producer inputs changed during paired terrain stage; rebuild build-dual-surface-canopy-weights"
+        )
+    return result
+
+
+def _run_paired_surface_source_cells(
+    bare_earth_app: AppConfig, canopy_app: AppConfig, *, limit: int | None = None, start: int = 0
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run matched bare-earth and canopy surfaces from one prepared batch.
 

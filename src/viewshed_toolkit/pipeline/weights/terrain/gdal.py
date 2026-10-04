@@ -212,7 +212,9 @@ def _water_input_identity(app: AppConfig) -> str:
     )
 
 
-def expected_partition_metadata(app: AppConfig) -> dict[str, Any]:
+def expected_partition_metadata(app: AppConfig, *, refresh: bool = False) -> dict[str, Any]:
+    if getattr(app, "partition_metadata_snapshot", None) is not None and not refresh:
+        return dict(app.partition_metadata_snapshot)
     water_viewing = app.raw_config.get("water_viewing", {}) or {}
     metadata = {
         "run_version": app.run.version,

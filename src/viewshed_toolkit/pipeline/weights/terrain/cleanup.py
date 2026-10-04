@@ -94,7 +94,13 @@ def combine_partitions(
     """
 
     logger = logging.getLogger(__name__)
+    from ...contracts.lineage import factor_contract, record_factor
+
     source_type = _source_type_for_app(app)
+    producer = factor_contract(app.raw_config, app.config_path.parent, source_type, "terrain")
+    clear_producer = factor_contract(
+        app.raw_config, app.config_path.parent, source_type, "clear_sky"
+    )
     if source_type not in {"land", "water"}:
         raise ValueError("source_type must be land or water")
 
@@ -103,7 +109,14 @@ def combine_partitions(
         if partition_paths is not None
         else sorted(_partitioned_visibility_dir_for_app(app).glob("source_h3_cell=*.parquet"))
     )
-    expected_metadata = expected_partition_metadata(app)
+    expected_metadata = expected_partition_metadata(app, refresh=True)
+    if (
+        app.partition_metadata_snapshot is not None
+        and expected_metadata != app.partition_metadata_snapshot
+    ):
+        raise ValueError(
+            "Producer inputs changed before terrain publication; rebuild terrain-weight"
+        )
     mismatched = [path for path in parts if not partition_metadata_matches(path, expected_metadata)]
     if mismatched:
         preview = "\n".join(str(path) for path in mismatched[:5])
@@ -318,6 +331,7 @@ def combine_partitions(
         finally:
             tmp_path.unlink(missing_ok=True)
         row_count = validate_parquet_schema(final_path, FINAL_SCHEMAS["terrain_weights"])
+        record_factor(final_path, producer)
         logger.info(
             "Wrote empty compact terrain weights rows=%d output=%s",
             row_count,
@@ -449,6 +463,12 @@ def combine_partitions(
             "Dense terrain weights row count does not match SOURCE_TARGET_LOOKUP row count. "
             f"terrain_rows={row_count:,} expected_rows={lookup_row_count:,}"
         )
+
+    if factor_contract(app.raw_config, app.config_path.parent, source_type, "terrain") != producer:
+        raise ValueError("Producer inputs changed during terrain combine; rebuild terrain-weight")
+    dependencies = {str(i): path for i, path in enumerate(parts)}
+    record_factor(final_path, producer, dependencies=dependencies)
+    record_factor(clear_sky_path, clear_producer, dependencies=dependencies)
 
     return {
         "path": final_path,

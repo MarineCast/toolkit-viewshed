@@ -26,7 +26,8 @@ def test_combine_partitions_preserves_complete_clear_sky_contract(
         }
     ).write_parquet(partition_path)
 
-    lookup_path = tmp_path / "lookup.parquet"
+    lookup_path = tmp_path / "lookup" / "SOURCE_TARGET_LOOKUP_H3R8.parquet"
+    lookup_path.parent.mkdir()
     pl.DataFrame(
         {
             "source_h3": ["source"],
@@ -42,7 +43,18 @@ def test_combine_partitions_preserves_complete_clear_sky_contract(
         ocean_source_target_clear_sky=clear_sky_path,
         source_target_clear_sky=tmp_path / "unused_land_clear_sky.parquet",
     )
-    app = SimpleNamespace(config_path=tmp_path / "config.yaml")
+    app = SimpleNamespace(
+        config_path=tmp_path / "config.yaml",
+        raw_config={
+            "h3": {"source_resolution": 8},
+            "paths": {
+                "output_dir": str(tmp_path),
+                "land_polygon_path": str(lookup_path),
+                "water_polygon_path": str(lookup_path),
+            },
+        },
+        partition_metadata_snapshot=None,
+    )
 
     monkeypatch.setattr(cleanup, "_source_type_for_app", lambda _app: "water")
     monkeypatch.setattr(
@@ -50,7 +62,7 @@ def test_combine_partitions_preserves_complete_clear_sky_contract(
         "_partitioned_visibility_dir_for_app",
         lambda _app: partition_dir,
     )
-    monkeypatch.setattr(cleanup, "expected_partition_metadata", lambda _app: {})
+    monkeypatch.setattr(cleanup, "expected_partition_metadata", lambda _app, **_kwargs: {})
     monkeypatch.setattr(
         cleanup,
         "partition_metadata_matches",

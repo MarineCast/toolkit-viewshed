@@ -31,9 +31,16 @@ before replacing the previous bundle. Profiles use actual source samples, actual
 centers and the production observer-specific canopy-clearance helper. They are sampled explanatory
 profiles, not GDAL engine diagnostics or explanations of every ray in a cell aggregate.
 
-The scientific identity excludes render time and documentation HEAD. Producing revision is
-informational; scientific/configuration, export-contract or data changes invalidate relevant
-checks. Repeated export of this generation produced the same bundle identity. Source paths are
+The `san_juan_lessons_v2` export seals a canonical `semantic_contract` and payload checksums.
+Canonical JSON uses sorted keys, compact separators, finite numbers, UTF-8 and a trailing newline;
+`identity_json` retains these exact bytes for browser hashing. Scientific generation, original
+producer revision, assumptions, grids, native resolutions/vintages, support scope, curve and pair
+references travel with checksummed `production-evidence.json`. Export-time `code_revision` and
+render timestamps are informational and excluded from bundle identity. Preview byte changes can
+change bundle identity while keeping science unchanged. Metadata must also agree with retained
+producer/grid/curve evidence, even after an envelope is rehashed. This unsigned contract proves
+internal integrity and consistency, not provider authenticity or protection against replacing all
+evidence and hashes together. Repeated export of this generation produced the same bundle identity. Source paths are
 kept in ignored run manifests; published metadata uses stable identities and source rights.
 
 On October 3, 2026, the bounded rebuild used checksum-validated cached real USGS elevation,
