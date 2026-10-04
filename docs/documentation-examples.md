@@ -113,3 +113,5 @@ The supported default and `--model-only` never replace the compatibility redirec
 
 Automated CSS reflow is not a manual browser-zoom check or a novice usability study. Sampling,
 resolution and clearance sensitivity, human reader validation and empirical field validation remain unperformed.
+
+The [instructional polish validation report](reports/instructional-polish-validation.md) records the projected display, exact pair/generation parity, isolated bounded rebuild and browser inspection for PR B.

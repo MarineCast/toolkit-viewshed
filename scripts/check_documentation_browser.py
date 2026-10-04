@@ -17,6 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
+    def translate_path(self, path):
+        prefix = "/toolkit-viewshed"
+        if path.startswith(prefix + "/"):
+            path = path[len(prefix) :]
+        return super().translate_path(path)
+
     def log_message(self, format, *args):
         pass
 
@@ -357,6 +363,14 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                     "items=>items.every(e=>e.scrollWidth<=e.clientWidth+1)"
                 )
                 fallback.close()
+                page.goto(origin + "/toolkit-viewshed/assets/san-juan-demo.html")
+                page.wait_for_url(origin + "/toolkit-viewshed/examples/")
+                root.wait_for(timeout=20000)
+                assert page.locator(".vs-status").get_attribute("data-pair-id") == original["id"]
+                page.goto(origin + "/toolkit-viewshed/san-juan-demo/")
+                page.get_by_role("link", name="guided Examples page", exact=True).click()
+                page.wait_for_url(origin + "/toolkit-viewshed/examples/")
+                root.wait_for(timeout=20000)
                 context.close()
                 semantic_failures = []
                 for field in (
@@ -443,6 +457,7 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                             "metric raster spacing and layer-selection viewport parity",
                             "missing bundle static fallback",
                             "touch controls",
+                            "legacy HTML/page links under the GitHub Pages base path",
                             "instant navigation back",
                             "third-party blocked",
                             "JavaScript disabled",
