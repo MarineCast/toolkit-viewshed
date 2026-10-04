@@ -222,3 +222,42 @@ def test_semantic_export_rejects_nonfinite_and_preserves_timestamp_identity():
     manifest["analysis_resolution_m"] = float("nan")
     with pytest.raises(ValueError):
         EXPORT.seal_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    "field", ["analysis_resolution_m", "crs", "assumptions", "source_vintages"]
+)
+def test_strict_build_hook_rejects_resigned_scientific_metadata(tmp_path, monkeypatch, field):
+    from types import SimpleNamespace
+
+    hook_spec = importlib.util.spec_from_file_location("docs_hooks", ROOT / "scripts/docs_hooks.py")
+    hook = importlib.util.module_from_spec(hook_spec)
+    hook_spec.loader.exec_module(hook)
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    manifest = EXPORT.read(output / "manifest.json")
+    if field == "analysis_resolution_m":
+        manifest[field] += 1
+    elif field == "crs":
+        manifest[field] = "EPSG:4326"
+    elif field == "assumptions":
+        manifest[field]["viewshed"]["observer_canopy_clearance_radius_m"] += 1
+    else:
+        manifest[field][0]["source_year"] = 1999
+    EXPORT.seal_manifest(manifest)
+    EXPORT.write(output / "manifest.json", manifest)
+    monkeypatch.setattr(hook, "BUNDLE", output)
+    with pytest.raises(subprocess.CalledProcessError) as failure:
+        hook.on_pre_build(SimpleNamespace(extra={}))
+    assert b"evidence" in failure.value.stderr
+
+
+def test_checker_rejects_rehashed_curve_calculation(tmp_path):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    curve = EXPORT.read(output / "distance-curve.json")
+    curve[50]["weight"] += 0.1
+    EXPORT.write(output / "distance-curve.json", curve)
+    reseal(output)
+    with pytest.raises(ValueError, match="curve values"):
+        EXPORT.check(output)

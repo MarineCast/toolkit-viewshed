@@ -99,9 +99,7 @@ compare the two real examples.
 
 {{table_distance}}
 
-The configured logistic rule has a {{midpoint}} km midpoint, a {{slope}} km slope scale, normalization at zero
-and a {{cutoff}} km hard cutoff. `weight_distance` is a centroid diagnostic. `weight_terrain` already
-includes attenuation integrated over the observer/target population.
+{{distance_rule}}
 
 </details>
 </section>

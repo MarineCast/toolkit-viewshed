@@ -79,6 +79,28 @@ def on_page_markdown(markdown, page, config, files):
         "cutoff": assumptions["distance_weight"]["hard_cutoff_km"],
         "analysis_crs": manifest["crs"],
     }
+    curve = manifest["curve_contract"]
+    cfg = curve["settings"]
+    model = cfg["selected_model"]
+    if model == "logistic":
+        rule = f"logistic rule has a {cfg['logistic_d50_km']} km midpoint and {cfg['logistic_slope_km']} km slope scale"
+    elif model == "exponential":
+        rule = f"exponential rule has a {cfg['exponential_lambda_km']} km decay scale"
+    else:
+        near = (
+            cfg["piecewise_near_km"]
+            if cfg["piecewise_near_km"] is not None
+            else cfg["piecewise_full_weight_km"]
+        )
+        far = (
+            cfg["piecewise_far_km"]
+            if cfg["piecewise_far_km"] is not None
+            else cfg["piecewise_zero_weight_km"]
+        )
+        rule = f"piecewise rule retains full support through {near} km and reaches zero at {far} km"
+    parameters["distance_rule"] = (
+        f"The configured {rule}, {'with' if cfg['normalize_at_zero'] else 'without'} normalization at zero, and a {curve['extent_km']} km cutoff."
+    )
     for key, value in parameters.items():
         markdown = markdown.replace("{{" + key + "}}", str(value))
 

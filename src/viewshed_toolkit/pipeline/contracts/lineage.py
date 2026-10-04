@@ -167,7 +167,8 @@ def record_factor(
     """Call only after a producer has validated successful execution and its product."""
     import polars as pl
 
-    validate_pairs(pl.read_parquet(path).select("source_h3", "target_h3"))
+    pairs = pl.read_parquet(path).select("source_h3", "target_h3").sort("source_h3", "target_h3")
+    validate_pairs(pairs)
     payload = {
         **contract,
         "fingerprint": fingerprint(contract),
@@ -175,6 +176,8 @@ def record_factor(
         "output_checksum": input_checksums({"product": path})["product"],
         "producer_revision": producer_revision(),
         "dependencies": input_checksums(dependencies or {}),
+        "evaluated_pair_count": pairs.height,
+        "evaluated_pair_identity": fingerprint({"pairs": pairs.rows()}),
     }
     payload["receipt_id"] = fingerprint(payload)
     write_json(producer_receipt_path(path), payload)
@@ -234,6 +237,11 @@ def validate_role_factors(
     contracts = {}
     for name, (path, kind) in factors.items():
         if kind not in contracts:
-            contracts[kind] = factor_contract(raw, config_dir, role, kind)
+            try:
+                contracts[kind] = factor_contract(raw, config_dir, role, kind)
+            except (OSError, ValueError) as exc:
+                raise ValueError(
+                    f"Producer lineage inputs unavailable for {path.name}: {exc}; rebuild {REBUILD_STAGES[kind]}"
+                ) from exc
         result[name] = validate_factor(path, contracts[kind])
     return result

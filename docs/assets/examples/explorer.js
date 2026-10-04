@@ -149,6 +149,24 @@
     const ids = new Set(rows.map(item => item[columns.indexOf("id")]));
     if (data["lessons.json"].some(lesson => lesson.pair_ids.some(id => !ids.has(id))))
       throw new Error("Invalid lesson reference");
+    const pairs = new Map(rows.map(item => [item[columns.indexOf("id")], Object.fromEntries(columns.map((key, index) => [key, item[index]]))]));
+    for (const pair of pairs.values()) {
+      for (const field of ["line_of_sight_support", "physical_viewability", "distance_detection_weight", "distance_weighted_los_support", "distance_adjusted_viewability"]) {
+        if (!Number.isFinite(pair[field]) || pair[field] < 0 || pair[field] > 1) throw new Error("Invalid scientific value");
+      }
+      const canopy = pair.source_type === "land" ? pair.vegetation_attenuation : 1;
+      if (!Number.isFinite(canopy) || Math.abs(pair.distance_adjusted_viewability-pair.distance_weighted_los_support*canopy) > 1e-6
+        || pair.distance_weighted_los_support > pair.line_of_sight_support+1e-6) throw new Error("Scientific formula mismatch");
+    }
+    const lessons = Object.fromEntries(data["lessons.json"].map(lesson => [lesson.id, lesson]));
+    const [near, far] = lessons.distance.pair_ids.map(id => pairs.get(id));
+    const [effect, little] = lessons.canopy.pair_ids.map(id => pairs.get(id));
+    if (!(near.distance_km < far.distance_km) || effect.line_of_sight_support <= .02 || effect.physical_viewability/effect.line_of_sight_support > .2
+      || little.line_of_sight_support <= .02 || little.physical_viewability/little.line_of_sight_support < .98) throw new Error("Unsupported teaching claim");
+    if (new Set(lessons.inverse.pair_ids.map(id => pairs.get(id).target_h3)).size !== 1) throw new Error("Inverse target mismatch");
+    const blocked = pairs.get(lessons.terrain.pair_ids.at(-1));
+    const profile = data["profiles.json"].find(item => item.pair_id === blocked.id);
+    if (blocked.line_of_sight_support !== 0 || !profile || !profile.samples.slice(1,-1).some(sample => sample.ground_m > sample.ray_m)) throw new Error("Obstruction claim lacks evidence");
   }
   async function load(url) {
     if (!cache.has(url))

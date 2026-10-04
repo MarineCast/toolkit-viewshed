@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from build_documentation_examples import seal_manifest
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -228,6 +229,41 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 static.screenshot(path=str(output / f"{engine}-javascript-disabled.png"))
                 fallback.close()
                 context.close()
+                semantic_failures = []
+                for field in (
+                    "analysis_resolution_m",
+                    "crs",
+                    "assumptions",
+                    "source_vintages",
+                    "curve_contract",
+                ):
+                    invalid = json.loads((bundle / "manifest.json").read_text())
+                    if field == "analysis_resolution_m":
+                        invalid[field] += 1
+                    elif field == "crs":
+                        invalid[field] = "EPSG:4326"
+                    elif field == "assumptions":
+                        invalid[field]["viewshed"]["observer_canopy_clearance_radius_m"] += 1
+                    elif field == "source_vintages":
+                        invalid[field][0]["source_year"] = 1999
+                    else:
+                        invalid[field]["extent_km"] -= 1
+                    seal_manifest(invalid)
+                    bad_context = browser.new_context()
+                    bad_context.route("**/*", route)
+                    bad_context.route(
+                        "**/san-juan/manifest.json",
+                        lambda request, _request, invalid=invalid: request.fulfill(json=invalid),
+                    )
+                    bad_page = bad_context.new_page()
+                    bad_page.goto(origin + "/examples/")
+                    bad_page.get_by_role("status").filter(
+                        has_text="interactive bundle could not be loaded"
+                    ).wait_for()
+                    assert bad_page.locator(".lesson > figure svg").count() == 7
+                    assert bad_page.locator('#viewshed-explorer[data-ready="true"]').count() == 0
+                    semantic_failures.append(field)
+                    bad_context.close()
                 browser.close()
                 results.append(
                     {
@@ -254,6 +290,7 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                         "initial_payload_bytes": initial_bytes,
                         "blocked_third_party_requests": len(blocked),
                         "page_errors": errors,
+                        "rehashed_semantic_mutations_rejected": semantic_failures,
                     }
                 )
     finally:

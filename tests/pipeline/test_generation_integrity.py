@@ -511,3 +511,27 @@ def test_refinalization_succeeds_after_actual_upstream_rebuild(generation):
             run_stage(app, replace(invocation, overwrite=True))
     materialize_static_viewability_outputs(config, overwrite=True)
     assert json.loads(receipt.read_text())["generation_id"] != old_id
+
+
+@pytest.mark.parametrize("role", ["land", "water"])
+def test_view_score_report_failure_preserves_previous_publication(generation, monkeypatch, role):
+    from viewshed_toolkit.pipeline.contracts.artifacts import final_artifact_paths
+    from viewshed_toolkit.pipeline.weights import view_score
+
+    config, _outputs = generation
+    paths = final_artifact_paths(config)
+    score = paths.land_view_score if role == "land" else paths.ocean_view_score
+    outputs = [score, score.with_suffix(score.suffix + ".join_report.json")]
+    if role == "water":
+        outputs.append(paths.ocean_physical_weights)
+    for path in outputs:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"previous durable publication")
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("report failure")
+
+    monkeypatch.setattr(view_score, "_write_join_report", fail)
+    with pytest.raises(RuntimeError, match="report failure"):
+        view_score.finalize_view_score(config, source_type=role, overwrite=True)
+    assert all(path.read_bytes() == b"previous durable publication" for path in outputs)
