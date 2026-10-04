@@ -9,6 +9,10 @@ role, with each component retained for inspection.
 These are **static physical viewability** products. They do not estimate observer effort,
 public access, reporting probability, animal detection probability, occurrence, or abundance.
 
+Explore the [documentation site](https://marinecast.github.io/toolkit-viewshed/), starting with
+the [quick start](docs/getting-started/quick-start.md), [product guide](docs/products/index.md), or
+[San Juan guided example](docs/examples.md).
+
 ## Methodology
 
 The toolkit builds a deterministic universe of H3 source–target pairs, samples viewpoints within

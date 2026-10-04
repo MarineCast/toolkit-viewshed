@@ -1,21 +1,25 @@
 site_name: Viewshed Toolkit
 site_url: https://marinecast.github.io/toolkit-viewshed/
 site_description: Static physical viewing support over land and water
+repo_name: MarineCast/toolkit-viewshed
 repo_url: https://github.com/MarineCast/toolkit-viewshed
-edit_uri: blob/main/docs/
+edit_uri: edit/main/docs/
+copyright: Copyright MarineCast contributors · Apache-2.0 software license
 use_directory_urls: true
 theme:
   name: material
   font: false
+  icon:
+    logo: material/binoculars
   palette:
     - scheme: default
-      primary: blue grey
+      primary: teal
       accent: teal
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
     - scheme: slate
-      primary: blue grey
+      primary: teal
       accent: teal
       toggle:
         icon: material/weather-sunny
@@ -23,26 +27,45 @@ theme:
   features:
     - navigation.instant
     - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.suggest
+    - search.highlight
 nav:
-  - Overview: index.md
-  - Examples: examples.md
-  - Use the toolkit:
-      - API: api.md
-      - Pipelines: pipelines.md
-      - Configuration: configuration.md
-      - Acquisition: data-acquisition.md
+  - Home: index.md
+  - Get started:
+      - Installation: getting-started/installation.md
+      - Quick start: getting-started/quick-start.md
+  - Understand:
+      - Viewing concepts: understand/index.md
+      - Method overview: methodology.md
+      - Data sources: data-acquisition.md
+  - Products:
+      - Product guide: products/index.md
       - Distance products: distance-products.md
-  - Science:
-      - Methodology: scientific-methodology.md
-      - Performance: performance.md
+  - Examples:
+      - Choose a workflow: workflows/index.md
+      - San Juan guided example: examples.md
+      - San Juan model setup: san-juan-demo.md
       - Salish Sea case study: salish-sea-case-study.md
+  - API:
+      - API overview: api/overview.md
+      - Python and CLI: api.md
+  - Reference:
+      - Scientific contracts: scientific-methodology.md
+      - Configuration: configuration.md
+      - Pipeline stages: pipelines.md
+      - Performance: performance.md
   - Development:
+      - Contributing and validation: development/index.md
       - Architecture: architecture.md
       - Reproduce the example: documentation-examples.md
+      - Validation evidence: development/evidence.md
 not_in_nav: |
   reports/**
-  methodology.md
-  san-juan-demo.md
 validation:
   nav:
     omitted_files: warn
@@ -57,6 +80,7 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.superfences
 extra_css:
+  - assets/stylesheets/extra.css
   - assets/examples/examples.css
 hooks:
   - scripts/docs_hooks.py

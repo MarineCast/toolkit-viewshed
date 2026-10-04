@@ -1,0 +1,60 @@
+/* Shared MarineCast documentation cues, with Viewshed-specific reader journeys. */
+:root {
+  --md-primary-fg-color: #0b625c;
+  --md-accent-fg-color: #0f766e;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-accent-fg-color: #67d4c5;
+  --md-typeset-a-color: #67d4c5;
+}
+
+.md-typeset .viewshed-hero {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.md-typeset .viewshed-lead {
+  max-width: 47rem;
+  margin-top: 1.25rem;
+  font-size: 1.2rem;
+  line-height: 1.5;
+}
+
+.md-typeset .viewshed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1.25rem 0;
+}
+
+.md-typeset .viewshed-actions p {
+  display: contents;
+}
+
+.md-typeset .md-button {
+  border-radius: 0.25rem;
+}
+
+.md-typeset .md-button:not(.md-button--primary) {
+  color: var(--md-accent-fg-color);
+  border-color: var(--md-accent-fg-color);
+}
+
+.md-typeset .grid.cards > ul > li {
+  border-top: 3px solid var(--md-accent-fg-color);
+  border-radius: 0.35rem;
+}
+
+.md-typeset .grid.cards > ul > li > p:first-child {
+  font-size: 1rem;
+}
+
+@media (max-width: 30rem) {
+  .md-typeset .viewshed-actions .md-button {
+    width: 100%;
+    text-align: center;
+  }
+}
