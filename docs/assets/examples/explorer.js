@@ -155,6 +155,7 @@
       for (const field of ["line_of_sight_support", "physical_viewability", "distance_detection_weight", "distance_weighted_los_support", "distance_adjusted_viewability"]) {
         if (!Number.isFinite(pair[field]) || pair[field] < 0 || pair[field] > 1) throw new Error("Invalid scientific value");
       }
+      if (Math.abs(pair.distance_detection_weight-expectedWeight(pair.distance_km)) > 1e-6) throw new Error("Centroid diagnostic curve mismatch");
       const canopy = pair.source_type === "land" ? pair.vegetation_attenuation : 1;
       if (!Number.isFinite(canopy) || Math.abs(pair.distance_adjusted_viewability-pair.distance_weighted_los_support*canopy) > 1e-6
         || pair.distance_weighted_los_support > pair.line_of_sight_support+1e-6) throw new Error("Scientific formula mismatch");

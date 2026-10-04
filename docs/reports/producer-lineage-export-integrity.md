@@ -80,7 +80,8 @@ python scripts/check_documentation_browser.py --engines chromium webkit --output
 ```
 
 - Full suites: 395 passed, no skips, on each Python (135.56 s / 138.83 s). Three subsequent
-  provider-preset guards were added and exercised with the full focused bundle suite.
+  provider-preset guards and one centroid-diagnostic consistency regression were added and
+  exercised with the 40-test focused bundle suite.
 - Expanded Ruff, Black (36 scoped files), strict mypy (24 source files), byte compilation and
   installed-wheel probes passed. Wheels were installed outside the checkout; toolkit imports,
   packaged resources and CLI help resolved inside the isolated installed environments.

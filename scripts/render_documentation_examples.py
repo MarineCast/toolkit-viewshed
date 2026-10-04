@@ -238,15 +238,16 @@ def render(output):
                 )
         elif ident == "distance":
             curve = read(output / "distance-curve.json")
+            extent = manifest["curve_contract"]["extent_km"]
             svg += text(55, 38, "This model assigns less support as distance increases", "title")
             svg += '<path class="axis" d="M70,70 V330 H920"/>'
             points = " ".join(
-                f'{70+v["distance_km"]/5*850:.2f},{330-v["weight"]*260:.2f}' for v in curve
+                f'{70+v["distance_km"]/extent*850:.2f},{330-v["weight"]*260:.2f}' for v in curve
             )
             svg += f'<polyline points="{points}" fill="none" stroke="#168497" stroke-width="3"/>'
             for i, pair in enumerate(selected):
                 x, y = (
-                    70 + pair["distance_km"] / 5 * 850,
+                    70 + pair["distance_km"] / extent * 850,
                     330 - pair["distance_detection_weight"] * 260,
                 )
                 svg += f'<circle cx="{x:.2f}" cy="{y:.2f}" r="6" fill="#132b37"/>' + text(
@@ -255,7 +256,7 @@ def render(output):
                     f'{"Near" if i==0 else "Far"}: {pair["distance_km"]:.2f} km · diagnostic {number(pair["distance_detection_weight"])}',
                 )
             svg += text(70, 60, "Diagnostic support (0\u20131)", "small") + text(
-                420, 409, "Centroid distance, km (0\u20135)", "small"
+                420, 409, f"Centroid distance, km (0\u2013{extent:g})", "small"
             )
         elif ident == "terrain":
             for i, pair in enumerate(selected):

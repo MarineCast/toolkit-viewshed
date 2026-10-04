@@ -248,6 +248,14 @@ def check(output):
             or pair["id"] != ":".join(key)
         ):
             raise ValueError("Invalid pair role/scenario identity")
+        if (
+            abs(
+                pair["distance_detection_weight"]
+                - curve_weight(pair["distance_km"], manifest["curve_contract"])
+            )
+            > 1e-6
+        ):
+            raise ValueError("Pair centroid diagnostic contradicts recorded distance curve")
         for metric in METRICS:
             value = pair[metric]
             if value is None and not (

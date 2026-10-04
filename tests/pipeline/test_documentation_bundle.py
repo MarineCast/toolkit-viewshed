@@ -271,3 +271,15 @@ def test_attributed_exporter_rejects_unsupported_provider_evidence(field, value)
     evidence["dem" if field == "provider" else "chm"]["dataset"][field] = value
     with pytest.raises(ValueError, match="unsupported provider evidence"):
         EXPORT.validate_provider_preset(evidence)
+
+
+def test_checker_rejects_centroid_diagnostic_inconsistent_with_curve(tmp_path):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    data = EXPORT.read(output / "pairs.json")
+    column = data["columns"].index("distance_detection_weight")
+    data["rows"][0][column] -= 0.01
+    EXPORT.write(output / "pairs.json", data)
+    reseal(output)
+    with pytest.raises(ValueError, match="centroid diagnostic"):
+        EXPORT.check(output)
