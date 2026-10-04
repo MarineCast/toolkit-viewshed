@@ -283,3 +283,77 @@ def test_checker_rejects_centroid_diagnostic_inconsistent_with_curve(tmp_path):
     reseal(output)
     with pytest.raises(ValueError, match="centroid diagnostic"):
         EXPORT.check(output)
+
+
+def test_input_preview_preserves_square_projected_spacing():
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(BUNDLE / "previews/ground.svg").getroot()
+    import math
+
+    pixel = next(
+        element
+        for element in root.iter()
+        if element.tag.endswith("polygon") and element.attrib.get("data-sample") == "0,0"
+    )
+    points = [[float(v) for v in point.split(",")] for point in pixel.attrib["points"].split()]
+    assert math.dist(points[0], points[1]) == pytest.approx(
+        math.dist(points[1], points[2]), abs=0.02
+    )
+
+
+@pytest.mark.parametrize("mutation", ["observer", "endpoint", "role"])
+def test_profile_must_match_pair_observer_role_and_target_support(tmp_path, mutation):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    profiles = EXPORT.read(output / "profiles.json")
+    profile = profiles[0]
+    if mutation == "observer":
+        observers = EXPORT.read(output / "observer-samples.geojson")["features"]
+        profile["observer_id"] = next(
+            observer["id"]
+            for observer in observers
+            if observer["properties"]["source_h3"] not in profile["pair_id"]
+        )
+    elif mutation == "endpoint":
+        profile["endpoint"] = [-123.8, 48.9]
+    else:
+        profile["source_type"] = "water"
+    EXPORT.write(output / "profiles.json", profiles)
+    reseal(output)
+    with pytest.raises(ValueError, match=r"Profile.*correspondence"):
+        EXPORT.check(output)
+
+
+@pytest.fixture(autouse=True)
+def standalone_script_imports(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+
+
+@pytest.mark.parametrize(
+    "mutation", ["bounds", "population", "endpoint", "case_title", "case_reference"]
+)
+def test_checker_rejects_rehashed_display_and_case_mismatch(tmp_path, mutation):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    if mutation.startswith("case"):
+        lessons = EXPORT.read(output / "lessons.json")
+        if mutation == "case_title":
+            next(lesson for lesson in lessons if lesson["id"] == "canopy")["cases"][0][
+                "claim"
+            ] = "little"
+        else:
+            lessons[0]["cases"][0]["pair_id"] = lessons[-1]["pair_ids"][-1]
+        EXPORT.write(output / "lessons.json", lessons)
+    else:
+        display = EXPORT.read(output / "inputs/display-geometry.json")
+        if mutation == "bounds":
+            display["bounds"][0] += 100
+        elif mutation == "population":
+            display["observers"]["features"].pop()
+        else:
+            display["profiles"][0]["endpoint"][0] += 100
+        EXPORT.write(output / "inputs/display-geometry.json", display)
+    reseal(output)
+    with pytest.raises(ValueError):
+        EXPORT.check(output)

@@ -14,10 +14,10 @@ from importlib.metadata import version
 from pathlib import Path
 
 from check_case_study_inputs import check_inputs
-from plot_san_juan_demo import plot_demo
 
 from viewshed_toolkit import STAGES, ViewshedRequest, load_app_config, process, run_component_stage
 from viewshed_toolkit.pipeline.config.paths import resolve_path
+from viewshed_toolkit.pipeline.contracts.artifacts import final_artifact_paths_from_raw
 from viewshed_toolkit.pipeline.contracts.components import (
     acquisition_request,
     cache_matches,
@@ -25,12 +25,11 @@ from viewshed_toolkit.pipeline.contracts.components import (
     record_product,
     write_json,
 )
-from viewshed_toolkit.pipeline.contracts.artifacts import final_artifact_paths_from_raw
 from viewshed_toolkit.pipeline.prepare.area.case_study import prepare_case_geometry
 from viewshed_toolkit.pipeline.prepare.vegetation.sources import (
-    eth_tile_bounds,
     eth_chm_filename,
     eth_download_canopy_url,
+    eth_tile_bounds,
 )
 from viewshed_toolkit.pipeline.providers.base import validate_raster
 from viewshed_toolkit.pipeline.visualization.data import static_map_output_paths
@@ -104,7 +103,7 @@ def prepare_canopy_windows(app) -> list[Path]:
     return outputs
 
 
-def main() -> None:
+def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("configs/san_juan_demo.yaml"))
     mode = parser.add_mutually_exclusive_group()
@@ -114,9 +113,9 @@ def main() -> None:
     mode.add_argument(
         "--render-only",
         action="store_true",
-        help="Render existing validated final tables without acquisition",
+        help="Retired mode: use the checked bundle exporter",
     )
-    parser.add_argument(
+    mode.add_argument(
         "--model-only",
         action="store_true",
         help="Build validated scientific outputs without regenerating legacy presentation",
@@ -126,14 +125,42 @@ def main() -> None:
         action="store_true",
         help="Rebuild derived products from validated real input caches",
     )
-    args = parser.parse_args()
+    mode.add_argument(
+        "--legacy-render",
+        action="store_true",
+        help="Explicitly render existing validated outputs to an ignored legacy directory",
+    )
+    parser.add_argument(
+        "--legacy-output",
+        type=Path,
+        help="Legacy output directory; tracked documentation is forbidden",
+    )
+    args = parser.parse_args(argv)
+    if args.render_only:
+        parser.error(
+            "--render-only is retired. Use scripts/build_documentation_examples.py to export the checked instructional bundle, or --legacy-render for an ignored legacy output."
+        )
+    if args.legacy_output and not args.legacy_render:
+        parser.error("--legacy-output requires --legacy-render")
+    if args.prepare_only and args.rebuild:
+        parser.error("--rebuild rebuilds the model; combine it with --model-only")
+    if args.legacy_render and args.rebuild:
+        parser.error("--legacy-render uses existing outputs; run --rebuild --model-only first")
+    legacy_output = None
+    if args.legacy_render:
+        from plot_san_juan_demo import legacy_output_directory
+
+        try:
+            legacy_output = legacy_output_directory(args.legacy_output)
+        except ValueError as exc:
+            parser.error(str(exc))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     start = time.monotonic()
     app = load_app_config(args.config)
     data_root = resolve_path("data/san_juan_demo", app.config_path.parent)
     os.environ.setdefault("HYRIVER_CACHE_NAME", str(data_root / "cache/http.sqlite"))
     (data_root / "cache").mkdir(parents=True, exist_ok=True)
-    if not args.render_only:
+    if not args.legacy_render:
         prepare_case_geometry(app)
         prepare_canopy_windows(app)
         for stage in ("download-dem", "prepare-dem", "download-chm", "prepare-chm"):
@@ -147,6 +174,7 @@ def main() -> None:
         # A selected-stage request retains intermediates for documentation inspection.
         if args.rebuild:
             from dataclasses import replace
+
             from viewshed_toolkit.pipeline.api.registry import invocations_for_stage
             from viewshed_toolkit.pipeline.api.stages import run_stage
 
@@ -160,15 +188,20 @@ def main() -> None:
                     config=args.config, stages=STAGES[1:], run_id=f"san-juan-demo-{app.config_hash}"
                 )
             )
-    if args.model_only:
+    if not args.legacy_render:
         print(component_root(app).parent / "viewshed-generation.json")
+        print(
+            f"Next: PYTHONPATH=src python scripts/build_documentation_examples.py --config {args.config} --output docs/assets/examples/san-juan"
+        )
         return
+    from plot_san_juan_demo import plot_demo
+
     paths = final_artifact_paths_from_raw(app.raw_config, app.config_path.parent)
-    figure, summary = plot_demo(app)
+    figure, summary = plot_demo(app, output_dir=legacy_output)
     maps = static_map_output_paths(app)
     summary.update(
         generated_at_utc=datetime.now(UTC).isoformat(),
-        command_mode="render-only" if args.render_only else "build",
+        command_mode="explicit-legacy-render",
         elapsed_seconds=round(time.monotonic() - start, 2),
         config_hash=app.config_hash,
         source_data="real; no synthetic terrain or canopy",

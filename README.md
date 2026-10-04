@@ -17,7 +17,7 @@ matched DEM+CHM surfaces to separate terrain support from conditional canopy obs
 sources use the configured opaque-land policy. The line-of-sight kernel applies range attenuation,
 and the resulting pair weights can be aggregated into maps of static viewing support.
 
-![Conceptual Viewshed Toolkit workflow from observers and line-of-sight calculations to H3 viewability summaries](docs/assets/viewshed-methodology-overview.png)
+![Conceptual Viewshed Toolkit workflow from observers and line-of-sight calculations to H3 viewability summaries](docs/assets/viewshed-methodology-overview.svg)
 
 *Conceptual overview only: the illustrated target area does not supply animal activity to the
 model. Outputs describe static physical viewability, and aggregate sums do not represent observer
@@ -47,10 +47,16 @@ It includes a real-data configuration, a production-pipeline runner, an interact
 documentation figures, with explicit source coverage and interpretation limits.
 
 ```bash
-PYTHONPATH=src python scripts/run_san_juan_demo.py
+# Bounded real model; native geospatial environment required.
+PYTHONPATH=src python scripts/run_san_juan_demo.py \
+  --config configs/san_juan_demo.yaml --rebuild --model-only
+
+# Export checked documentation derivatives from the validated results.
+PYTHONPATH=src python scripts/build_documentation_examples.py \
+  --config configs/san_juan_demo.yaml --output docs/assets/examples/san-juan
 ```
 
-The demo requires the `analysis` and `acquisition` extras and a compatible GDAL environment.
+Reading the [committed guided example](docs/examples.md) needs no native environment. Model execution requires the `analysis` and `acquisition` extras and compatible GDAL. The runner defaults to model-only and prints the next export command; it does not write retired documentation assets.
 
 Start with `configs/salish_sea.yaml`, or the configuration bundled in the wheel:
 

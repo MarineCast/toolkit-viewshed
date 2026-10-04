@@ -7,6 +7,7 @@ computed zero is pale blue, mapped land is gray, source is an outlined star.
 Renderer: Matplotlib. Outputs: documentation PNG and SVG; inspect both at export size.
 """
 
+import subprocess
 from pathlib import Path
 
 import geopandas as gpd
@@ -15,17 +16,35 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap, Normalize
 import polars as pl
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 from shapely.geometry import box
 
 from viewshed_toolkit._internal.geo.h3 import cell_to_polygon
-from viewshed_toolkit.pipeline.config.paths import bbox_from_config, resolve_path
+from viewshed_toolkit.pipeline.config.paths import bbox_from_config
 from viewshed_toolkit.pipeline.contracts.artifacts import final_artifact_paths_from_raw
 from viewshed_toolkit.pipeline.finalize.final_artifacts import validate_static_artifact_metadata
 
 
-def plot_demo(app) -> tuple[Path, dict]:
+def legacy_output_directory(value=None) -> Path:
+    root = Path(__file__).resolve().parents[1]
+    output = Path(value).expanduser().resolve() if value is not None else root / "work/legacy-demo"
+    docs = root / "docs"
+    if output == root or output.is_relative_to(docs) or docs.is_relative_to(output):
+        raise ValueError(
+            "Legacy rendering cannot write tracked documentation; use work/legacy-demo or another ignored directory"
+        )
+    if output.is_relative_to(root):
+        tracked = subprocess.check_output(
+            ["git", "ls-files", "--", str(output.relative_to(root))], cwd=root, text=True
+        )
+        if tracked.strip():
+            raise ValueError("Legacy rendering cannot write a tracked directory")
+    return output
+
+
+def plot_demo(app, *, output_dir=None) -> tuple[Path, dict]:
+    output_directory = legacy_output_directory(output_dir)
     paths = final_artifact_paths_from_raw(app.raw_config, app.config_path.parent)
     bounds = bbox_from_config(app.raw_config)
     frame_by_role = {}
@@ -123,17 +142,17 @@ def plot_demo(app) -> tuple[Path, dict]:
             plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=cmap),
             ax=axes,
             shrink=0.65,
-            label="Physical support / conditional factor (0–1)",
+            label="Physical support / conditional factor (0\u20131)",
         )
         fig.suptitle(
-            "Central San Juan Islands · static physical viewability\nH3 resolution 7 · 100 m terrain · 5 km radius · 1–3 land observers per source",
+            "Central San Juan Islands · static physical viewability\nH3 resolution 7 · 100 m terrain · 5 km radius · 1\u20133 land observers per source",
             fontsize=16,
         )
         fig.supxlabel(
             "Stars: source cells. Pale blue: zero. Uncolored water: no candidate pair. Hatched: no baseline support; canopy factor is not interpretable.\nMissing canopy uses a zero-height fallback; see the coverage audit. These are not detection probabilities.\nSources: USGS 3DEP; ETH 2020 canopy (Lang et al., CC BY 4.0); Natural Earth (public domain).",
             fontsize=9,
         )
-        output = resolve_path("docs/assets/san-juan-demo.png")
+        output = output_directory / "san-juan-demo.png"
         output.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(output, dpi=160, facecolor="white")
         svg = output.with_suffix(".svg")

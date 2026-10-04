@@ -4,7 +4,7 @@
 
 <p class="example-lead">Follow a real San Juan Islands example from map inputs to modeled viewing support. No coding required.</p>
 
-Start with **Observer area A** and **Water area B**, already selected on the real map below.
+**Worked example A → B.** Start with **Observer area A** and **Water area B**, already selected on the real map below.
 These are modeled areas in the central San Juan Islands. Follow the seven questions in order,
 then explore other areas. No coordinates or map identifiers are needed.
 
@@ -18,7 +18,7 @@ The source is the area an observer could look from; the target is the water area
 about. Hexagons give the model consistent map areas. They are not exact observer positions.
 Ground elevation measures how high the land is. Tree height measures vegetation above that
 ground. Adding them creates an obstruction surface. The real coastline separates land and water.
-Open the input previews to compare these layers. Pink pixels have no recorded height; they are
+**Try it:** switch between land/water boundaries, ground elevation and tree heights. All use the same projected map and scale. Open the input previews to compare these layers. Pink pixels have no recorded height; they are
 not evidence of bare ground. Sightings do not enter this calculation.
 
 <figure>{{figure_inputs}}<figcaption>Actual source samples and real mapped areas. A source area is not a guaranteed public lookout.</figcaption></figure>
@@ -59,12 +59,14 @@ resolution, observer/target heights, curvature and the full configuration assump
 
 The dots inside Observer area A are the positions actually sampled by the model. It compares
 those positions with water support inside the target area and averages the modeled results.
-Reveal the profile to follow one observer-to-water example: the ground, the ground plus trees,
+**Try it:** follow the highlighted source sample and target endpoint on the map and the matching profile: the ground, the ground plus trees,
 and a straight viewing ray adjusted for the configured curvature assumption. That single path
-helps explain the geometry. It is not the entire area's answer. The area summary includes other
+helps explain the geometry. **One explanatory sampled path; the area result summarizes the modeled population. This is not an engine trace or every contributing path.** The area summary includes other
 positions and water pixels, so an open or blocked profile alone cannot establish its aggregate.
 
-<figure>{{figure_samples}}<figcaption>Actual modeled observer samples beside one explanatory profile from the prepared surfaces.</figcaption></figure>
+**Actual result — Worked example A → B:** unweighted ground support is {{line_of_sight_support}}.
+
+<figure>{{figure_samples}}<figcaption>Worked example A → B: actual modeled observer samples and the linked explanatory profile. The axes use physical units with vertical exaggeration.</figcaption></figure>
 
 <p class="takeaway">The cell summarizes multiple modeled positions, not the view from one guaranteed public lookout.</p>
 <details markdown="1"><summary>Reveal the area result and sampling details</summary>
@@ -84,13 +86,15 @@ explanatory profiles, not GDAL engine diagnostics. Observer clearance is {{clear
 
 ## 3. What changes as water gets farther away?
 
-This model assigns less support as distance increases. Compare the selected near and far water
+This model assigns less support as distance increases. **Try it:** select Nearer water, then Farther water. Compare the selected near and far water
 areas with the curve below. The markers show their actual centroid distances and diagnostic
-values. Both have strong bare-ground support, but they are different pairs; their final scores
+values. {{distance_population}} and have strong bare-ground support, but their final scores
 are not a controlled comparison of distance alone. The curve is an assumed attenuation rule,
 not a calibrated sighting probability. During the full calculation it is applied to each
 observer-to-water distance, rather than just these centroid distances. Reveal the values to
 compare the two real examples.
+
+**Actual result:** {{distance_reading}}
 
 <figure>{{figure_distance}}<figcaption>The configured distance curve, evaluated by the production function, with actual pair-distance markers.</figcaption></figure>
 
@@ -108,13 +112,15 @@ compare the two real examples.
 
 ## 4. Why can nearby water still be hidden?
 
-Distance is only one part of the answer. Compare the real examples below using ground-only line
+Distance is only one part of the answer. **Try it:** select Open ground, then Ground-blocked example. Compare the real examples below using ground-only line
 of sight, which measures geometric support before attenuation. One pair has open bare-ground
 support; the other has zero bare-ground support. Its sampled real topographic profile crosses
 the viewing ray, illustrating an intervening obstruction. The profile represents one path and
 is not an engine trace for every sample. Reveal the values to separate this evidence from a
 small distance-weighted score. A low integrated score by itself would not establish that a
 ridge blocked the view.
+
+**Actual result:** {{terrain_reading}}
 
 <figure>{{figure_terrain}}<figcaption>Unweighted bare-ground LOS with explanatory real profiles. The zero-support profile illustrates a ground obstruction.</figcaption></figure>
 
@@ -134,12 +140,13 @@ were edited to produce the contrast. The curated cases are teaching examples, no
 
 ## 5. What do trees change?
 
-Keep the same observer area, water area and sampling population. Compare ground only with ground
-plus tree heights. Ignoring canopy is a model comparison; it is not an observation of a treeless
-landscape. For A → B, unweighted ground support is **{{line_of_sight_support}}** and ground-plus-tree
-support is **{{physical_viewability}}**. The retained integrated support is **{{vegetation_attenuation}}**.
-These measure different things because distance weights individual paths. Reveal the nearly
-unaffected comparison too. Missing canopy uses zero height, and the modeled observer has a
+**Worked example A → B.** Keep the same observer area, water area and sampling population.
+**Try it:** compare Ground only with Ground + tree heights, then select Little canopy effect.
+Ignoring canopy is a model comparison; it is not an observation of a treeless landscape.
+
+**Actual result:** {{canopy_reading}}
+
+Reveal the technical comparison for the separate distance-weighted retention factor. Missing canopy uses zero height, and the modeled observer has a
 {{clearance}} m clearance assumption; both can influence the contrast.
 
 <figure>{{figure_canopy}}<figcaption>Matched bare/canopy populations with directly calculated unweighted support. The vegetation ratio is distance weighted.</figcaption></figure>
@@ -148,6 +155,8 @@ unaffected comparison too. Missing canopy uses zero height, and the modeled obse
 <details markdown="1"><summary>Reveal the comparison and canopy states</summary>
 
 {{table_canopy}}
+
+For the fixed worked example A → B, retained integrated support is {{vegetation_attenuation}}. Distance weights individual paths; this factor is different from the unweighted indices.
 
 When the bare integrated kernel is zero, the stored neutral factor is bookkeeping: **no baseline
 support; canopy factor is not interpretable**. For water-source roles canopy is **not applicable**.
@@ -162,7 +171,7 @@ explicit assumptions, not field observations.
 
 ## 6. Put the pieces together: what can this area see?
 
-Return to Observer area A. Each colored target summarizes its modeled support on a fixed 0–1
+**Worked example A → B.** **Try it:** select Worked support, then Modeled zero. Return to Observer area A. Each colored target summarizes its modeled support on a fixed 0–1
 scale. The selected pair has ground-plus-distance support **{{distance_weighted_los_support}}**,
 retained support after vegetation **{{vegetation_attenuation}}**, and combined modeled support
 **{{distance_adjusted_viewability}}**. Pale cells are computed zeros. Areas without a candidate
@@ -189,7 +198,7 @@ are retained in the scientific artifacts; the cap policy prevents increasing com
 
 ## 7. Which observer areas could see this water area?
 
-The earlier question fixed an observer area and asked about water around it. Now fix Water area B
+**Worked example A → B.** **Try it:** switch the Question control between forward and inverse; A → B retains the same result. The earlier question fixed an observer area and asked about water around it. Now fix Water area B
 and ask which included observer areas have modeled support for that water. The map shows the
 same pair records from the other direction. A → B still has combined support
 **{{distance_adjusted_viewability}}**; no reversed model run changes its value. Reveal the

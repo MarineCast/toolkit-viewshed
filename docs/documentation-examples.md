@@ -46,7 +46,7 @@ kept in ignored run manifests; published metadata uses stable identities and sou
 On October 3, 2026, the bounded rebuild used checksum-validated cached real USGS elevation,
 ETH 2020 canopy windows and Natural Earth geometry. The full model plus legacy rendering took
 15.44 seconds; scientific export took about 2 seconds. Initial bundle measurements are recorded
-by the checker (approximately 0.32 MiB compressed data and 2.7 MiB total before presentation).
+by the checker (see the current checker output; historical measurements do not describe the revised projected previews).
 These timings are local measurements, not performance guarantees. Sampling/resolution/clearance
 sensitivity has not yet been run; this is a recorded robustness gap, not field qualification.
 
@@ -71,10 +71,45 @@ python scripts/check_documentation_browser.py --engines chromium webkit --output
 
 The checker serves the built site locally and blocks third-party requests. It checks every
 lesson, pair parity, role/factor changes, missing results, keyboard selection, reset, theme,
-mobile layout, 200% zoom, navigation back and JavaScript-disabled reading. Screenshots and a
+mobile layout, 200% CSS zoom reflow, navigation back and JavaScript-disabled reading. Screenshots and a
 machine-readable receipt are saved in the output directory. These are automated checks,
 not a human novice review.
 
 The [executed validation and limitations report](reports/real-data-examples-validation.md)
 records full model/export operations, both supported Python checks, browser evidence and the
 remaining sensitivity and human-review gaps.
+
+## Projected display and reading convention
+
+Plan maps and input previews use `inputs/display-geometry.json`, projected to the recorded analysis
+CRS. The original raster affine transform and full raster footprint determine the viewport.
+One metres-to-pixels scale applies to both axes, including rotated/non-square affine pixels;
+nearest decimation uses the first pixel of each display block and clips partial edge blocks.
+It performs no averaging, interpolation or display smoothing. Heights have fixed ranges and units;
+pink is categorical missingness. Changing input layers preserves the selected pair and viewport.
+The static and interactive transforms agree within one rendered pixel after coordinate rounding.
+Profiles retain physical distance and elevation axes with explicit vertical exaggeration.
+
+Fixed prose and default tables are labeled **Worked example A → B**. The explorer's
+**Your current selection** heading, numeric inspector, map and profile describe its current state.
+Named cases use stable exported references with checked evidence thresholds: strong canopy effect
+retains at most 20% of unweighted ground support, and little effect retains at least 98%, with
+baseline support above 0.02. These indices are not percentages of visible area. The distance
+comparison shares one source; its primary result shows the assumed diagnostic, not final scores.
+
+The retired `--render-only` command errors with a migration message. Explicit `--legacy-render`
+uses existing validated results and writes to ignored `work/legacy-demo/`; `--legacy-output`
+cannot target documentation or a tracked directory. Ambiguous mode flags error before producers run.
+The supported default and `--model-only` never replace the compatibility redirect.
+
+## Manual reader checklist
+
+- Identify ground, tree height, coastline, source area and water target.
+- Follow the source sample and target endpoint on the map and profile; explain why one path is not an area result.
+- Explain the assumed distance rule, ground obstruction and matched canopy comparison.
+- Read the same role/source/target pair forward and inverse without changing its value.
+- Recognize modeled zero, tiny positive, missing input, no candidate and neutral/not-applicable canopy.
+- Avoid conclusions about sighting probability, actual observers, public access or field accuracy.
+
+Automated CSS reflow is not a manual browser-zoom check or a novice usability study. Sampling,
+resolution and clearance sensitivity, human reader validation and empirical field validation remain unperformed.

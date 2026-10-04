@@ -86,8 +86,105 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                     ), (identity, actual)
                     return record
 
+                display = json.loads((bundle / "inputs/display-geometry.json").read_text())
+                lessons = json.loads((bundle / "lessons.json").read_text())
+                profiles = {
+                    p["pair_id"]: p for p in json.loads((bundle / "profiles.json").read_text())
+                }
+                assert "Worked example A → B" in page.locator(".viewshed-examples").inner_text()
+                assert "Your current selection" in page.locator(".vs-explorer-card h3").inner_text()
+                assert page.locator('.vs-map [data-area-label="Observer area A"]').count() == 1
+                assert page.locator('.vs-map [data-area-label="Water area B"]').count() == 1
+                for lesson in lessons:
+                    for case in lesson["cases"]:
+                        button = page.locator(f'#lesson-{lesson["id"]} [data-case="{case["id"]}"]')
+                        assert button.inner_text() == case["title"]
+                        button.click()
+                        assert (
+                            page.locator(".vs-status").get_attribute("data-pair-id")
+                            == case["pair_id"]
+                        )
+                        assert case["title"] in page.locator(".vs-explorer-card h3").inner_text()
+                        assert_pair()
+                        if lesson["id"] in {"samples", "terrain", "canopy"}:
+                            profile = profiles[case["pair_id"]]
+                            link = page.locator(".vs-profile-link")
+                            linked = next(
+                                p for p in display["profiles"] if p["pair_id"] == case["pair_id"]
+                            )
+                            assert link.get_attribute("data-pair-id") == profile["pair_id"]
+                            assert link.get_attribute("data-observer-id") == profile["observer_id"]
+                            assert (
+                                json.loads(link.get_attribute("data-endpoint"))
+                                == linked["endpoint"]
+                            )
+                            assert (
+                                page.locator(".vs-profile").get_attribute("data-source-type")
+                                == profile["source_type"]
+                            )
+                            observer = page.locator(
+                                f'.vs-observer[data-observer-id="{profile["observer_id"]}"]'
+                            )
+                            assert observer.count() == 1
+                            assert (
+                                "This is not an engine trace or every contributing path."
+                                in page.locator(".vs-profile figcaption").inner_text()
+                            )
+                            if case["source_changes_from_default"]:
+                                assert (
+                                    "Observer area changed"
+                                    in page.locator(".vs-reading").inner_text()
+                                )
+                        if lesson["id"] == "distance":
+                            if not page.locator(".vs-explorer-card table").is_visible():
+                                page.locator(".vs-explorer-card details").last.locator(
+                                    "summary"
+                                ).click()
+                            assert (
+                                "Combined support"
+                                not in page.locator(".vs-explorer-card table").inner_text()
+                            )
+                            assert (
+                                "Distance diagnostic"
+                                in page.locator(".vs-explorer-card table").inner_text()
+                            )
+                page.locator('[data-action="reset"]').click()
+                for layer in ["ground-layer", "canopy-layer"]:
+                    selected_before = state()
+                    before_view = page.locator(".vs-map").get_attribute("data-viewport")
+                    before_outline = page.locator(".vs-source-outline").get_attribute("d")
+                    page.locator(f'[data-action="{layer}"]').click()
+                    current = state()
+                    assert {k: v for k, v in current.items() if k != "layer"} == {
+                        k: v for k, v in selected_before.items() if k != "layer"
+                    }
+                    assert page.locator(".vs-map").get_attribute("data-viewport") == before_view
+                    assert page.locator(".vs-source-outline").get_attribute("d") == before_outline
+                    polygon = page.locator('.vs-map [data-sample="0,0"]')
+                    edges = polygon.evaluate(
+                        "e=>{const p=[...e.points];return [Math.hypot(p[1].x-p[0].x,p[1].y-p[0].y),Math.hypot(p[2].x-p[1].x,p[2].y-p[1].y)]}"
+                    )
+                    assert abs(edges[0] - edges[1]) < 1e-3
+                page.locator('[data-action="reset"]').click()
+                page.locator('[data-lesson="samples"]').click()
+                control("source_type", "water")
+                assert page.locator(".vs-profile-link").count() == 0
+                assert page.locator(".vs-profile").count() == 0
+                assert (
+                    "No prepared explanatory teaching profile"
+                    in page.locator(".vs-visual").inner_text()
+                )
+                assert page.locator(".vs-observer").evaluate_all(
+                    "items=>items.length>0 && items.every(e=>e.dataset.sourceType==='water')"
+                )
+                control("source_type", "land")
+                assert page.locator(".vs-profile-link").count() == 1
+                page.locator('[data-action="reset"]').click()
                 initial = state()
                 original = assert_pair()
+                assert (
+                    json.loads(page.locator(".vs-map").get_attribute("data-viewport"))["zoom"] == 1
+                )
                 for lesson in [
                     "inputs",
                     "samples",
@@ -183,6 +280,35 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 assert state()["layer"] == "ground"
                 page.locator('[data-action="canopy-layer"]').click()
                 assert state()["layer"] == "canopy_height"
+                for theme in ["light", "dark"]:
+                    if theme == "dark":
+                        page.get_by_title("Switch to dark mode", exact=True).click()
+                    for lesson_name in ["inputs", "canopy"]:
+                        page.locator(f'[data-lesson="{lesson_name}"]').click()
+                        if lesson_name == "inputs":
+                            page.locator('[data-action="ground-layer"]').click()
+                        page.locator(".vs-explorer-card").scroll_into_view_if_needed()
+                        page.screenshot(
+                            path=str(output / f"{engine}-desktop-{theme}-{lesson_name}.png")
+                        )
+                        page.set_viewport_size({"width": 390, "height": 844})
+                        page.locator(".vs-explorer-card").scroll_into_view_if_needed()
+                        assert page.locator(".vs-visual").evaluate(
+                            "e=>e.scrollWidth<=e.clientWidth+1"
+                        )
+                        page.screenshot(
+                            path=str(output / f"{engine}-mobile-{theme}-{lesson_name}.png"),
+                            full_page=True,
+                        )
+                        page.locator(".vs-map").screenshot(
+                            path=str(output / f"{engine}-mobile-{theme}-{lesson_name}-map.png")
+                        )
+                        if lesson_name == "canopy":
+                            page.locator(".vs-profile").screenshot(
+                                path=str(output / f"{engine}-mobile-{theme}-profile.png")
+                            )
+                        page.set_viewport_size({"width": 1440, "height": 1000})
+                page.get_by_title("Switch to light mode", exact=True).click()
                 page.locator('[data-action="reset"]').click()
                 page.screenshot(path=str(output / f"{engine}-desktop-light-viewport.png"))
                 page.screenshot(path=str(output / f"{engine}-desktop-light.png"), full_page=True)
@@ -227,6 +353,9 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 static.locator("#lesson-canopy details summary").click()
                 assert static.locator("#lesson-canopy table").is_visible()
                 static.screenshot(path=str(output / f"{engine}-javascript-disabled.png"))
+                assert static.locator(".lesson > figure").evaluate_all(
+                    "items=>items.every(e=>e.scrollWidth<=e.clientWidth+1)"
+                )
                 fallback.close()
                 context.close()
                 semantic_failures = []
@@ -264,6 +393,32 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                     assert bad_page.locator('#viewshed-explorer[data-ready="true"]').count() == 0
                     semantic_failures.append(field)
                     bad_context.close()
+                missing = browser.new_context()
+                missing.route("**/*", route)
+                missing.route(
+                    "**/san-juan/manifest.json",
+                    lambda request, _request: request.fulfill(status=404, body="Missing"),
+                )
+                missing_page = missing.new_page()
+                missing_page.goto(origin + "/examples/")
+                missing_page.get_by_role("status").filter(
+                    has_text="interactive bundle could not be loaded"
+                ).wait_for()
+                assert missing_page.locator(".lesson > figure svg").count() == 7
+                missing.close()
+                touch = browser.new_context(has_touch=True, viewport={"width": 390, "height": 844})
+                touch.route("**/*", route)
+                touch_page = touch.new_page()
+                touch_page.goto(origin + "/examples/")
+                touch_page.locator('#viewshed-explorer[data-ready="true"]').wait_for()
+                touch_page.locator('[data-action="next"]').tap()
+                assert (
+                    json.loads(
+                        touch_page.locator("#viewshed-explorer").get_attribute("data-state")
+                    )["lesson"]
+                    == "samples"
+                )
+                touch.close()
                 browser.close()
                 results.append(
                     {
@@ -282,7 +437,12 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                             "real input layers",
                             "dark theme",
                             "mobile",
-                            "200 percent zoom",
+                            "200 percent CSS zoom reflow (not manual browser zoom)",
+                            "descriptive case buttons and worked/live labels",
+                            "profile pair/observer/role/endpoint correspondence",
+                            "metric raster spacing and layer-selection viewport parity",
+                            "missing bundle static fallback",
+                            "touch controls",
                             "instant navigation back",
                             "third-party blocked",
                             "JavaScript disabled",

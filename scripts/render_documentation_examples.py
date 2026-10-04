@@ -1,4 +1,4 @@
-"""Render local teaching artwork from the checked bundle; no model or acquisition."""
+"""Render metric teaching artwork from the checked bundle; no model or acquisition."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import html
 from pathlib import Path
 
 from build_documentation_examples import check, load_pairs, read
+from documentation_geometry import grid_cell_corners, projected_viewport
 
 
 def number(value):
@@ -16,8 +17,8 @@ def number(value):
     return f"{value:.3g}" if value < 0.001 else f"{value:.3f}"
 
 
-def start(title, description, height=420):
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 {height}" role="img" aria-label="{html.escape(title)}"><title>{html.escape(title)}</title><desc>{html.escape(description)}</desc><style>text{{font:15px system-ui,sans-serif;fill:#263c47}}.title{{font-size:21px;font-weight:650}}.small{{font-size:12px}}.land{{fill:#f0f1ed;stroke:#455d62;stroke-width:1}}.sea{{fill:#e9f4f8}}.axis{{fill:none;stroke:#647b84;stroke-width:1}}</style><rect width="960" height="{height}" rx="8" fill="#fff"/>'
+def start(title, description, height=500):
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 {height}" role="img" aria-label="{html.escape(title)}"><title>{html.escape(title)}</title><desc>{html.escape(description)}</desc><style>text{{font:16px system-ui,sans-serif;fill:#263c47}}.title{{font-size:19px;font-weight:650}}.land{{fill:#f0f1ed;stroke:#455d62;stroke-width:.7}}.axis{{fill:none;stroke:#647b84;stroke-width:1}}</style><rect width="480" height="{height}" fill="#fff"/>'
 
 
 def text(x, y, value, cls=""):
@@ -25,17 +26,48 @@ def text(x, y, value, cls=""):
 
 
 def paths(geometry, project):
-    if geometry["type"] == "Polygon":
-        polygons = [geometry["coordinates"]]
-    elif geometry["type"] == "MultiPolygon":
-        polygons = geometry["coordinates"]
-    else:
-        return ""
+    polygons = (
+        [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+    )
     return " ".join(
-        "M" + " L".join(f"{x:.2f},{y:.2f}" for x, y in map(project, ring)) + " Z"
+        "M" + " L".join(f"{x:.2f},{y:.2f}" for x, y in map(project, ring[:-1])) + " Z"
         for polygon in polygons
         for ring in polygon
     )
+
+
+def profile_svg(profile, title, offset=0):
+    values = profile["samples"]
+    ceiling = max(max(v["canopy_surface_m"], v["ray_m"]) for v in values) * 1.1 + 2
+    distance = values[-1]["distance_m"]
+    x, y, width, height = 45, 65 + offset, 410, 155
+    pieces = [
+        text(18, offset + 28, title, "title"),
+        text(x, y - 12, f"Height, m · 0\u2013{ceiling:.0f}"),
+        f'<path class="axis" d="M{x},{y} V{y+height} H{x+width}"/>',
+    ]
+    for field, color in (
+        ("ground_m", "#5e6157"),
+        ("canopy_surface_m", "#168782"),
+        ("ray_m", "#253845"),
+    ):
+        points = " ".join(
+            f'{x+v["distance_m"]/distance*width:.2f},{y+height-v[field]/ceiling*height:.2f}'
+            for v in values
+        )
+        pieces.append(
+            f'<polyline points="{points}" fill="none" stroke="{color}" stroke-width="2"/>'
+        )
+    pieces.extend(
+        [
+            text(
+                x, y + height + 24, f"P source sample → Q target endpoint · {distance/1000:.2f} km"
+            ),
+            text(x, y + height + 48, "Gray ground · teal trees · dark viewing ray"),
+            text(x, y + height + 72, "Vertical exaggeration; axes use physical units"),
+        ]
+    )
+    return "".join(pieces)
 
 
 def render(output):
@@ -43,114 +75,99 @@ def render(output):
     manifest = read(output / "manifest.json")
     pairs = {p["id"]: p for p in load_pairs(output)}
     lessons = read(output / "lessons.json")
-    cells = {f["id"]: f for f in read(output / "cells.geojson")["features"]}
-    coast = read(output / "inputs/coast.geojson")["features"]
-    observers = read(output / "observer-samples.geojson")["features"]
+    geometry = read(output / "inputs/display-geometry.json")
+    grid = read(output / "inputs/display-grid.json")
+    cells = {f["id"]: f for f in geometry["cells"]["features"]}
     profiles = {p["pair_id"]: p for p in read(output / "profiles.json")}
     default = pairs[manifest["defaults"]["pair_id"]]
-    ring = cells[default["source_h3"]]["geometry"]["coordinates"][0]
-    lon = sum(p[0] for p in ring[:-1]) / (len(ring) - 1)
-    lat = sum(p[1] for p in ring[:-1]) / (len(ring) - 1)
+    project, scale = projected_viewport(geometry["bounds"], 480, 420)
 
-    def project(point):
-        return 270 + (point[0] - lon) * 3000, 210 - (point[1] - lat) * 4450
-
-    def map_svg(pair_list, inverse=False, field="distance_adjusted_viewability", samples=False):
-        pieces = [
-            '<defs><clipPath id="clip-'
-            + ident
-            + '"><rect x="10" y="15" width="535" height="370" rx="5"/></clipPath></defs><g clip-path="url(#clip-'
-            + ident
-            + ')"><rect x="10" y="15" width="535" height="370" class="sea"/>'
-        ]
+    def map_svg(family, pair, inverse=False, samples=False):
+        pieces = ['<rect width="480" height="420" fill="#e9f4f8"/>']
         pieces.extend(
-            f'<path class="land" fill-rule="evenodd" d="{paths(feature["geometry"],project)}"/>'
-            for feature in coast
+            f'<path class="land" fill-rule="evenodd" d="{paths(f["geometry"], project)}"/>'
+            for f in geometry["coast"]["features"]
         )
-        for pair in pair_list:
-            cell = pair["source_h3" if inverse else "target_h3"]
-            value = pair[field]
+        for p in family:
+            cell = p["source_h3" if inverse else "target_h3"]
+            value = p["distance_adjusted_viewability"]
             color = (
-                "#ecf0f1"
-                if value == 0
+                "none"
+                if samples
                 else (
-                    "#8b9ca6"
-                    if value is None
+                    "#ecf0f1"
+                    if value == 0
                     else f"rgb({int(214-185*value)},{int(237-123*value)},{int(244-100*value)})"
                 )
             )
             pieces.append(
-                f'<path d="{paths(cells[cell]["geometry"],project)}" fill="{color}" stroke="#647f8b" stroke-width=".6" fill-opacity=".9"/>'
+                f'<path d="{paths(cells[cell]["geometry"], project)}" fill="{color}" fill-opacity=".8" stroke="#647f8b" stroke-width=".5"/>'
             )
         for cell, label, color in (
-            (default["source_h3"], "Observer area A", "#101f28"),
-            (default["target_h3"], "Water area B", "#16768b"),
+            (
+                pair["source_h3"],
+                "A" if pair["source_h3"] == default["source_h3"] else "S",
+                "#101f28",
+            ),
+            (
+                pair["target_h3"],
+                "B" if pair["target_h3"] == default["target_h3"] else "T",
+                "#16768b",
+            ),
         ):
             pieces.append(
-                f'<path d="{paths(cells[cell]["geometry"],project)}" fill="none" stroke="{color}" stroke-width="3"/>'
+                f'<path d="{paths(cells[cell]["geometry"], project)}" fill="none" stroke="{color}" stroke-width="2"/>'
             )
-            coords = cells[cell]["geometry"]["coordinates"][0][:-1]
+            ring = cells[cell]["geometry"]["coordinates"][0][:-1]
             x, y = project(
-                [sum(p[0] for p in coords) / len(coords), sum(p[1] for p in coords) / len(coords)]
+                [sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring)]
             )
-            pieces.append(text(x + 7, y - 8, label, "small"))
+            pieces.append(text(x + 6, y - 6, label, "title"))
         if samples:
-            for feature in observers:
+            pieces.extend(
+                f'<path d="{paths(f["geometry"],project)}" fill="#e9ad56" fill-opacity=".35" stroke="#ac6816"/>'
+                for f in geometry["active_sources"]["features"]
+                if f["properties"]["source_h3"] == pair["source_h3"]
+                and f["properties"]["source_type"] == pair["source_type"]
+            )
+            for f in geometry["observers"]["features"]:
                 if (
-                    feature["properties"]["source_type"] == "land"
-                    and feature["properties"]["source_h3"] == default["source_h3"]
+                    f["properties"]["source_h3"] == pair["source_h3"]
+                    and f["properties"]["source_type"] == pair["source_type"]
                 ):
-                    x, y = project(feature["geometry"]["coordinates"])
+                    x, y = project(f["geometry"]["coordinates"])
                     pieces.append(
-                        f'<circle cx="{x:.2f}" cy="{y:.2f}" r="4" fill="#111" stroke="#fff" stroke-width="1.5"/>'
+                        f'<circle cx="{x:.2f}" cy="{y:.2f}" r="2.5" fill="#111" stroke="#fff"/>'
                     )
-        pieces.append("</g>")
+            for f in geometry["target_support"]["features"]:
+                if (
+                    f["properties"]["target_h3"] == pair["target_h3"]
+                    and f["properties"]["source_type"] == pair["source_type"]
+                ):
+                    x, y = project(f["geometry"]["coordinates"])
+                    pieces.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="2" fill="#126e88"/>')
+            profile = profiles.get(pair["id"])
+            if profile:
+                observer = next(
+                    f
+                    for f in geometry["observers"]["features"]
+                    if f["id"] == profile["observer_id"]
+                )
+                end = next(p for p in geometry["profiles"] if p["pair_id"] == pair["id"])[
+                    "endpoint"
+                ]
+                a, b = project(observer["geometry"]["coordinates"]), project(end)
+                pieces.append(
+                    f'<path d="M{a[0]:.2f},{a[1]:.2f} L{b[0]:.2f},{b[1]:.2f}" stroke="#a0471e" stroke-width="2" fill="none"/>'
+                )
+                for xy, label in ((a, "P"), (b, "Q")):
+                    pieces.append(
+                        f'<circle cx="{xy[0]:.2f}" cy="{xy[1]:.2f}" r="4" fill="#a0471e"/>'
+                        + text(xy[0] + 7, xy[1] + 16, label)
+                    )
         pieces.append(
-            text(
-                18,
-                407,
-                "Generalized real coastline · fixed 0\u20131 scale · no external tiles",
-                "small",
-            )
-        )
-        return "".join(pieces)
-
-    def profile_svg(profile, x=565, y=90, width=370, height=215):
-        values = profile["samples"]
-        ceiling = max(max(v["canopy_surface_m"], v["ray_m"]) for v in values) * 1.1 + 2
-        distance = values[-1]["distance_m"]
-        pieces = [f'<path class="axis" d="M{x},{y} V{y+height} H{x+width}"/>']
-        for field, color in (
-            ("ground_m", "#5e6157"),
-            ("canopy_surface_m", "#168782"),
-            ("ray_m", "#253845"),
-        ):
-            points = " ".join(
-                f'{x+v["distance_m"]/distance*width:.2f},{y+height-v[field]/ceiling*height:.2f}'
-                for v in values
-            )
-            pieces.append(
-                f'<polyline points="{points}" fill="none" stroke="{color}" stroke-width="2"/>'
-            )
-        pieces.extend(
-            [
-                text(x, y - 10, f"Height, m (0\u2013{ceiling:.0f})", "small"),
-                text(
-                    x,
-                    y + height + 25,
-                    f"Observer → water endpoint · {distance/1000:.2f} km",
-                    "small",
-                ),
-                text(
-                    x, y + height + 47, "Gray: ground · teal: ground + trees · dark: ray", "small"
-                ),
-                text(
-                    x,
-                    y + height + 67,
-                    "One explanatory path; cell values average many paths",
-                    "small",
-                ),
-            ]
+            f'<path d="M25,395 h{5000*scale:.2f}" stroke="#172d37" stroke-width="3"/>'
+            + text(25, 380, "5 km · north ↑")
         )
         return "".join(pieces)
 
@@ -161,144 +178,72 @@ def render(output):
         selected = [pairs[key] for key in lesson["pair_ids"]]
         svg = start(
             ident.title() + " · real San Juan example",
-            "Actual modeled data, not detection probabilities. Generation "
+            "Actual modeled data, not detection probabilities. Metric plan maps, north up. Generation "
             + manifest["generation_id"],
+            height=740 if ident == "samples" else 610 if ident in {"canopy", "terrain"} else 500,
         )
         if ident in {"inputs", "samples", "combined", "inverse"}:
             family = [
                 p
                 for p in pairs.values()
                 if p["source_type"] == "land"
-                and p["source_h3" if ident != "inverse" else "target_h3"]
-                == default["source_h3" if ident != "inverse" else "target_h3"]
+                and p["target_h3" if ident == "inverse" else "source_h3"]
+                == default["target_h3" if ident == "inverse" else "source_h3"]
             ]
             svg += map_svg(
-                family, inverse=ident == "inverse", samples=ident in {"inputs", "samples"}
+                family, default, inverse=ident == "inverse", samples=ident in {"inputs", "samples"}
             )
             if ident == "samples":
-                svg += profile_svg(profiles[default["id"]])
-            elif ident == "combined":
-                svg += text(568, 58, "Selected pair: A → B", "title")
-                for i, (label, field) in enumerate(
-                    (
-                        ("Ground + distance support", "distance_weighted_los_support"),
-                        ("Retained after vegetation", "vegetation_attenuation"),
-                        ("Combined modeled support", "distance_adjusted_viewability"),
-                    )
-                ):
-                    value = default[field]
-                    svg += (
-                        text(568, 110 + i * 85, label)
-                        + text(568, 136 + i * 85, number(value))
-                        + f'<rect x="695" y="{122+i*85}" width="235" height="15" fill="#edf2f4"/><rect x="695" y="{122+i*85}" width="{235*value:.3f}" height="15" fill="#167e94"/>'
-                    )
-                svg += text(
-                    568, 382, "Combined = integrated support \u00d7 retained vegetation", "small"
-                )
-            elif ident == "inverse":
-                count = sum(p["distance_adjusted_viewability"] > 0 for p in family)
-                svg += (
-                    text(568, 80, "Sources included in this example", "title")
-                    + text(568, 129, f"{count} land areas have positive support")
-                    + text(568, 175, f"A → B = {number(default['distance_adjusted_viewability'])}")
-                    + text(
-                        568,
-                        208,
-                        f"B queried from A = {number(default['distance_adjusted_viewability'])}",
-                    )
-                    + text(568, 265, "Identical pair record; a different question")
-                    + text(568, 300, "These are modeled areas, not people or boats")
+                svg += profile_svg(
+                    profiles[default["id"]], "Worked example A → B · same endpoints", offset=430
                 )
             else:
-                svg += (
-                    text(568, 60, "Mapped inputs, modeled areas", "title")
-                    + text(568, 117, "Ground: height above the elevation datum")
-                    + text(
-                        568,
-                        159,
-                        "Trees: height above ground ("
-                        + "/".join(
-                            sorted(
-                                {
-                                    (
-                                        str(record["source_year"])
-                                        if record["source_year"] is not None
-                                        else "unknown"
-                                    )
-                                    for record in manifest["source_vintages"]
-                                }
-                            )
-                        )
-                        + ")",
+                svg += text(18, 450, "Worked example A → B", "title")
+                line = (
+                    "Inputs: ground, trees, coastline and samples"
+                    if ident == "inputs"
+                    else (
+                        "Combined modeled support: "
+                        + number(default["distance_adjusted_viewability"])
+                        if ident == "combined"
+                        else "Sources included in this example · same pair value"
                     )
-                    + text(568, 201, "Ground + trees: obstruction surface")
-                    + text(568, 256, "Dots: actual modeled source samples")
-                    + text(568, 303, "Outlines: observer area A and water area B")
-                    + text(568, 351, "Sightings are not an input")
                 )
+                svg += text(18, 480, line)
         elif ident == "distance":
             curve = read(output / "distance-curve.json")
             extent = manifest["curve_contract"]["extent_km"]
-            svg += text(55, 38, "This model assigns less support as distance increases", "title")
-            svg += '<path class="axis" d="M70,70 V330 H920"/>'
+            svg += text(18, 32, "Distance diagnostic · an assumed rule", "title")
+            svg += '<path class="axis" d="M45,75 V335 H455"/>'
             points = " ".join(
-                f'{70+v["distance_km"]/extent*850:.2f},{330-v["weight"]*260:.2f}' for v in curve
+                f'{45+v["distance_km"]/extent*410:.2f},{335-v["weight"]*260:.2f}' for v in curve
             )
             svg += f'<polyline points="{points}" fill="none" stroke="#168497" stroke-width="3"/>'
-            for i, pair in enumerate(selected):
-                x, y = (
-                    70 + pair["distance_km"] / extent * 850,
-                    330 - pair["distance_detection_weight"] * 260,
-                )
-                svg += f'<circle cx="{x:.2f}" cy="{y:.2f}" r="6" fill="#132b37"/>' + text(
-                    100 + i * 430,
-                    370,
-                    f'{"Near" if i==0 else "Far"}: {pair["distance_km"]:.2f} km · diagnostic {number(pair["distance_detection_weight"])}',
-                )
-            svg += text(70, 60, "Diagnostic support (0\u20131)", "small") + text(
-                420, 409, f"Centroid distance, km (0\u2013{extent:g})", "small"
-            )
-        elif ident == "terrain":
-            for i, pair in enumerate(selected):
-                x = 35 + i * 475
+            for i, p in enumerate(selected):
+                svg += f'<circle cx="{45+p["distance_km"]/extent*410:.2f}" cy="{335-p["distance_detection_weight"]*260:.2f}" r="5" fill="#132b37"/>'
                 svg += text(
-                    x,
-                    40,
-                    ("Open bare-ground support" if i == 0 else "Zero bare-ground support"),
-                    "title",
+                    18,
+                    410 + i * 32,
+                    f'{lesson["cases"][i]["title"]}: {p["distance_km"]:.2f} km · {number(p["distance_detection_weight"])}',
                 )
-                svg += text(x, 67, "Unweighted bare LOS: " + number(pair["line_of_sight_support"]))
-                svg += profile_svg(profiles[pair["id"]], x=x, y=110, width=420, height=190)
-        else:
-            svg += text(35, 40, "Same pair, matched ground and canopy populations", "title")
-            svg += profile_svg(profiles[default["id"]], x=35, y=95, width=475, height=220)
-            for i, (label, field) in enumerate(
-                (
-                    ("Ground only: unweighted LOS", "line_of_sight_support"),
-                    ("Ground + trees: unweighted LOS", "physical_viewability"),
-                    ("Retained integrated support", "vegetation_attenuation"),
-                )
-            ):
-                svg += text(555, 120 + i * 85, label) + text(
-                    555, 148 + i * 85, number(default[field])
-                )
-            svg += text(
-                555, 382, "Missing canopy is zero-height fallback, not treelessness", "small"
+            svg += text(45, 60, "Diagnostic support · 0\u20131") + text(
+                45, 370, f"Centroid distance · 0\u2013{extent:g} km"
             )
+        else:
+            for i, p in enumerate(selected):
+                svg += profile_svg(profiles[p["id"]], lesson["cases"][i]["title"], offset=i * 305)
         (preview / f"{ident}.svg").write_text(svg + "</svg>\n")
-    # Input previews retain null pixels, units and declared display decimation.
-    grid = read(output / "inputs/display-grid.json")
     for field, label, maximum in (
         ("ground", "Ground elevation, m", 400),
         ("canopy_height", "Tree height above ground, m", 60),
     ):
-        rows = grid[field]
-        height = len(rows)
-        width = len(rows[0])
         svg = start(
-            label, "Real prepared grid, sampled every fourth pixel; pink is missing", height=500
+            label,
+            "Nearest decimation, original affine footprint and clipped edge blocks; pink is missing",
+            height=540,
         )
-        for row, values in enumerate(rows):
+        svg += '<g transform="translate(0 50)">'
+        for row, values in enumerate(grid[field]):
             for col, value in enumerate(values):
                 fraction = min(1, max(0, value / maximum)) if value is not None else 0
                 color = (
@@ -306,12 +251,31 @@ def render(output):
                     if value is None
                     else f"rgb({int(244-205*fraction)},{int(247-114*fraction)},{int(240-81*fraction)})"
                 )
-                svg += f'<rect x="{35+col*890/width:.2f}" y="{55+row*380/height:.2f}" width="{890/width+.05:.2f}" height="{380/height+.05:.2f}" fill="{color}"/>'
-        svg += text(35, 35, label + f" · fixed display range 0\u2013{maximum}", "title") + text(
-            35,
-            466,
-            f"{grid['analysis_resolution_m']} m modeled grid · {grid['display_resolution_m']} m display sampling · pink: unavailable input · no interpolation",
-            "small",
+                coords = " ".join(
+                    f"{x:.2f},{y:.2f}"
+                    for x, y in map(project, grid_cell_corners(grid, row, col)[:-1])
+                )
+                svg += f'<polygon data-sample="{row},{col}" points="{coords}" fill="{color}"/>'
+        for f in geometry["coast"]["features"]:
+            svg += f'<path d="{paths(f["geometry"],project)}" fill="none" stroke="#465e67" stroke-width=".7"/>'
+        for cell, label, color in (
+            (default["source_h3"], "A", "#101f28"),
+            (default["target_h3"], "B", "#16768b"),
+        ):
+            svg += f'<path d="{paths(cells[cell]["geometry"],project)}" fill="none" stroke="{color}" stroke-width="2"/>'
+            ring = cells[cell]["geometry"]["coordinates"][0][:-1]
+            x, y = project(
+                [sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring)]
+            )
+            svg += text(x - 14 if label == "A" else x + 7, y - 8, label, "title")
+        svg += "</g>" + text(18, 30, label + f" · fixed 0\u2013{maximum}", "title")
+        svg += text(
+            18,
+            495,
+            f"{grid['analysis_resolution_m']} m model · {grid['display_resolution_m']} m samples",
+        ) + text(18, 522, "Pink: missing · no averaging or smoothing")
+        svg += f'<path d="M25,445 h{5000*scale:.2f}" stroke="#172d37" stroke-width="3"/>' + text(
+            25, 430, "5 km · north ↑"
         )
         (preview / f"{field}.svg").write_text(svg + "</svg>\n")
     return preview

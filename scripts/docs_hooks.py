@@ -1,5 +1,6 @@
 """Read-only build hook inserts checked real bundle values into authored prose."""
 
+import html
 import json
 import re
 import subprocess
@@ -126,19 +127,84 @@ def on_page_markdown(markdown, page, config, files):
     markdown = markdown.replace("{{source}}", default["source_h3"]).replace(
         "{{target}}", default["target_h3"]
     )
+    bare, canopy = default["line_of_sight_support"], default["physical_viewability"]
+    effect = (
+        "removes most of that support"
+        if bare > 0.02 and canopy / bare <= 0.2
+        else (
+            "changes little of that support"
+            if bare > 0.02 and canopy / bare >= 0.98
+            else "changes the modeled support"
+        )
+    )
+    markdown = markdown.replace(
+        "{{canopy_reading}}",
+        f"Ground alone leaves modeled viewing support toward B. Including the mapped tree heights {effect}: unweighted support falls from {fmt(bare)} to {fmt(canopy)}. This describes modeled geometry, not the chance of seeing an animal.",
+    )
+    near, far = [
+        pairs[key]
+        for key in next(lesson for lesson in lessons if lesson["id"] == "distance")["pair_ids"]
+    ]
+    markdown = markdown.replace(
+        "{{distance_reading}}",
+        f"{'From the same observer area' if near['source_h3'] == far['source_h3'] else 'Changing observer area'}, nearer water is {near['distance_km']:.2f} km away with a diagnostic of {fmt(near['distance_detection_weight'])}; farther water is {far['distance_km']:.2f} km away with {fmt(far['distance_detection_weight'])}.",
+    )
+    markdown = markdown.replace(
+        "{{distance_population}}",
+        (
+            "These two cases share one observer area"
+            if near["source_h3"] == far["source_h3"]
+            else "The observer area changes between these two cases"
+        ),
+    )
+    terrain = next(lesson for lesson in lessons if lesson["id"] == "terrain")
+    open_pair, blocked = [pairs[key] for key in terrain["pair_ids"]]
+    markdown = markdown.replace(
+        "{{terrain_reading}}",
+        f"Open ground has unweighted ground support {fmt(open_pair['line_of_sight_support'])}; Ground-blocked example has {fmt(blocked['line_of_sight_support'])}.",
+    )
     for lesson in lessons:
         ident = lesson["id"]
         markdown = markdown.replace(
             "{{figure_" + ident + "}}", (BUNDLE / f"previews/{ident}.svg").read_text()
         )
         rows = []
-        for i, pair_id in enumerate(lesson["pair_ids"]):
-            pair = pairs[pair_id]
-            rows.append(
-                f'<tr><th scope="row">Example {i+1} ({pair["source_type"]})</th><td>{pair["distance_km"]:.2f} km</td><td>{fmt(pair["line_of_sight_support"])}</td><td>{fmt(pair["physical_viewability"])}</td><td>{fmt(pair["distance_adjusted_viewability"])}</td></tr>'
+        distance_only = ident == "distance"
+        for case in lesson["cases"]:
+            pair = pairs[case["pair_id"]]
+            label = html.escape(case["title"] + " (" + pair["source_type"] + ")")
+            if distance_only:
+                values = f'<td>{pair["distance_km"]:.2f} km</td><td>{fmt(pair["distance_detection_weight"])}</td>'
+            else:
+                values = "".join(
+                    f"<td>{fmt(pair[field])}</td>"
+                    for field in (
+                        "line_of_sight_support",
+                        "physical_viewability",
+                        "distance_adjusted_viewability",
+                    )
+                )
+            rows.append(f'<tr><th scope="row">{label}</th>{values}</tr>')
+        headers = (
+            ["Case", "Centroid distance", "Distance diagnostic"]
+            if distance_only
+            else ["Case", "Ground LOS", "Ground + trees LOS", "Combined"]
+        )
+        caption = (
+            "Curated distance comparison · same observer area"
+            if distance_only and lesson["shared_source"]
+            else (
+                "Worked example A → B and named comparisons · fixed 0\u20131 support scale"
+                if lesson["worked_example"] == "A → B"
+                else "Curated ground comparison · fixed 0\u20131 support scale"
             )
+        )
         table = (
-            '<div class="example-table"><table><caption>Actual modeled values · fixed 0\u20131 support scale</caption><thead><tr><th>Pair</th><th>Distance</th><th>Ground LOS</th><th>Ground + trees LOS</th><th>Combined</th></tr></thead><tbody>'
+            '<div class="example-table" role="region" aria-label="Scrollable actual results"><table><caption>'
+            + caption
+            + "</caption><thead><tr>"
+            + "".join('<th scope="col">' + title + "</th>" for title in headers)
+            + "</tr></thead><tbody>"
             + "".join(rows)
             + "</tbody></table></div>"
         )

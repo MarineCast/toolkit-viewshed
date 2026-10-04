@@ -36,6 +36,7 @@ jobs:
           node-version: '22'
       - run: python -m pip install -r requirements-docs.txt -r requirements-browser.txt
       - run: python -S scripts/build_documentation_examples.py --check --output docs/assets/examples/san-juan
+      - run: python -S scripts/check_documentation_links.py
       - run: node --check docs/assets/examples/explorer.js
       - run: python -m mkdocs build --strict
       - run: python -m playwright install --with-deps chromium webkit

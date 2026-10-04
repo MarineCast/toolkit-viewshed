@@ -57,3 +57,6 @@ data/san_juan_demo/
 /site/
 
 /work/browser-qa/
+
+# Explicit retired demo output
+work/legacy-demo/
