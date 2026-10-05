@@ -106,10 +106,33 @@ Useful captures include `work/browser-qa/webkit-desktop-light-figure-6.png`,
 `webkit-mobile-light-figure-1.png`, and `webkit-mobile-dark-figure-6.png` in that same directory.
 The receipt records the exact presentation identity and capture time.
 
+## PR quality-gate follow-up
+
+The initial PR #15 run passed all 467 package tests on both Python 3.11 and 3.14, plus both
+documentation jobs. Both geospatial jobs then failed the same expanded Ruff gate with eight
+violations: browser callbacks captured engine-loop state, imports were unsorted, and three
+apostrophes conflicted with the gate's Unicode rules. Compile and installed-wheel steps were
+skipped after that failure. The original local Ruff command used only the default rule set.
+
+The follow-up binds each callback's engine-specific state, sorts imports, and uses plain
+apostrophes. The renderer and its tests now join `scripts/check_components.py` so the expanded
+rules cover the new files too. Rendering-loop refactors preserve identical output bytes;
+the presentation identity and scientific bundle remain unchanged.
+
+Local follow-up validation passed:
+
+- `python scripts/check_components.py`: expanded Ruff, Black on 50 files, strict mypy on
+  30 source files, using Python 3.14.
+- Documentation bundle, geometry, walkthrough, component-workflow and case-study tests:
+  **107 passed**, no skips; 361 existing affine/GeoArrow warnings, using Python 3.11.
+- Strict MkDocs build, presentation check and Chromium/WebKit browser checks, with zero
+  page errors and failed local assets. New evidence is in ignored `work/ci-fix-browser-qa/`.
+
 ## Remaining boundaries
 
 No acquisition, regional model execution, notebook execution, installed-wheel check or full package
-suite was performed for this presentation change. The existing geospatial/scientific contracts
+suite was performed locally for this presentation change. The initial hosted run's full-suite
+result is recorded separately above. The existing geospatial/scientific contracts
 remain unchanged. Sampling/resolution/clearance sensitivity, empirical field accuracy and a
 novice usability study remain unperformed. Generalized coastline and the recorded 9.69% missing
 land-canopy input fraction remain relevant limitations; zero-height fallback is not measured bare land.

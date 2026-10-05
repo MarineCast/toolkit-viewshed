@@ -66,8 +66,8 @@ def on_page_markdown(markdown, page, config, files):
         return markdown
     # Standard-library presentation renderer is shared by the build and offline checks.
     sys.path.insert(0, str(ROOT / "scripts"))
-    from render_documentation_walkthrough import METRIC, target_summary
     from render_documentation_examples import number
+    from render_documentation_walkthrough import METRIC, target_summary
 
     manifest = json.loads((BUNDLE / "manifest.json").read_text())
     raw = json.loads((BUNDLE / "pairs.json").read_text())
@@ -143,7 +143,7 @@ def on_page_markdown(markdown, page, config, files):
         for k in ("line_of_sight_support", "physical_viewability", METRIC)
     ]
     values["source_reading"] = (
-        f"Among A’s {len(family)} candidate target cells, {counts[0]} have positive ground-only support, {counts[1]} have positive ground-plus-trees support, and {counts[2]} have positive combined support. The other {len(family)-counts[2]} combined scores are computed zeros. The largest combined score is {number(max(p[METRIC] for p in family))}."
+        f"Among A's {len(family)} candidate target cells, {counts[0]} have positive ground-only support, {counts[1]} have positive ground-plus-trees support, and {counts[2]} have positive combined support. The other {len(family)-counts[2]} combined scores are computed zeros. The largest combined score is {number(max(p[METRIC] for p in family))}."
     )
     selected = candidates[:3]
     if default not in selected:
@@ -171,7 +171,7 @@ def on_page_markdown(markdown, page, config, files):
         f"Target B · {target['valid_count']} valid / {target['candidate_count']} candidates · strongest three and A",
     )
     values["target_reading"] = (
-        f"B’s strongest included land-source score is {number(target['maximum_valid_combined_weight'])}; A contributes {number(default[METRIC])}. The remaining {target['outside_candidate_count']} of the {len(summary['included_sources'])} included land sources are outside B’s candidate set. All contributor rows above map to role/source/target identities in the downloadable summary and canonical records."
+        f"B's strongest included land-source score is {number(target['maximum_valid_combined_weight'])}; A contributes {number(default[METRIC])}. The remaining {target['outside_candidate_count']} of the {len(summary['included_sources'])} included land sources are outside B's candidate set. All contributor rows above map to role/source/target identities in the downloadable summary and canonical records."
     )
     active = [t for t in summary["targets"] if t["candidate_count"]]
     values["coverage_reading"] = (

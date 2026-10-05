@@ -44,7 +44,7 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 initial_payload_bytes = None
                 context = browser.new_context(reduced_motion="reduce")
 
-                def route(request, _request):
+                def route(request, _request, blocked=blocked):
                     if request.request.url.startswith(origin + "/"):
                         request.continue_()
                     else:
@@ -55,13 +55,13 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 page = context.new_page()
                 page.on(
                     "pageerror",
-                    lambda error: errors.append(
+                    lambda error, errors=errors, page=page: errors.append(
                         {"message": error.message, "stack": error.stack, "url": page.url}
                     ),
                 )
                 page.on(
                     "response",
-                    lambda response: (
+                    lambda response, failed_assets=failed_assets: (
                         failed_assets.append(response.url) if response.status >= 400 else None
                     ),
                 )

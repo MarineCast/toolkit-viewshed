@@ -1,7 +1,7 @@
 """Deterministic static atlas from checked, committed records; never runs the model.
 
 Presentation has a separate identity. Neither model records nor their manifest are rewritten.
-All maps use recorded EPSG:32610 geometry and an explicit, shared linear 0–1 scale.
+All maps use recorded EPSG:32610 geometry and an explicit, shared linear 0-1 scale.
 """
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ def color(value):
         return "#dce0df"
     # A single linear scale, unchanged between metrics, roles and figures.
     low, high = (224, 244, 237), (8, 102, 91)
-    return "#" + "".join(f"{round(a + (b-a)*value):02x}" for a, b in zip(low, high))
+    return "#" + "".join(f"{round(a + (b-a)*value):02x}" for a, b in zip(low, high, strict=True))
 
 
 def center(geometry):
@@ -138,10 +138,10 @@ def map_svg(data, title, weights=None, samples=False, regional=False, mobile=Fal
         f'<clipPath id="mapclip"><rect width="{width}" height="{map_height-50}"/></clipPath>',
         '<g clip-path="url(#mapclip)">',
     ]
-    for f in geometry["coast"]["features"]:
-        out.append(
-            f'<path d="{paths(f["geometry"],project)}" fill="#f6f4eb" stroke="#a5b1a9" stroke-width="1" fill-rule="evenodd"/>'
-        )
+    out.extend(
+        f'<path d="{paths(f["geometry"],project)}" fill="#f6f4eb" stroke="#a5b1a9" stroke-width="1" fill-rule="evenodd"/>'
+        for f in geometry["coast"]["features"]
+    )
     for cell in data["target_ids"]:
         value = weights.get(cell) if weights is not None else None
         included = weights is not None and cell in weights
@@ -149,17 +149,17 @@ def map_svg(data, title, weights=None, samples=False, regional=False, mobile=Fal
             f'<path data-target="{cell}" data-state="{"candidate" if included else "outside"}" d="{paths(cells[cell]["geometry"],project)}" fill="{color(value) if included else "none"}" stroke="{"#6a8d86" if included else "#cbd7d7"}" stroke-width="{.8 if included else .4}"/>'
         )
     if regional:
-        for f in geometry["active_sources"]["features"]:
-            if f["properties"]["source_type"] == "land":
-                out.append(
-                    f'<path d="{paths(f["geometry"],project)}" fill="#bb913e" fill-opacity=".18" stroke="none"/>'
-                )
+        out.extend(
+            f'<path d="{paths(f["geometry"],project)}" fill="#bb913e" fill-opacity=".18" stroke="none"/>'
+            for f in geometry["active_sources"]["features"]
+            if f["properties"]["source_type"] == "land"
+        )
     if samples:
-        for f in geometry["active_sources"]["features"]:
-            if f["id"] == "land:" + default["source_h3"]:
-                out.append(
-                    f'<path d="{paths(f["geometry"],project)}" fill="#e1ad52" fill-opacity=".5"/>'
-                )
+        out.extend(
+            f'<path d="{paths(f["geometry"],project)}" fill="#e1ad52" fill-opacity=".5"/>'
+            for f in geometry["active_sources"]["features"]
+            if f["id"] == "land:" + default["source_h3"]
+        )
         for collection, key in (("observers", "source_h3"), ("target_support", "target_h3")):
             for f in geometry[collection]["features"]:
                 if (
@@ -234,21 +234,21 @@ def map_svg(data, title, weights=None, samples=False, regional=False, mobile=Fal
     y = map_height + 32
     if weights is not None:
         bar_width = width - 48
-        for i in range(100):
-            out.append(
-                f'<rect x="{24+i*bar_width/100:.2f}" y="{y}" width="{bar_width/100+0.1:.2f}" height="12" fill="{color(i/99)}"/>'
+        out.extend(
+            f'<rect x="{24+i*bar_width/100:.2f}" y="{y}" width="{bar_width/100+0.1:.2f}" height="12" fill="{color(i/99)}"/>'
+            for i in range(100)
+        )
+        out.extend(
+            label(
+                24 + v * bar_width,
+                y + 35,
+                f"{v:g}",
+                "small",
+                "middle" if v not in (0, 1) else "start" if v == 0 else "end",
             )
-        for v in (0, 0.25, 0.5, 0.75, 1):
-            out.append(
-                label(
-                    24 + v * bar_width,
-                    y + 35,
-                    f"{v:g}",
-                    "small",
-                    "middle" if v not in (0, 1) else "start" if v == 0 else "end",
-                )
-            )
-        out.append(label(24, y + 64, "Fixed linear support scale · 0–1", "small"))
+            for v in (0, 0.25, 0.5, 0.75, 1)
+        )
+        out.append(label(24, y + 64, "Fixed linear support scale · 0\u20131", "small"))
         for i, (fill, t) in enumerate(
             (
                 ("#dce0df", "Computed zero"),
@@ -303,7 +303,7 @@ def profile_svg(profile, mobile=False):
         label(
             24,
             height - 16,
-            f"Vertical exaggeration {exaggeration:.1f}× · curved ray",
+            f"Vertical exaggeration {exaggeration:.1f}× · curved ray",  # noqa: RUF001 -- multiplication symbol
             "small",
         )
     )

@@ -103,7 +103,7 @@ def test_committed_presentation_has_original_scientific_identity_and_checked_ass
     assert summary["source_role"] == "land"
     assert len(summary["included_sources"]) == 84
     raw = json.loads((BUNDLE / "pairs.json").read_text())
-    pairs = [dict(zip(raw["columns"], r)) for r in raw["rows"]]
+    pairs = [dict(zip(raw["columns"], r, strict=True)) for r in raw["rows"]]
     for target in summary["targets"]:
         records = [
             p for p in pairs if p["source_type"] == "land" and p["target_h3"] == target["target_h3"]
