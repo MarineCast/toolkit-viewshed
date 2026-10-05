@@ -45,6 +45,7 @@ from ..contracts.artifacts import (
     final_artifact_paths_from_raw,
 )
 from ..contracts.pairs import validate_pair_kernel, validate_los_diagnostics
+from ..contracts.lineage import factor_contract, record_factor
 from .terrain.runner import run_paired_surface_source_cells
 from .terrain.gdal import expected_partition_metadata, partition_metadata_matches
 from .terrain.cleanup import combine_partitions
@@ -471,6 +472,10 @@ def run_dual_surface_canopy_weights(
         )
     )
 
+    producer_snapshot = {
+        kind: factor_contract(app.raw_config, app.config_path.parent, "land", kind)
+        for kind in ("terrain", "canopy")
+    }
     bare_completed, canopy_completed = run_paired_surface_source_cells(bare_app, canopy_app)
     completed_sources = []
     selected_partitions = []
@@ -509,4 +514,24 @@ def run_dual_surface_canopy_weights(
     # Only bare-earth diagnostics own the land clear-sky product. Canopy
     # combination must not overwrite it with the obstruction-surface kernel.
     combine_partitions(bare_app, partition_paths=bare_partitions)
+    if any(
+        factor_contract(app.raw_config, app.config_path.parent, "land", kind) != contract
+        for kind, contract in producer_snapshot.items()
+    ):
+        raise ValueError(
+            "Producer inputs changed during paired LOS; rebuild build-dual-surface-canopy-weights"
+        )
+    for artifact in (
+        paths.dual_surface_factors,
+        paths.canopy_los_weights,
+        paths.vegetation_weights,
+    ):
+        record_factor(
+            artifact,
+            producer_snapshot["canopy"],
+            dependencies={
+                **{f"bare:{i}": path for i, path in enumerate(bare_partitions)},
+                **{f"canopy:{i}": path for i, path in enumerate(canopy_partitions)},
+            },
+        )
     return result

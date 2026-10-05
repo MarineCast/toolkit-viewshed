@@ -13,7 +13,27 @@ import tempfile
 import time
 from pathlib import Path
 
-VERSION = "san_juan_lessons_v1"
+VERSION = "san_juan_lessons_v2"
+SEMANTIC_FIELDS = (
+    "method",
+    "generation_id",
+    "config_hash",
+    "source_hashes",
+    "prepared_input_sha256",
+    "artifacts",
+    "producer_revision",
+    "source_vintages",
+    "crs",
+    "native_resolution_m",
+    "analysis_resolution_m",
+    "assumptions",
+    "target_support_scope",
+    "candidate_universe",
+    "defaults",
+    "rights",
+    "limitations",
+    "curve_contract",
+)
 METRICS = (
     "line_of_sight_support",
     "physical_viewability",
@@ -51,6 +71,154 @@ def load_pairs(output):
     return [dict(zip(data["columns"], row, strict=True)) for row in data["rows"]]
 
 
+def seal_manifest(manifest):
+    manifest["semantic_contract"] = {key: manifest[key] for key in SEMANTIC_FIELDS}
+    identity = {
+        "export_contract": manifest["export_contract"],
+        "semantic_contract": manifest["semantic_contract"],
+        "files": manifest["files"],
+    }
+    # Persist the exact canonical UTF-8 JSON so browser hashing has no float-format ambiguity.
+    manifest["identity_json"] = encode(identity).decode()
+    manifest["bundle_id"] = digest(manifest["identity_json"].encode())
+
+
+def curve_weight(distance, contract):
+    cfg = contract["settings"]
+    if distance > contract["extent_km"]:
+        return 0.0
+    if cfg["selected_model"] == "logistic":
+        exponent = (distance - cfg["logistic_d50_km"]) / cfg["logistic_slope_km"]
+        raw = 1 / (1 + math.exp(exponent)) if exponent < 700 else 0.0
+        if cfg["normalize_at_zero"]:
+            raw /= 1 / (1 + math.exp(-cfg["logistic_d50_km"] / cfg["logistic_slope_km"]))
+    elif cfg["selected_model"] == "exponential":
+        raw = math.exp(-distance / cfg["exponential_lambda_km"])
+    elif cfg["selected_model"] == "piecewise":
+        near = (
+            cfg["piecewise_near_km"]
+            if cfg["piecewise_near_km"] is not None
+            else cfg["piecewise_full_weight_km"]
+        )
+        far = (
+            cfg["piecewise_far_km"]
+            if cfg["piecewise_far_km"] is not None
+            else cfg["piecewise_zero_weight_km"]
+        )
+        raw = (
+            1
+            if distance <= near
+            else 0 if distance >= far else 1 - (distance - near) / (far - near)
+        )
+    else:
+        raise ValueError("Unsupported recorded distance curve")
+    return min(1, max(0, raw))
+
+
+def validate_provider_preset(acquisitions):
+    if (
+        acquisitions["dem"]["dataset"]["provider"] != "usgs_3dep"
+        or acquisitions["chm"]["dataset"]["version"] != "ETH_2020_window_v1"
+        or acquisitions["chm"]["dataset"]["source_year"] != 2020
+    ):
+        raise ValueError(
+            "Teaching exporter supports the attributed USGS / ETH_2020_window_v1 preset only; unsupported provider evidence"
+        )
+
+
+def validate_semantics(manifest, output):
+    semantic = {key: manifest[key] for key in SEMANTIC_FIELDS}
+    if semantic != manifest.get("semantic_contract"):
+        raise ValueError("Scientific manifest semantic contract mismatch")
+    evidence = read(output / "production-evidence.json")
+    generation = evidence["generation"]
+    for label, key in (
+        ("generation_id", "generation_id"),
+        ("config_hash", "scientific_config_hash"),
+        ("method", "method"),
+        ("source_hashes", "source_hashes"),
+        ("artifacts", "files"),
+    ):
+        if manifest[label] != generation[key]:
+            raise ValueError("Manifest contradicts retained generation evidence: " + label)
+    land = generation["producer_evidence"]["land"]["dual_surface"]
+    distance = generation["producer_evidence"]["land"]["distance"]
+    water = generation["producer_evidence"]["water"]["terrain"]
+    if manifest["producer_revision"] != land["producer_revision"]:
+        raise ValueError("Original producer revision contradicts evidence")
+    for group, recorded in (
+        ("viewshed", land["settings"]["viewshed"]),
+        ("h3", land["settings"]["h3"]),
+        ("source_target_lookup", land["settings"]["source_target_lookup"]),
+        ("distance_weight", distance["settings"]["distance"]),
+        ("water_viewing", water["settings"]["water_viewing"]),
+    ):
+        for key, value in manifest["assumptions"][group].items():
+            if group == "distance_weight" and key in {
+                "version",
+                "source_chunk_size",
+                "overwrite",
+                "compute_exact_p90",
+                "p90_method",
+            }:
+                continue
+            if recorded.get(key) != value:
+                raise ValueError(
+                    f"Scientific assumption contradicts producer evidence: {group}.{key}"
+                )
+    grid = read(output / "inputs/display-grid.json")
+    model_grid = land["grids"]["regional_dem_path"]
+    if (
+        manifest["crs"] != model_grid["crs"]
+        or grid["crs"] != manifest["crs"]
+        or grid["source_shape"] != model_grid["shape"]
+        or grid["affine"] != model_grid["affine"]
+        or manifest["analysis_resolution_m"] != land["settings"]["viewshed"]["dem_resolution_m"]
+        or grid["analysis_resolution_m"] != manifest["analysis_resolution_m"]
+        or grid["display_resolution_m"]
+        != grid["display_stride"] * manifest["analysis_resolution_m"]
+    ):
+        raise ValueError("Resolution/CRS/display grid contradicts producer evidence")
+    if (
+        manifest["source_vintages"] != evidence["source_vintages"]
+        or manifest["native_resolution_m"] != evidence["native_resolution_m"]
+    ):
+        raise ValueError("Source metadata contradicts retained acquisition evidence")
+    acquisition = evidence["acquisition"]
+    validate_provider_preset(acquisition)
+    for label, name in (("dem", "dem"), ("canopy", "chm")):
+        if manifest["native_resolution_m"][label] != acquisition[name]["dataset"]["resolution_m"]:
+            raise ValueError("Native resolution contradicts provider acquisition request")
+    for vintage in manifest["source_vintages"]:
+        if (
+            vintage["observed_sha256"] not in acquisition["chm"]["source_byte_sha256"]
+            or vintage["source_year"] != acquisition["chm"]["dataset"]["source_year"]
+            or vintage["source_version"] != acquisition["chm"]["dataset"]["version"]
+        ):
+            raise ValueError("Vintage contradicts acquisition content evidence")
+    for name, key in (("ground", "regional_dem_path"), ("canopy", "canopy_height_path")):
+        if manifest["prepared_input_sha256"][name] != land["input_byte_sha256"][key]:
+            raise ValueError("Prepared surface identity contradicts producer evidence")
+    expected_curve = {
+        "settings": distance["settings"]["distance"],
+        "extent_km": distance["settings"]["distance_extent_km"],
+    }
+    if manifest["curve_contract"] != expected_curve:
+        raise ValueError("Curve configuration contradicts producer evidence")
+    curve = read(output / "distance-curve.json")
+    if (
+        len(curve) != 101
+        or curve[0]["distance_km"] != 0
+        or curve[-1]["distance_km"] != expected_curve["extent_km"]
+    ):
+        raise ValueError("Distance curve extent contradicts effective configuration")
+    if any(
+        abs(point["weight"] - curve_weight(point["distance_km"], expected_curve)) > 1e-6
+        for point in curve
+    ):
+        raise ValueError("Distance curve values contradict recorded calculation")
+
+
 def check(output):
     """Integrity and internal scientific assertions; not a raw-data reproduction."""
     manifest = read(output / "manifest.json")
@@ -60,9 +228,12 @@ def check(output):
         path = (output / name).resolve()
         if not path.is_relative_to(output.resolve()) or digest(path.read_bytes()) != checksum:
             raise ValueError(f"Bundle checksum mismatch: {name}")
-    identity = {key: manifest[key] for key in ("export_contract", "generation_id", "files")}
-    if manifest["bundle_id"] != digest(encode(identity)):
+    identity = {key: manifest[key] for key in ("export_contract", "semantic_contract", "files")}
+    if manifest.get("identity_json") != encode(identity).decode() or manifest[
+        "bundle_id"
+    ] != digest(encode(identity)):
         raise ValueError("Bundle identity mismatch")
+    validate_semantics(manifest, output)
     pairs = load_pairs(output)
     indexed = {}
     for pair in pairs:
@@ -77,6 +248,14 @@ def check(output):
             or pair["id"] != ":".join(key)
         ):
             raise ValueError("Invalid pair role/scenario identity")
+        if (
+            abs(
+                pair["distance_detection_weight"]
+                - curve_weight(pair["distance_km"], manifest["curve_contract"])
+            )
+            > 1e-6
+        ):
+            raise ValueError("Pair centroid diagnostic contradicts recorded distance curve")
         for metric in METRICS:
             value = pair[metric]
             if value is None and not (
@@ -140,22 +319,191 @@ def check(output):
         if indexes[direction] != expected:
             raise ValueError("Forward/inverse indexes disagree with canonical pairs")
     cells = {feature["id"] for feature in read(output / "cells.geojson")["features"]}
+    scope = manifest["candidate_universe"]
+    settings = read(output / "production-evidence.json")["generation"]["producer_evidence"]["land"][
+        "terrain"
+    ]["settings"]
+    bbox = settings["region"]["bbox_wgs84"]
+    if (
+        scope["pairs"] != len(pairs)
+        or scope["cells"] != len(cells)
+        or scope["cutoffs_km"] != settings["source_target_lookup"]
+        or scope["coastal_buffer_m"] != settings["region"]["coastal_buffer_m"]
+        or scope["source_bbox_wgs84"]
+        != [bbox[key] for key in ("min_lon", "min_lat", "max_lon", "max_lat")]
+    ):
+        raise ValueError("Candidate universe contradicts producer evidence")
     for pair in pairs:
         if pair["source_h3"] not in cells or pair["target_h3"] not in cells:
             raise ValueError("Pair references missing cell geometry")
     lessons = read(output / "lessons.json")
+    defaults = manifest["defaults"]
+    if (
+        defaults["pair_id"] not in indexed
+        or indexed[defaults["pair_id"]]["source_type"] != defaults["source_type"]
+        or defaults["scenario"] != "baseline"
+    ):
+        raise ValueError("Invalid default pair/role/scenario reference")
     for lesson in lessons:
+        if any(pair_id not in indexed for pair_id in lesson["pair_ids"]):
+            raise ValueError("Invalid lesson pair reference")
         for assertion in lesson["assertions"]:
             pair = indexed[assertion["pair_id"]]
             if pair[assertion["field"]] != assertion["value"]:
                 raise ValueError("Lesson assertion disagrees with authoritative exported row")
+    for lesson in lessons:
+        for case in lesson.get("cases", []):
+            if case["pair_id"] not in lesson["pair_ids"]:
+                raise ValueError("Case pair reference mismatch")
+            pair = indexed[case["pair_id"]]
+            claim = case["claim"]
+            bare = pair["line_of_sight_support"]
+            canopy = pair["physical_viewability"]
+            if (
+                (claim == "open" and bare < 0.99)
+                or (claim == "blocked" and bare != 0)
+                or (claim == "strong" and (bare <= 0.02 or canopy / bare > 0.2))
+                or (claim == "little" and (bare <= 0.02 or canopy / bare < 0.98))
+            ):
+                raise ValueError("Case title has unsupported scientific claim")
+    for lesson in lessons:
+        if "cases" not in lesson:  # Existing v2 exports remain inspectable.
+            continue
+        cases = lesson["cases"]
+        if [case["pair_id"] for case in cases] != lesson["pair_ids"] or len(
+            {case["id"] for case in cases}
+        ) != len(cases):
+            raise ValueError("Invalid named case identity or order")
+        for case in cases:
+            pair = indexed[case["pair_id"]]
+            if (
+                not case["title"]
+                or case["source_changes_from_default"]
+                != (pair["source_h3"] != indexed[defaults["pair_id"]]["source_h3"])
+                or case["claim"]
+                not in {
+                    "canonical",
+                    "near",
+                    "far",
+                    "open",
+                    "blocked",
+                    "strong",
+                    "little",
+                    "inverse",
+                }
+            ):
+                raise ValueError("Invalid named case metadata")
+        if lesson["id"] == "distance" and lesson["shared_source"] != (
+            indexed[lesson["pair_ids"][0]]["source_h3"]
+            == indexed[lesson["pair_ids"][1]]["source_h3"]
+        ):
+            raise ValueError("Distance source correspondence mismatch")
     profiles = read(output / "profiles.json")
-    observers = {f["id"] for f in read(output / "observer-samples.geojson")["features"]}
+    observers = {f["id"]: f for f in read(output / "observer-samples.geojson")["features"]}
+    support = read(output / "target-support.geojson")["features"]
     for profile in profiles:
         if profile["pair_id"] not in indexed or profile["observer_id"] not in observers:
             raise ValueError("Profile references missing actual observation design")
+        pair = indexed[profile["pair_id"]]
+        observer = observers[profile["observer_id"]]
+        if (
+            profile.get("source_type", pair["source_type"]) != pair["source_type"]
+            or observer["properties"]["source_h3"] != pair["source_h3"]
+            or observer["properties"]["source_type"] != pair["source_type"]
+            or not any(
+                feature["properties"]["target_h3"] == pair["target_h3"]
+                and feature["properties"]["source_type"] == pair["source_type"]
+                and all(
+                    abs(a - b) < 1e-8
+                    for a, b in zip(
+                        feature["geometry"]["coordinates"], profile["endpoint"], strict=True
+                    )
+                )
+                for feature in support
+            )
+        ):
+            raise ValueError("Profile observer/endpoint/role correspondence mismatch")
         if profile["kind"] != "explanatory_sampled_profile_not_engine_or_cell_diagnostic":
             raise ValueError("Profile diagnostic status is invalid")
+    display_path = output / "inputs/display-geometry.json"
+    if display_path.exists():
+        from documentation_geometry import grid_bounds, sample_spacing
+
+        display = read(display_path)
+        grid = read(output / "inputs/display-grid.json")
+        if (
+            display["display_contract"] != "projected_documentation_geometry_v1"
+            or display["crs"] != grid["crs"]
+            or display["bounds"] != grid_bounds(grid)
+            or display["sampling_spacing_m"] != sample_spacing(grid)
+        ):
+            raise ValueError("Projected display grid correspondence mismatch")
+        for name, original in (
+            ("cells", "cells.geojson"),
+            ("coast", "inputs/coast.geojson"),
+            ("observers", "observer-samples.geojson"),
+            ("active_sources", "active-source-geometry.geojson"),
+            ("target_support", "target-support.geojson"),
+        ):
+            source_features = read(output / original)["features"]
+            if [(f.get("id"), f["properties"]) for f in source_features] != [
+                (f.get("id"), f["properties"]) for f in display[name]["features"]
+            ]:
+                raise ValueError("Projected display population correspondence mismatch")
+        if len(display["profiles"]) != len(profiles):
+            raise ValueError("Projected profile population mismatch")
+        for profile in profiles:
+            pair = indexed[profile["pair_id"]]
+            linked = next(
+                (p for p in display["profiles"] if p["pair_id"] == profile["pair_id"]), None
+            )
+            original_support = next(
+                f
+                for f in support
+                if f["properties"]["target_h3"] == pair["target_h3"]
+                and f["properties"]["source_type"] == pair["source_type"]
+                and all(
+                    abs(a - b) < 1e-8
+                    for a, b in zip(f["geometry"]["coordinates"], profile["endpoint"], strict=True)
+                )
+            )
+            if (
+                linked is None
+                or linked["observer_id"] != profile["observer_id"]
+                or not any(
+                    f["id"] == original_support["id"]
+                    and all(
+                        abs(a - b) < 1e-6
+                        for a, b in zip(
+                            f["geometry"]["coordinates"], linked["endpoint"], strict=True
+                        )
+                    )
+                    for f in display["target_support"]["features"]
+                )
+            ):
+                raise ValueError("Projected profile endpoint correspondence mismatch")
+    lesson_by_id = {lesson["id"]: lesson for lesson in lessons}
+    near, far = [indexed[key] for key in lesson_by_id["distance"]["pair_ids"]]
+    if near["distance_km"] >= far["distance_km"]:
+        raise ValueError("Near/far lesson claim is unsupported")
+    effect, little = [indexed[key] for key in lesson_by_id["canopy"]["pair_ids"]]
+    if (
+        effect["line_of_sight_support"] <= 0.02
+        or effect["physical_viewability"] / effect["line_of_sight_support"] > 0.2
+        or little["line_of_sight_support"] <= 0.02
+        or little["physical_viewability"] / little["line_of_sight_support"] < 0.98
+    ):
+        raise ValueError("Canopy lesson effect thresholds are unsupported")
+    blocked = indexed[lesson_by_id["terrain"]["pair_ids"][-1]]
+    profile = next((p for p in profiles if p["pair_id"] == blocked["id"]), None)
+    if (
+        blocked["line_of_sight_support"] != 0
+        or profile is None
+        or not any(s["ground_m"] > s["ray_m"] for s in profile["samples"][1:-1])
+    ):
+        raise ValueError("Ground-obstruction lesson needs aggregate and sampled-profile evidence")
+    if len({indexed[key]["target_h3"] for key in lesson_by_id["inverse"]["pair_ids"]}) != 1:
+        raise ValueError("Inverse examples must share their stated target")
     data_bytes = sum(
         len(gzip.compress((output / name).read_bytes(), mtime=0))
         for name in manifest["files"]
@@ -213,6 +561,11 @@ def _export(config, output):
     start = time.monotonic()
     app = load_app_config(config)
     paths = final_artifact_paths(config)
+    acquisitions = {
+        name: read(paths.final_output_dir / f"components/inputs/{name}/download.json")
+        for name in ("dem", "chm")
+    }
+    validate_provider_preset(acquisitions)
     outputs = materialize_static_viewability_outputs(config)
     receipts = {
         "land": outputs["land_static_weights"],
@@ -231,6 +584,20 @@ def _export(config, output):
         raise ValueError("Real teaching export requires a retained input coverage audit")
     if receipt["method"] != "4.0.0-research":
         raise ValueError("Teaching export requires directly observed unweighted canopy LOS")
+    distance_evidence = receipt["producer_evidence"]["land"]["distance"]["settings"]
+    curve_contract = {
+        "settings": distance_evidence["distance"],
+        "extent_km": distance_evidence["distance_extent_km"],
+    }
+    curve_distances = np.linspace(0, curve_contract["extent_km"], 101)
+    source_vintages = [
+        {key: record.get(key) for key in ("source_year", "source_version", "observed_sha256")}
+        for record in acquisitions["chm"]["assets"]
+    ]
+    native_resolution = {
+        name: acquisitions[name]["dataset"]["resolution_m"] for name in acquisitions
+    }
+    public_generation = {key: value for key, value in receipt.items() if key != "prepared_sources"}
     dual = pl.read_parquet(paths.dual_surface_factors).to_dicts()
     canopy_k = {(p["source_h3"], p["target_h3"]): p["weight_canopy_los_raw"] for p in dual}
     pairs = []
@@ -299,6 +666,8 @@ def _export(config, output):
             for p in candidates
             if p["distance_weighted_los_support"] > 0.02
             and 0.05 < p["vegetation_attenuation"] < 0.8
+            and p["line_of_sight_support"] > 0.02
+            and p["physical_viewability"] / p["line_of_sight_support"] <= 0.2
         ),
         None,
     )
@@ -309,6 +678,8 @@ def _export(config, output):
                 for p in land_pairs
                 if p["distance_weighted_los_support"] > 0.02
                 and 0.05 < p["vegetation_attenuation"] < 0.8
+                and p["line_of_sight_support"] > 0.02
+                and p["physical_viewability"] / p["line_of_sight_support"] <= 0.2
             ),
             None,
         )
@@ -321,14 +692,25 @@ def _export(config, output):
         key=lambda p: p["distance_km"],
     )
     if len(clear) < 2:
-        clear = sorted(
-            [
-                p
-                for p in land_pairs
-                if p["line_of_sight_support"] >= 0.99 and p["distance_km"] > 0.5
-            ],
-            key=lambda p: p["distance_km"],
+        groups = {}
+        for pair in land_pairs:
+            if pair["line_of_sight_support"] >= 0.99 and pair["distance_km"] > 0.5:
+                groups.setdefault(pair["source_h3"], []).append(pair)
+        eligible = [items for items in groups.values() if len(items) >= 2]
+        pool = (
+            max(
+                eligible,
+                key=lambda items: (
+                    max(p["distance_km"] for p in items) - min(p["distance_km"] for p in items),
+                    items[0]["source_h3"],
+                ),
+            )
+            if eligible
+            else [p for items in groups.values() for p in items]
         )
+        if len(pool) < 2:
+            raise ValueError("No supported near/far comparison in this bounded generation")
+        clear = sorted(pool, key=lambda p: p["distance_km"])
     near, far = clear[0], clear[-1]
     blocked = next(
         (p for p in family if p["line_of_sight_support"] == 0 and p["distance_km"] < 4), None
@@ -340,7 +722,9 @@ def _export(config, output):
     unaffected = next(
         p
         for p in land_pairs
-        if p["distance_weighted_los_support"] > 0.02 and p["vegetation_attenuation"] > 0.98
+        if p["line_of_sight_support"] > 0.02
+        and p["physical_viewability"] / p["line_of_sight_support"] >= 0.98
+        and p["distance_weighted_los_support"] > 0.02
     )
     inverse = [
         p
@@ -390,6 +774,55 @@ def _export(config, output):
         }
         for ident, items, rationale in lesson_specs
     ]
+    case_titles = {
+        "inputs": [("worked-pair", "Worked example A → B", "canonical")],
+        "samples": [("sampled-path", "One observer-to-water path", "canonical")],
+        "distance": [
+            ("nearer-water", "Nearer water", "near"),
+            ("farther-water", "Farther water", "far"),
+        ],
+        "terrain": [
+            ("open-ground", "Open ground", "open"),
+            ("ground-blocked", "Ground-blocked example", "blocked"),
+        ],
+        "canopy": [
+            ("strong-canopy", "Strong canopy effect", "strong"),
+            ("little-canopy", "Little canopy effect", "little"),
+        ],
+        "combined": [
+            ("worked-support", "Worked example A → B", "canonical"),
+            ("modeled-zero", "Modeled zero support", "blocked"),
+        ],
+    }
+    for lesson in lessons:
+        titles = case_titles.get(
+            lesson["id"],
+            [
+                (f"included-source-{i+1}", f"Included observer area {i+1}", "inverse")
+                for i in range(len(lesson["pair_ids"]))
+            ],
+        )
+        lesson["cases"] = [
+            {
+                "id": case_id,
+                "title": title,
+                "pair_id": pair_id,
+                "claim": claim,
+                "source_changes_from_default": pair_id.split(":")[1] != source,
+            }
+            for (case_id, title, claim), pair_id in zip(titles, lesson["pair_ids"], strict=True)
+        ]
+        lesson["worked_example"] = (
+            "A → B"
+            if lesson["id"] in {"inputs", "samples", "canopy", "combined", "inverse"}
+            else "Curated comparison"
+        )
+        if lesson["id"] == "distance":
+            lesson["shared_source"] = near["source_h3"] == far["source_h3"]
+            lesson["rationale"] = (
+                ("Same observer area" if lesson["shared_source"] else "Observer area changes")
+                + "; strong bare-ground support. Compare distance diagnostic only, not final scores."
+            )
     ids = sorted({p[k] for p in pairs for k in ("source_h3", "target_h3")})
     sources = {
         role: {p["source_h3"] for p in pairs if p["source_type"] == role}
@@ -577,6 +1010,7 @@ def _export(config, output):
             profiles.append(
                 {
                     "pair_id": pair["id"],
+                    "source_type": pair["source_type"],
                     "observer_id": observer_id,
                     "endpoint": list(to_wgs84.transform(endpoint.x, endpoint.y)),
                     "kind": "explanatory_sampled_profile_not_engine_or_cell_diagnostic",
@@ -596,6 +1030,7 @@ def _export(config, output):
             "analysis_resolution_m": app.viewshed.dem_resolution_m,
             "display_resolution_m": app.viewshed.dem_resolution_m * stride,
             "units": "m",
+            "sampling": "nearest decimation: first pixel of each clipped display block; no areal averaging",
             "ground": [
                 [None if np.ma.is_masked(v) else float(v) for v in row]
                 for row in ground[::stride, ::stride]
@@ -660,11 +1095,11 @@ def _export(config, output):
         "distance-curve.json": [
             {"distance_km": float(d), "weight": float(w)}
             for d, w in zip(
-                np.linspace(0, 5, 101),
+                curve_distances,
                 distance_weight_values(
-                    np.linspace(0, 5, 101),
+                    curve_distances,
                     load_distance_weight_config(app.raw_config),
-                    max_distance_km=5,
+                    max_distance_km=curve_contract["extent_km"],
                 ),
                 strict=True,
             )
@@ -672,6 +1107,28 @@ def _export(config, output):
         "lessons.json": lessons,
         "indexes.json": indexes,
         "inputs/display-grid.json": grid,
+        "production-evidence.json": {
+            "generation": public_generation,
+            "source_vintages": source_vintages,
+            "native_resolution_m": {
+                "dem": native_resolution["dem"],
+                "canopy": native_resolution["chm"],
+            },
+            "acquisition": {
+                name: {
+                    "dataset": {
+                        key: value
+                        for key, value in acquisitions[name]["dataset"].items()
+                        if key != "assets"
+                    },
+                    "source_content": acquisitions[name]["checksums"],
+                    "source_byte_sha256": [
+                        asset.get("observed_sha256") for asset in acquisitions[name]["assets"]
+                    ],
+                }
+                for name in acquisitions
+            },
+        },
         "validation.json": {
             "artifact_rows_validated": len(pairs),
             "four_file_receipt_validated": True,
@@ -685,6 +1142,44 @@ def _export(config, output):
     bounds = [-123.30, 48.39, -122.80, 48.71]
     land.geometry = land.geometry.make_valid().intersection(box(*bounds))
     write(output / "inputs/coast.geojson", json.loads(land[["geometry"]].to_json()))
+    from documentation_geometry import grid_bounds, sample_spacing
+
+    def projected(collection):
+        return {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    **feature,
+                    "geometry": mapping(
+                        transform(to_projected.transform, shape(feature["geometry"]))
+                    ),
+                }
+                for feature in collection["features"]
+            ],
+        }
+
+    write(
+        output / "inputs/display-geometry.json",
+        {
+            "display_contract": "projected_documentation_geometry_v1",
+            "crs": grid["crs"],
+            "bounds": grid_bounds(grid),
+            "sampling_spacing_m": sample_spacing(grid),
+            "cells": projected(cells),
+            "coast": projected(read(output / "inputs/coast.geojson")),
+            "observers": projected({"features": observers}),
+            "active_sources": projected({"features": active}),
+            "target_support": projected({"features": support}),
+            "profiles": [
+                {
+                    "pair_id": profile["pair_id"],
+                    "observer_id": profile["observer_id"],
+                    "endpoint": list(to_projected.transform(*profile["endpoint"])),
+                }
+                for profile in profiles
+            ],
+        },
+    )
     # Publication derivatives retain source rights; raw regional data stay ignored.
     manifest = {
         "export_contract": VERSION,
@@ -698,14 +1193,16 @@ def _export(config, output):
         },
         "artifacts": receipt["files"],
         "code_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
-        "source_vintages": [
-            {key: record.get(key) for key in ("source_year", "source_version", "observed_sha256")}
-            for record in read(paths.final_output_dir / "components/inputs/chm/download.json")[
-                "assets"
-            ]
+        "producer_revision": receipt["producer_evidence"]["land"]["dual_surface"][
+            "producer_revision"
         ],
+        "source_vintages": source_vintages,
         "crs": app.viewshed.crs_projected,
-        "native_resolution_m": {"dem": 30, "canopy": 10},
+        "native_resolution_m": {
+            "dem": native_resolution["dem"],
+            "canopy": native_resolution["chm"],
+        },
+        "curve_contract": curve_contract,
         "analysis_resolution_m": app.viewshed.dem_resolution_m,
         "assumptions": {
             key: app.raw_config[key]
@@ -719,8 +1216,11 @@ def _export(config, output):
         },
         "target_support_scope": "Actual support for curated lesson targets only; all candidate pair records are retained",
         "candidate_universe": {
-            "extent": "configured source bbox plus 6 km target buffer, 5 km centroid candidate cutoff",
+            "extent": "configured source bbox, coastal buffer and role-specific centroid candidate cutoff",
             "bbox_wgs84": bounds,
+            "source_bbox_wgs84": list(bbox_from_config(app.raw_config)),
+            "coastal_buffer_m": app.raw_config["region"]["coastal_buffer_m"],
+            "cutoffs_km": app.raw_config["source_target_lookup"],
             "pairs": len(pairs),
             "cells": len(ids),
         },
@@ -751,7 +1251,7 @@ def _export(config, output):
         ],
         "limitations": [
             "Static physical support; not sighting probability or actual observer activity",
-            "100 m analysis and generalized coastline; not fine shoreline accuracy",
+            f"{app.viewshed.dem_resolution_m} m analysis and generalized coastline; not fine shoreline accuracy",
             "Missing canopy uses zero height, not observed absence of trees",
             "Profiles sample real surfaces but are not engine rays or cell aggregate diagnostics",
             "Curated cases are not regional statistics",
@@ -762,9 +1262,7 @@ def _export(config, output):
             if p.is_file() and p.name != "manifest.json"
         },
     }
-    manifest["bundle_id"] = digest(
-        encode({key: manifest[key] for key in ("export_contract", "generation_id", "files")})
-    )
+    seal_manifest(manifest)
     write(output / "manifest.json", manifest)
     from render_documentation_examples import render
 
@@ -774,9 +1272,7 @@ def _export(config, output):
         for p in sorted(output.rglob("*"))
         if p.is_file() and p.name != "manifest.json"
     }
-    manifest["bundle_id"] = digest(
-        encode({key: manifest[key] for key in ("export_contract", "generation_id", "files")})
-    )
+    seal_manifest(manifest)
     write(output / "manifest.json", manifest)
     result = check(output)
     print(json.dumps({**result, "export_seconds": round(time.monotonic() - start, 2)}))

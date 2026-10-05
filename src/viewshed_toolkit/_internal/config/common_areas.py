@@ -94,27 +94,3 @@ def ranges_for_area(
         (bbox["min_lat"], bbox["max_lat"]),
         (bbox["min_lon"], bbox["max_lon"]),
     )
-
-
-def resolve_range_config(
-    config: Mapping[str, Any],
-    *,
-    area_key: str,
-    lat_key: str = "lat_range",
-    lon_key: str = "lon_range",
-    common_config_path: str | Path | None = None,
-) -> tuple[tuple[float, float], tuple[float, float]]:
-    area = area_name(config.get(area_key))
-    if area:
-        return ranges_for_area(area, common_config_path=common_config_path)
-
-    lat_range = config.get(lat_key)
-    lon_range = config.get(lon_key)
-    if lat_range is None or lon_range is None:
-        raise KeyError(
-            f"Missing common area reference {area_key!r} or explicit {lat_key}/{lon_key}."
-        )
-    return (
-        (float(lat_range[0]), float(lat_range[1])),
-        (float(lon_range[0]), float(lon_range[1])),
-    )

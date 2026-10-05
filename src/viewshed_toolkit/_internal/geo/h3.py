@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from shapely.geometry import MultiPolygon, Polygon, box, mapping
@@ -118,68 +117,6 @@ def latlng_to_cell(lat: float, lng: float, resolution: int) -> str:
     if hasattr(h3, "geo_to_h3"):
         return str(h3.geo_to_h3(float(lat), float(lng), int(resolution)))
     raise ImportError("Unknown h3 API: expected latlng_to_cell or geo_to_h3")
-
-
-def h3_cells_within_distance(
-    lat: float,
-    lon: float,
-    resolution: int,
-    distance_km: float,
-    *,
-    max_cells: int | None = None,
-) -> list[str]:
-    """Return H3 cells whose centers are within a geodesic radius.
-
-    Results are ordered nearest-first, with the H3 index used as a stable
-    tie-breaker. Cell-center inclusion is intentional: a cell whose polygon
-    merely touches the radius is not included unless its center is also within
-    ``distance_km``.
-    """
-
-    latitude = float(lat)
-    longitude = float(lon)
-    h3_resolution = int(resolution)
-    radius_km = float(distance_km)
-    if not -90.0 <= latitude <= 90.0:
-        raise ValueError(f"Latitude must be between -90 and 90 degrees; got {lat!r}.")
-    if not -180.0 <= longitude <= 180.0:
-        raise ValueError(f"Longitude must be between -180 and 180 degrees; got {lon!r}.")
-    if not 0 <= h3_resolution <= 15:
-        raise ValueError(f"H3 resolution must be between 0 and 15; got {resolution!r}.")
-    if not math.isfinite(radius_km) or radius_km < 0.0:
-        raise ValueError(f"distance_km must be a finite non-negative value; got {distance_km!r}.")
-    if max_cells is not None and int(max_cells) < 0:
-        raise ValueError(f"max_cells must be non-negative when provided; got {max_cells!r}.")
-
-    h3 = _load_h3()
-    if hasattr(h3, "average_hexagon_edge_length"):
-        edge_km = float(h3.average_hexagon_edge_length(h3_resolution, unit="km"))
-    elif hasattr(h3, "edge_length"):
-        edge_km = float(h3.edge_length(h3_resolution, unit="km"))
-    else:
-        raise ImportError("Unknown h3 API: expected average_hexagon_edge_length or edge_length")
-
-    try:
-        from pyproj import Geod
-    except Exception as exc:
-        raise ImportError("Install pyproj to select H3 cells by geodesic distance.") from exc
-
-    center_cell = latlng_to_cell(latitude, longitude, h3_resolution)
-    candidate_k = int(math.ceil(radius_km / edge_km)) + 2
-    candidates = grid_disk(center_cell, candidate_k)
-    geod = Geod(ellps="WGS84")
-    maximum_distance_m = radius_km * 1_000.0
-    cells_and_distances: list[tuple[float, str]] = []
-    for cell in candidates:
-        cell_lat, cell_lon = cell_to_latlng(cell)
-        _, _, distance_m = geod.inv(longitude, latitude, cell_lon, cell_lat)
-        if float(distance_m) <= maximum_distance_m + 1e-6:
-            cells_and_distances.append((float(distance_m), str(cell)))
-
-    cells_and_distances.sort(key=lambda item: (item[0], item[1]))
-    if max_cells is not None:
-        cells_and_distances = cells_and_distances[: int(max_cells)]
-    return [cell for _, cell in cells_and_distances]
 
 
 def polygon_to_cells(geometry: Any, resolution: int) -> set[str]:
@@ -312,28 +249,6 @@ def geom_to_h3shape(geom: Polygon | MultiPolygon) -> Any:
     if not hasattr(h3, "LatLngMultiPoly"):
         raise ImportError("h3-py version does not expose LatLngMultiPoly.")
     return h3.LatLngMultiPoly(*polys)
-
-
-def polygonize_h3_indices(
-    indices: list[str],
-    *,
-    h3_col: str = "h3_index",
-    parallel: str = "thread",
-    max_workers: int | None = None,
-) -> Any:
-    """Turn H3 cells into an EPSG:4326 GeoDataFrame of polygons."""
-    import geopandas as gpd
-
-    if not indices:
-        return gpd.GeoDataFrame({h3_col: []}, geometry=[], crs="EPSG:4326")
-    if parallel == "thread":
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            geoms = list(ex.map(cell_to_polygon, indices))
-    elif parallel == "off":
-        geoms = [cell_to_polygon(h) for h in indices]
-    else:
-        raise ValueError(f"Unknown parallel mode: {parallel}")
-    return gpd.GeoDataFrame({h3_col: indices}, geometry=geoms, crs="EPSG:4326")
 
 
 def bbox_h3_cells(

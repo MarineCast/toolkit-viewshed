@@ -101,6 +101,22 @@ result = process(
 )
 ```
 
+Run IDs must be simple filename identifiers (no path separators, drive prefixes or traversal).
+Manifest collision checks run before any stage. `resume=True` does not override a different logical
+run; explicit `force=True` is required for manifest replacement. Complete resume validates the
+retained paired generation and present inputs before skipping. Partial resume executes stage cache
+checks and does not return `skipped=True` from output checksums alone.
+
+The distance CLI commands reject `--limit` and `--start`; bound the configuration instead.
+`terrain-weight` retains intermediates and no longer advertises a redundant retention flag.
+Legacy vegetation support/ray commands remain available for advanced compatibility work; canonical
+land production uses matched bare-earth/canopy `terrain-weight` or the paired stage. Legacy output
+is not a substitute for current producer lineage.
+
+`viewshed-toolkit doctor --config <file> --workflow land|water|distance` is read-only local readiness
+inspection; see [quick start](getting-started/quick-start.md). It exits 1 for missing required inputs
+or unavailable output permission hints, and does not certify scientific validity.
+
 `ViewshedRequest` accepts an optional `WorkflowIdentity`. Without one, the service reads the
 configuration's `provenance` section and otherwise uses toolkit-generic defaults.
 
@@ -206,3 +222,10 @@ The component API has no implicit cleanup. Its final tables and maps use a separ
 the original public `process` and `run_viewshed` retain the legacy paired/cleanup contract above.
 See [pipeline stages](pipelines.md) for exact dependencies and [configuration](configuration.md)
 for the intentionally preserved scientific model.
+
+Partial-run manifests use schema version 3 to record canonical local input checksums, including
+missing inputs and shapefile sidecars. Partial resume rejects changed/missing input identity and
+historical manifests without that inventory before entering stage checks. It does not silently
+certify older cached outputs. Rebuild affected producers with their explicit overwrite controls
+or a fresh workspace, then create a new manifest. Remote source freshness is not certified by
+local checksum validation.

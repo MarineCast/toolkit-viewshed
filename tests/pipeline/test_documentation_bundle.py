@@ -25,10 +25,28 @@ def reseal(output):
     manifest["files"] = {
         name: EXPORT.digest((output / name).read_bytes()) for name in manifest["files"]
     }
-    manifest["bundle_id"] = EXPORT.digest(
-        EXPORT.encode({key: manifest[key] for key in ("export_contract", "generation_id", "files")})
-    )
+    EXPORT.seal_manifest(manifest)
     EXPORT.write(output / "manifest.json", manifest)
+
+
+@pytest.mark.parametrize(
+    "field", ["analysis_resolution_m", "crs", "assumptions", "source_vintages"]
+)
+def test_checker_rejects_scientific_manifest_relabeling(tmp_path, field):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    manifest = EXPORT.read(output / "manifest.json")
+    if field == "analysis_resolution_m":
+        manifest[field] += 1
+    elif field == "crs":
+        manifest[field] = "EPSG:4326"
+    elif field == "assumptions":
+        manifest[field]["viewshed"]["observer_canopy_clearance_radius_m"] += 1
+    else:
+        manifest[field][0]["source_year"] = 1999
+    EXPORT.write(output / "manifest.json", manifest)
+    with pytest.raises(ValueError, match=r"semantic|identity|evidence|contract"):
+        EXPORT.check(output)
 
 
 def test_committed_real_bundle_checks_without_site_packages():
@@ -109,6 +127,233 @@ def test_checker_rejects_inconsistent_scientific_evidence(tmp_path, mutation):
     }[mutation]
     row[columns.index(field)] = value
     EXPORT.write(output / "pairs.json", data)
+    reseal(output)
+    with pytest.raises(ValueError):
+        EXPORT.check(output)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["analysis_resolution_m", "crs", "assumptions", "source_vintages", "candidate_universe"],
+)
+def test_resigned_manifest_still_rejects_contradictory_evidence(tmp_path, field):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    manifest = EXPORT.read(output / "manifest.json")
+    if field == "analysis_resolution_m":
+        manifest[field] += 1
+    elif field == "crs":
+        manifest[field] = "EPSG:4326"
+    elif field == "assumptions":
+        manifest[field]["viewshed"]["observer_canopy_clearance_radius_m"] += 1
+    elif field == "candidate_universe":
+        manifest[field]["pairs"] += 1
+    else:
+        manifest[field][0]["source_year"] = 1999
+    EXPORT.seal_manifest(manifest)
+    EXPORT.write(output / "manifest.json", manifest)
+    with pytest.raises(ValueError, match=r"evidence|contradicts"):
+        EXPORT.check(output)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["default", "role", "lesson", "near_far", "effect", "little", "inverse", "obstruction"],
+)
+def test_checker_rejects_invalid_references_and_teaching_claims(tmp_path, mutation):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    manifest = EXPORT.read(output / "manifest.json")
+    lessons = EXPORT.read(output / "lessons.json")
+    by_id = {lesson["id"]: lesson for lesson in lessons}
+    if mutation == "default":
+        manifest["defaults"]["pair_id"] = "absent"
+    elif mutation == "role":
+        manifest["defaults"]["source_type"] = "water"
+    elif mutation == "lesson":
+        lessons[0]["pair_ids"] = ["absent"]
+    elif mutation == "near_far":
+        by_id["distance"]["pair_ids"].reverse()
+    elif mutation in {"effect", "little"}:
+        by_id["canopy"]["pair_ids"] = [
+            by_id["canopy"]["pair_ids"][1 if mutation == "effect" else 0]
+        ] * 2
+    elif mutation == "inverse":
+        by_id["inverse"]["pair_ids"][0] = by_id["distance"]["pair_ids"][0]
+    else:
+        profiles = EXPORT.read(output / "profiles.json")
+        blocked = by_id["terrain"]["pair_ids"][-1]
+        for profile in profiles:
+            if profile["pair_id"] == blocked:
+                for sample in profile["samples"]:
+                    sample["ground_m"] = sample["ray_m"] - 1
+        EXPORT.write(output / "profiles.json", profiles)
+    EXPORT.write(output / "lessons.json", lessons)
+    EXPORT.write(output / "manifest.json", manifest)
+    reseal(output)
+    with pytest.raises(ValueError):
+        EXPORT.check(output)
+
+
+@pytest.mark.parametrize("model", ["logistic", "exponential", "piecewise"])
+def test_offline_curve_oracle_matches_production_with_shorter_cutoff(model):
+    from dataclasses import asdict
+
+    import numpy as np
+
+    from viewshed_toolkit.pipeline.config.distance import DistanceWeightConfig
+    from viewshed_toolkit.pipeline.weights.distance.compute import distance_weight_values
+
+    config = DistanceWeightConfig(selected_model=model, hard_cutoff_km=2, normalize_at_zero=True)
+    contract = {"settings": asdict(config), "extent_km": 2}
+    points = np.linspace(0, 2.5, 101)
+    actual = distance_weight_values(points, config, max_distance_km=2)
+    assert [EXPORT.curve_weight(float(point), contract) for point in points] == pytest.approx(
+        actual, abs=1e-6
+    )
+
+
+def test_semantic_export_rejects_nonfinite_and_preserves_timestamp_identity():
+    manifest = EXPORT.read(BUNDLE / "manifest.json")
+    identity = manifest["bundle_id"]
+    manifest["rendered_at"] = "documentation timestamp"
+    EXPORT.seal_manifest(manifest)
+    assert manifest["bundle_id"] == identity
+    manifest["analysis_resolution_m"] = float("nan")
+    with pytest.raises(ValueError):
+        EXPORT.seal_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    "field", ["analysis_resolution_m", "crs", "assumptions", "source_vintages"]
+)
+def test_strict_build_hook_rejects_resigned_scientific_metadata(tmp_path, monkeypatch, field):
+    from types import SimpleNamespace
+
+    hook_spec = importlib.util.spec_from_file_location("docs_hooks", ROOT / "scripts/docs_hooks.py")
+    hook = importlib.util.module_from_spec(hook_spec)
+    hook_spec.loader.exec_module(hook)
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    manifest = EXPORT.read(output / "manifest.json")
+    if field == "analysis_resolution_m":
+        manifest[field] += 1
+    elif field == "crs":
+        manifest[field] = "EPSG:4326"
+    elif field == "assumptions":
+        manifest[field]["viewshed"]["observer_canopy_clearance_radius_m"] += 1
+    else:
+        manifest[field][0]["source_year"] = 1999
+    EXPORT.seal_manifest(manifest)
+    EXPORT.write(output / "manifest.json", manifest)
+    monkeypatch.setattr(hook, "BUNDLE", output)
+    with pytest.raises(subprocess.CalledProcessError) as failure:
+        hook.on_pre_build(SimpleNamespace(extra={}))
+    assert b"evidence" in failure.value.stderr
+
+
+def test_checker_rejects_rehashed_curve_calculation(tmp_path):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    curve = EXPORT.read(output / "distance-curve.json")
+    curve[50]["weight"] += 0.1
+    EXPORT.write(output / "distance-curve.json", curve)
+    reseal(output)
+    with pytest.raises(ValueError, match="curve values"):
+        EXPORT.check(output)
+
+
+@pytest.mark.parametrize(
+    "field, value", [("provider", "local"), ("version", "ETH_other"), ("source_year", 2019)]
+)
+def test_attributed_exporter_rejects_unsupported_provider_evidence(field, value):
+    evidence = EXPORT.read(BUNDLE / "production-evidence.json")["acquisition"]
+    evidence["dem" if field == "provider" else "chm"]["dataset"][field] = value
+    with pytest.raises(ValueError, match="unsupported provider evidence"):
+        EXPORT.validate_provider_preset(evidence)
+
+
+def test_checker_rejects_centroid_diagnostic_inconsistent_with_curve(tmp_path):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    data = EXPORT.read(output / "pairs.json")
+    column = data["columns"].index("distance_detection_weight")
+    data["rows"][0][column] -= 0.01
+    EXPORT.write(output / "pairs.json", data)
+    reseal(output)
+    with pytest.raises(ValueError, match="centroid diagnostic"):
+        EXPORT.check(output)
+
+
+def test_input_preview_preserves_square_projected_spacing():
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(BUNDLE / "previews/ground.svg").getroot()
+    import math
+
+    pixel = next(
+        element
+        for element in root.iter()
+        if element.tag.endswith("polygon") and element.attrib.get("data-sample") == "0,0"
+    )
+    points = [[float(v) for v in point.split(",")] for point in pixel.attrib["points"].split()]
+    assert math.dist(points[0], points[1]) == pytest.approx(
+        math.dist(points[1], points[2]), abs=0.02
+    )
+
+
+@pytest.mark.parametrize("mutation", ["observer", "endpoint", "role"])
+def test_profile_must_match_pair_observer_role_and_target_support(tmp_path, mutation):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    profiles = EXPORT.read(output / "profiles.json")
+    profile = profiles[0]
+    if mutation == "observer":
+        observers = EXPORT.read(output / "observer-samples.geojson")["features"]
+        profile["observer_id"] = next(
+            observer["id"]
+            for observer in observers
+            if observer["properties"]["source_h3"] not in profile["pair_id"]
+        )
+    elif mutation == "endpoint":
+        profile["endpoint"] = [-123.8, 48.9]
+    else:
+        profile["source_type"] = "water"
+    EXPORT.write(output / "profiles.json", profiles)
+    reseal(output)
+    with pytest.raises(ValueError, match=r"Profile.*correspondence"):
+        EXPORT.check(output)
+
+
+@pytest.fixture(autouse=True)
+def standalone_script_imports(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+
+
+@pytest.mark.parametrize(
+    "mutation", ["bounds", "population", "endpoint", "case_title", "case_reference"]
+)
+def test_checker_rejects_rehashed_display_and_case_mismatch(tmp_path, mutation):
+    output = tmp_path / "bundle"
+    shutil.copytree(BUNDLE, output)
+    if mutation.startswith("case"):
+        lessons = EXPORT.read(output / "lessons.json")
+        if mutation == "case_title":
+            next(lesson for lesson in lessons if lesson["id"] == "canopy")["cases"][0][
+                "claim"
+            ] = "little"
+        else:
+            lessons[0]["cases"][0]["pair_id"] = lessons[-1]["pair_ids"][-1]
+        EXPORT.write(output / "lessons.json", lessons)
+    else:
+        display = EXPORT.read(output / "inputs/display-geometry.json")
+        if mutation == "bounds":
+            display["bounds"][0] += 100
+        elif mutation == "population":
+            display["observers"]["features"].pop()
+        else:
+            display["profiles"][0]["endpoint"][0] += 100
+        EXPORT.write(output / "inputs/display-geometry.json", display)
     reseal(output)
     with pytest.raises(ValueError):
         EXPORT.check(output)

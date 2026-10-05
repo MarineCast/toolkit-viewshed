@@ -39,8 +39,8 @@ parameters. The existing distance component adapts the default profile for old c
 profiles never enter static composition.
 
 Water keeps its opaque-land-mask policy. Its direct DEM/terrain component stage does not require
-raster input validation. The shared `build` DAG currently retains DEM preparation dependencies for
-water too; use individual `stage` commands for a raster-free water computation.
+raster input validation. The role-aware `build` DAG resolves geometry and lookup inputs without
+DEM/CHM acquisition or preparation for water; land builds retain their raster dependencies.
 
 ## Compatibility and promotion
 

@@ -9,6 +9,10 @@ role, with each component retained for inspection.
 These are **static physical viewability** products. They do not estimate observer effort,
 public access, reporting probability, animal detection probability, occurrence, or abundance.
 
+Explore the [documentation site](https://marinecast.github.io/toolkit-viewshed/), starting with
+the [quick start](docs/getting-started/quick-start.md), [product guide](docs/products/index.md), or
+[San Juan guided example](docs/examples.md).
+
 ## Methodology
 
 The toolkit builds a deterministic universe of H3 source–target pairs, samples viewpoints within
@@ -17,7 +21,7 @@ matched DEM+CHM surfaces to separate terrain support from conditional canopy obs
 sources use the configured opaque-land policy. The line-of-sight kernel applies range attenuation,
 and the resulting pair weights can be aggregated into maps of static viewing support.
 
-![Conceptual Viewshed Toolkit workflow from observers and line-of-sight calculations to H3 viewability summaries](docs/assets/viewshed-methodology-overview.png)
+![Conceptual Viewshed Toolkit workflow from observers and line-of-sight calculations to H3 viewability summaries](docs/assets/viewshed-methodology-overview.svg)
 
 *Conceptual overview only: the illustrated target area does not supply animal activity to the
 model. Outputs describe static physical viewability, and aggregate sums do not represent observer
@@ -40,6 +44,18 @@ Install `.[acquisition]` to use the USGS py3dep downloader. The package itself r
 The small end-to-end test requires GDAL
 Python bindings. `.github/environment.yml` describes the geospatial CI environment.
 
+## A first result without downloads
+
+```bash
+python examples/offline_distance.py --output work/my-first-distance
+viewshed-toolkit doctor --config work/my-first-distance/config.yaml --workflow distance
+```
+
+This uses deliberately synthetic geometry and the production distance APIs, with formula and
+artifact validation. It does not run LOS or represent observed coastline. Choose a new directory;
+existing directories are never overwritten. Follow the [quick start](docs/getting-started/quick-start.md)
+for expected outputs and the next step to real San Juan data.
+
 ## Configure a region
 
 For a small runnable example, start with the [San Juan Islands demo](docs/san-juan-demo.md).
@@ -47,10 +63,16 @@ It includes a real-data configuration, a production-pipeline runner, an interact
 documentation figures, with explicit source coverage and interpretation limits.
 
 ```bash
-PYTHONPATH=src python scripts/run_san_juan_demo.py
+# Bounded real model; native geospatial environment required.
+PYTHONPATH=src python scripts/run_san_juan_demo.py \
+  --config configs/san_juan_demo.yaml --rebuild --model-only
+
+# Export checked documentation derivatives from the validated results.
+PYTHONPATH=src python scripts/build_documentation_examples.py \
+  --config configs/san_juan_demo.yaml --output docs/assets/examples/san-juan
 ```
 
-The demo requires the `analysis` and `acquisition` extras and a compatible GDAL environment.
+Reading the [committed guided example](docs/examples.md) needs no native environment. Model execution requires the `analysis` and `acquisition` extras and compatible GDAL. The runner defaults to model-only and prints the next export command; it does not write retired documentation assets.
 
 Start with `configs/salish_sea.yaml`, or the configuration bundled in the wheel:
 
@@ -94,12 +116,9 @@ viewshed-toolkit build all --config configs/salish_sea.yaml --source-type land -
 viewshed-toolkit build all --config configs/salish_sea.yaml --source-type water --run-id water
 ```
 
-**Water dependency caveat:** `build all --source-type water` currently resolves both DEM and CHM
-acquisition and preparation through the shared graph. The opaque-land water implementation itself
-is raster-free; after preparing its geometry/lookup inputs, use exact `stage` commands such as
-`stage build-dem-weights --source-type water` when avoiding raster dependencies is required.
-`build distance` remains raster-independent. See [pipeline stages](docs/pipelines.md) for the
-complete contract.
+Water component builds resolve geometry and lookup dependencies without acquiring or preparing
+DEM/CHM rasters. Their opaque-land kernel uses geometry; the water canopy factor is explicitly
+not applicable. Land builds retain the registered raster dependencies.
 
 Distance can also be reused as a first-class product. Build the role-specific pair distances once,
 then create any number of content-addressed attenuation profiles without geometry or rasters:
@@ -211,3 +230,10 @@ After the workflow is merged, it can also be run from **Actions → Publish docu
 Run workflow**, selecting `main`. The site is hosted at
 [marinecast.github.io/toolkit-viewshed](https://marinecast.github.io/toolkit-viewshed/).
 The workflow uses the committed demo bundle and requires only documentation dependencies.
+
+## Contribute and cite
+
+See [CONTRIBUTING](CONTRIBUTING.md), the [change history](CHANGELOG.md), and
+[CITATION.cff](CITATION.cff). Cite the exact commit or release used with the separate source-data
+attributions. Software checks are not field validation; see the
+[acceptance matrix](docs/development/acceptance.md).

@@ -1,9 +1,15 @@
 name: Package and scientific contracts
 on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   geospatial:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python: ['3.11', '3.14']
     defaults:
@@ -35,6 +41,7 @@ jobs:
           node-version: '22'
       - run: python -m pip install -r requirements-docs.txt -r requirements-browser.txt
       - run: python -S scripts/build_documentation_examples.py --check --output docs/assets/examples/san-juan
+      - run: python -S scripts/check_documentation_links.py
       - run: node --check docs/assets/examples/explorer.js
       - run: python -m mkdocs build --strict
       - run: python -m playwright install --with-deps chromium webkit

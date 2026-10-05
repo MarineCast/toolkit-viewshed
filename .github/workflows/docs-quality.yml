@@ -1,0 +1,36 @@
+name: Documentation quality
+on:
+  workflow_call:
+    inputs:
+      upload-pages:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements-docs.txt -r requirements-browser.txt
+      - run: python -S scripts/build_documentation_examples.py --check --output docs/assets/examples/san-juan
+      - run: python -S scripts/check_documentation_links.py
+      - run: node --check docs/assets/examples/explorer.js
+      - run: python -m mkdocs build --strict
+      - run: python -m playwright install --with-deps chromium webkit
+      - run: python scripts/check_documentation_browser.py --engines chromium webkit --output work/browser-qa
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: documentation-browser-evidence
+          path: work/browser-qa/
+      - uses: actions/upload-pages-artifact@v4
+        if: inputs.upload-pages
+        with:
+          path: site

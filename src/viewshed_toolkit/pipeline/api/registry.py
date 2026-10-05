@@ -70,8 +70,14 @@ COMPONENT_DEPENDENCIES: dict[str, tuple[str, ...]] = {
 COMPONENT_STAGES = tuple(COMPONENT_DEPENDENCIES)
 
 
-def component_plan(targets: tuple[str, ...]) -> tuple[str, ...]:
+def component_plan(targets: tuple[str, ...], *, source_type: str = "land") -> tuple[str, ...]:
     """Resolve only the requested dependency closure in deterministic order."""
+    if source_type not in {"land", "water"}:
+        raise ValueError("source_type must be land or water")
+    dependencies = dict(COMPONENT_DEPENDENCIES)
+    if source_type == "water":
+        dependencies["build-dem-weights"] = ("build-source-target-lookup",)
+        dependencies["build-chm-weights"] = ("build-dem-weights",)
     ordered: list[str] = []
     visiting: set[str] = set()
 
@@ -83,7 +89,7 @@ def component_plan(targets: tuple[str, ...]) -> tuple[str, ...]:
         if stage in ordered:
             return
         visiting.add(stage)
-        for dependency in COMPONENT_DEPENDENCIES[stage]:
+        for dependency in dependencies[stage]:
             visit(dependency)
         visiting.remove(stage)
         ordered.append(stage)

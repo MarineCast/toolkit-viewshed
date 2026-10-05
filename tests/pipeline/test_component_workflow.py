@@ -430,13 +430,17 @@ def test_component_dem_is_invariant_to_larger_batches(tmp_path):
     np.testing.assert_allclose(before["weight_terrain"], after["weight_terrain"], rtol=0, atol=1e-7)
 
 
-def test_canopy_discovery_excludes_only_tiles_without_mapped_land(tmp_path, monkeypatch):
+@pytest.mark.parametrize("land_crs", [4326, 32610])
+def test_canopy_discovery_excludes_only_tiles_without_mapped_land(tmp_path, monkeypatch, land_crs):
     from viewshed_toolkit.pipeline.api import acquisition
     from viewshed_toolkit.pipeline.contracts.components import component_root
     from viewshed_toolkit.pipeline.providers.base import DownloadResult
 
     config = coastal_fixture(tmp_path)
     raw = yaml.safe_load(config.read_text())
+    land_path = tmp_path / "projected_land.gpkg"
+    gpd.read_file(raw["paths"]["land_polygon_path"]).to_crs(land_crs).to_file(land_path)
+    raw["paths"]["land_polygon_path"] = str(land_path)
     raw["datasets"]["chm"] = {
         "provider": "global_canopy_height",
         "version": "2020",
@@ -464,3 +468,40 @@ def test_canopy_discovery_excludes_only_tiles_without_mapped_land(tmp_path, monk
         {"id": "N48W129", "reason": "no_mapped_land_in_acquisition_area"}
     ]
     assert manifest["assets"][0]["id"] == "N48W123"
+
+
+def test_water_component_plan_needs_no_rasters(tmp_path, monkeypatch):
+    from viewshed_toolkit.pipeline.api import acquisition
+
+    config = coastal_fixture(tmp_path)
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Water build attempted raster acquisition")
+
+    monkeypatch.setattr(acquisition, "get_provider", unexpected)
+    for target in ("build-dem-weights", "build-chm-weights", "export-maps"):
+        plan = component_plan((target,), source_type="water")
+        assert not any(stage.startswith(("download-", "prepare-")) for stage in plan)
+    run_components(config, source_type="water", target="all", run_id="raster-free")
+    assert not (tmp_path / "prepared/dem.tif").exists()
+    assert not (tmp_path / "prepared/chm.tif").exists()
+
+
+def test_download_records_raw_checksum_that_roundtrips_to_provider(tmp_path):
+    import hashlib
+
+    from viewshed_toolkit.pipeline.api.acquisition import download_dataset
+    from viewshed_toolkit.pipeline.contracts.components import component_root
+
+    config = coastal_fixture(tmp_path)
+    app = load_app_config(config)
+    result = download_dataset(app, "dem")
+    manifest = json.loads((component_root(app) / "inputs/dem/download.json").read_text())
+    record = manifest["assets"][0]
+    assert manifest["manifest_schema_version"] == 2
+    assert record["observed_sha256"] == hashlib.sha256(result.paths[0].read_bytes()).hexdigest()
+    assert record["artifact_checksum"] == manifest["checksums"]["0"]
+    assert record["observed_sha256"] != record["artifact_checksum"]
+    pinned = Asset("renamed", str(result.paths[0]), checksum=record["observed_sha256"])
+    copied = FileProvider().download([pinned], tmp_path / "pinned")
+    assert copied.paths[0].read_bytes() == result.paths[0].read_bytes()

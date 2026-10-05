@@ -75,6 +75,411 @@
       byte.toString(16).padStart(2, "0"),
     ).join("");
   }
+  function stable(value) {
+    if (Array.isArray(value)) return value.map(stable);
+    if (value && typeof value === "object")
+      return Object.fromEntries(
+        Object.keys(value)
+          .sort()
+          .map((key) => [key, stable(value[key])]),
+      );
+    return value;
+  }
+  function equal(a, b) {
+    return JSON.stringify(stable(a)) === JSON.stringify(stable(b));
+  }
+  async function validateManifest(manifest) {
+    if (manifest.export_contract !== "san_juan_lessons_v2")
+      throw new Error("Unsupported bundle contract");
+    const identity = JSON.parse(manifest.identity_json);
+    if (
+      !equal(identity, {
+        export_contract: manifest.export_contract,
+        semantic_contract: manifest.semantic_contract,
+        files: manifest.files,
+      }) ||
+      (await sha(new TextEncoder().encode(manifest.identity_json))) !==
+        manifest.bundle_id
+    )
+      throw new Error("Bundle identity mismatch");
+    const fields = [
+      "method",
+      "generation_id",
+      "config_hash",
+      "source_hashes",
+      "prepared_input_sha256",
+      "artifacts",
+      "producer_revision",
+      "source_vintages",
+      "crs",
+      "native_resolution_m",
+      "analysis_resolution_m",
+      "assumptions",
+      "target_support_scope",
+      "candidate_universe",
+      "defaults",
+      "rights",
+      "limitations",
+      "curve_contract",
+    ];
+    if (!equal(Object.keys(manifest.semantic_contract).sort(), fields.sort()))
+      throw new Error("Incomplete semantic contract");
+    for (const [key, value] of Object.entries(manifest.semantic_contract))
+      if (!equal(manifest[key], value))
+        throw new Error("Scientific manifest semantic mismatch: " + key);
+  }
+  function validateEvidence(data) {
+    const m = data.manifest,
+      e = data["production-evidence.json"],
+      g = e.generation;
+    for (const [label, key] of [
+      ["generation_id", "generation_id"],
+      ["config_hash", "scientific_config_hash"],
+      ["method", "method"],
+      ["source_hashes", "source_hashes"],
+      ["artifacts", "files"],
+    ])
+      if (!equal(m[label], g[key]))
+        throw new Error("Generation evidence mismatch: " + label);
+    const land = g.producer_evidence.land.dual_surface,
+      distance = g.producer_evidence.land.distance;
+    const grid = data["inputs/display-grid.json"],
+      original = land.grids.regional_dem_path;
+    if (
+      m.producer_revision !== land.producer_revision ||
+      m.crs !== original.crs ||
+      grid.crs !== m.crs ||
+      m.analysis_resolution_m !== land.settings.viewshed.dem_resolution_m ||
+      grid.analysis_resolution_m !== m.analysis_resolution_m ||
+      grid.display_resolution_m !==
+        grid.display_stride * m.analysis_resolution_m ||
+      !equal(grid.source_shape, original.shape) ||
+      !equal(grid.affine, original.affine) ||
+      !equal(m.source_vintages, e.source_vintages) ||
+      !equal(m.native_resolution_m, e.native_resolution_m)
+    )
+      throw new Error("Source/grid evidence mismatch");
+    for (const [group, recorded] of [
+      ["viewshed", land.settings.viewshed],
+      ["h3", land.settings.h3],
+      ["source_target_lookup", land.settings.source_target_lookup],
+      ["distance_weight", distance.settings.distance],
+      [
+        "water_viewing",
+        g.producer_evidence.water.terrain.settings.water_viewing,
+      ],
+    ])
+      for (const [key, value] of Object.entries(m.assumptions[group])) {
+        if (
+          group === "distance_weight" &&
+          [
+            "version",
+            "source_chunk_size",
+            "overwrite",
+            "compute_exact_p90",
+            "p90_method",
+          ].includes(key)
+        )
+          continue;
+        if (!equal(recorded[key], value))
+          throw new Error("Scientific assumption evidence mismatch");
+      }
+    if (
+      !equal(m.curve_contract, {
+        settings: distance.settings.distance,
+        extent_km: distance.settings.distance_extent_km,
+      })
+    )
+      throw new Error("Curve evidence mismatch");
+    const curve = data["distance-curve.json"];
+    if (
+      curve.length !== 101 ||
+      curve[0].distance_km !== 0 ||
+      curve.at(-1).distance_km !== m.curve_contract.extent_km
+    )
+      throw new Error("Curve extent mismatch");
+    const settings = m.curve_contract.settings;
+    function expectedWeight(d) {
+      if (d > m.curve_contract.extent_km) return 0;
+      let value;
+      if (settings.selected_model === "logistic") {
+        value =
+          1 /
+          (1 +
+            Math.exp(
+              (d - settings.logistic_d50_km) / settings.logistic_slope_km,
+            ));
+        if (settings.normalize_at_zero)
+          value /=
+            1 /
+            (1 +
+              Math.exp(-settings.logistic_d50_km / settings.logistic_slope_km));
+      } else if (settings.selected_model === "exponential")
+        value = Math.exp(-d / settings.exponential_lambda_km);
+      else if (settings.selected_model === "piecewise") {
+        const near =
+          settings.piecewise_near_km ?? settings.piecewise_full_weight_km;
+        const far =
+          settings.piecewise_far_km ?? settings.piecewise_zero_weight_km;
+        value = d <= near ? 1 : d >= far ? 0 : 1 - (d - near) / (far - near);
+      } else throw new Error("Unsupported recorded curve");
+      return Math.min(1, Math.max(0, value));
+    }
+    if (
+      curve.some(
+        (point) =>
+          !Number.isFinite(point.weight) ||
+          Math.abs(point.weight - expectedWeight(point.distance_km)) > 1e-6,
+      )
+    )
+      throw new Error("Curve calculation mismatch");
+    for (const [label, name] of [
+      ["dem", "dem"],
+      ["canopy", "chm"],
+    ])
+      if (
+        m.native_resolution_m[label] !==
+        e.acquisition[name].dataset.resolution_m
+      )
+        throw new Error("Native resolution mismatch");
+    if (
+      m.source_vintages.some(
+        (v) =>
+          !e.acquisition.chm.source_byte_sha256.includes(v.observed_sha256) ||
+          v.source_year !== e.acquisition.chm.dataset.source_year ||
+          v.source_version !== e.acquisition.chm.dataset.version,
+      )
+    )
+      throw new Error("Acquisition vintage mismatch");
+    for (const [label, key] of [
+      ["ground", "regional_dem_path"],
+      ["canopy", "canopy_height_path"],
+    ])
+      if (m.prepared_input_sha256[label] !== land.input_byte_sha256[key])
+        throw new Error("Prepared surface identity mismatch");
+    if (
+      e.acquisition.dem.dataset.provider !== "usgs_3dep" ||
+      e.acquisition.chm.dataset.version !== "ETH_2020_window_v1" ||
+      e.acquisition.chm.dataset.source_year !== 2020
+    )
+      throw new Error("Unsupported provider attribution preset");
+    const columns = data["pairs.json"].columns,
+      rows = data["pairs.json"].rows;
+    const scope = m.candidate_universe,
+      science = g.producer_evidence.land.terrain.settings;
+    const bbox = science.region.bbox_wgs84;
+    if (
+      scope.pairs !== rows.length ||
+      scope.cells !== data["cells.geojson"].features.length ||
+      !equal(scope.cutoffs_km, science.source_target_lookup) ||
+      scope.coastal_buffer_m !== science.region.coastal_buffer_m ||
+      !equal(scope.source_bbox_wgs84, [
+        bbox.min_lon,
+        bbox.min_lat,
+        bbox.max_lon,
+        bbox.max_lat,
+      ])
+    )
+      throw new Error("Candidate universe mismatch");
+    const row = rows.find(
+      (item) => item[columns.indexOf("id")] === m.defaults.pair_id,
+    );
+    if (
+      !row ||
+      row[columns.indexOf("source_type")] !== m.defaults.source_type ||
+      m.defaults.scenario !== "baseline"
+    )
+      throw new Error("Invalid default pair reference");
+    const ids = new Set(rows.map((item) => item[columns.indexOf("id")]));
+    if (
+      data["lessons.json"].some((lesson) =>
+        lesson.pair_ids.some((id) => !ids.has(id)),
+      )
+    )
+      throw new Error("Invalid lesson reference");
+    const pairs = new Map(
+      rows.map((item) => [
+        item[columns.indexOf("id")],
+        Object.fromEntries(columns.map((key, index) => [key, item[index]])),
+      ]),
+    );
+    for (const pair of pairs.values()) {
+      for (const field of [
+        "line_of_sight_support",
+        "physical_viewability",
+        "distance_detection_weight",
+        "distance_weighted_los_support",
+        "distance_adjusted_viewability",
+      ]) {
+        if (!Number.isFinite(pair[field]) || pair[field] < 0 || pair[field] > 1)
+          throw new Error("Invalid scientific value");
+      }
+      if (
+        Math.abs(
+          pair.distance_detection_weight - expectedWeight(pair.distance_km),
+        ) > 1e-6
+      )
+        throw new Error("Centroid diagnostic curve mismatch");
+      const canopy =
+        pair.source_type === "land" ? pair.vegetation_attenuation : 1;
+      if (
+        !Number.isFinite(canopy) ||
+        Math.abs(
+          pair.distance_adjusted_viewability -
+            pair.distance_weighted_los_support * canopy,
+        ) > 1e-6 ||
+        pair.distance_weighted_los_support > pair.line_of_sight_support + 1e-6
+      )
+        throw new Error("Scientific formula mismatch");
+    }
+    const lessons = Object.fromEntries(
+      data["lessons.json"].map((lesson) => [lesson.id, lesson]),
+    );
+    const [near, far] = lessons.distance.pair_ids.map((id) => pairs.get(id));
+    const [effect, little] = lessons.canopy.pair_ids.map((id) => pairs.get(id));
+    if (
+      !(near.distance_km < far.distance_km) ||
+      effect.line_of_sight_support <= 0.02 ||
+      effect.physical_viewability / effect.line_of_sight_support > 0.2 ||
+      little.line_of_sight_support <= 0.02 ||
+      little.physical_viewability / little.line_of_sight_support < 0.98
+    )
+      throw new Error("Unsupported teaching claim");
+    if (
+      new Set(lessons.inverse.pair_ids.map((id) => pairs.get(id).target_h3))
+        .size !== 1
+    )
+      throw new Error("Inverse target mismatch");
+    const blocked = pairs.get(lessons.terrain.pair_ids.at(-1));
+    const profile = data["profiles.json"].find(
+      (item) => item.pair_id === blocked.id,
+    );
+    const display = data["inputs/display-geometry.json"];
+    if (
+      display.display_contract !== "projected_documentation_geometry_v1" ||
+      display.crs !== m.crs
+    )
+      throw new Error("Projected display contract mismatch");
+    const [a, b, c, d, affineE, f] = grid.affine,
+      [height, width] = grid.source_shape;
+    const corners = [
+      [0, 0],
+      [0, width],
+      [height, width],
+      [height, 0],
+    ].map(([r, col]) => [a * col + b * r + c, d * col + affineE * r + f]);
+    const expectedBounds = [
+      Math.min(...corners.map((p) => p[0])),
+      Math.min(...corners.map((p) => p[1])),
+      Math.max(...corners.map((p) => p[0])),
+      Math.max(...corners.map((p) => p[1])),
+    ];
+    if (
+      !equal(display.bounds, expectedBounds) ||
+      !equal(display.sampling_spacing_m, [
+        grid.display_stride * Math.hypot(a, d),
+        grid.display_stride * Math.hypot(b, affineE),
+      ])
+    )
+      throw new Error("Projected raster footprint mismatch");
+    const observers = new Map(
+      data["observer-samples.geojson"].features.map((f) => [f.id, f]),
+    );
+    const support = data["target-support.geojson"].features;
+    const projectedObservers = new Map(
+      display.observers.features.map((f) => [f.id, f]),
+    );
+    for (const [name, original] of [
+      ["cells", "cells.geojson"],
+      ["coast", "inputs/coast.geojson"],
+      ["observers", "observer-samples.geojson"],
+      ["active_sources", "active-source-geometry.geojson"],
+      ["target_support", "target-support.geojson"],
+    ]) {
+      if (
+        !equal(
+          display[name].features.map((f) => [f.id, f.properties]),
+          data[original].features.map((f) => [f.id, f.properties]),
+        )
+      )
+        throw new Error("Projected display population mismatch");
+    }
+    for (const p of data["profiles.json"]) {
+      const pair = pairs.get(p.pair_id),
+        observer = observers.get(p.observer_id);
+      const linked = display.profiles.find((q) => q.pair_id === p.pair_id);
+      const originalSupport = support.find(
+        (f) =>
+          f.properties.target_h3 === pair?.target_h3 &&
+          f.properties.source_type === pair?.source_type &&
+          f.geometry.coordinates.every(
+            (v, i) => Math.abs(v - p.endpoint[i]) < 1e-8,
+          ),
+      );
+      if (
+        !pair ||
+        p.source_type !== pair.source_type ||
+        !observer ||
+        observer.properties.source_type !== pair.source_type ||
+        observer.properties.source_h3 !== pair.source_h3 ||
+        !support.some(
+          (f) =>
+            f.properties.target_h3 === pair.target_h3 &&
+            f.properties.source_type === pair.source_type &&
+            f.geometry.coordinates.every(
+              (v, i) => Math.abs(v - p.endpoint[i]) < 1e-8,
+            ),
+        ) ||
+        !linked ||
+        linked.observer_id !== p.observer_id ||
+        !projectedObservers.has(p.observer_id) ||
+        !display.target_support.features.some(
+          (f) =>
+            f.id === originalSupport?.id &&
+            f.geometry.coordinates.every(
+              (v, i) => Math.abs(v - linked.endpoint[i]) < 1e-6,
+            ),
+        )
+      )
+        throw new Error(
+          "Profile observer/endpoint/role correspondence mismatch",
+        );
+    }
+    for (const lesson of Object.values(lessons)) {
+      if (
+        !lesson.cases ||
+        !equal(
+          lesson.cases.map((c) => c.pair_id),
+          lesson.pair_ids,
+        ) ||
+        new Set(lesson.cases.map((c) => c.id)).size !== lesson.cases.length
+      )
+        throw new Error("Invalid case metadata");
+      for (const c of lesson.cases) {
+        const p = pairs.get(c.pair_id),
+          bare = p.line_of_sight_support,
+          canopy = p.physical_viewability;
+        if (
+          !c.title ||
+          c.source_changes_from_default !==
+            (p.source_h3 !== pairs.get(m.defaults.pair_id).source_h3) ||
+          (c.claim === "open" && bare < 0.99) ||
+          (c.claim === "blocked" && bare !== 0) ||
+          (c.claim === "strong" && (bare <= 0.02 || canopy / bare > 0.2)) ||
+          (c.claim === "little" && (bare <= 0.02 || canopy / bare < 0.98))
+        )
+          throw new Error("Unsupported named case");
+      }
+    }
+    if (
+      blocked.line_of_sight_support !== 0 ||
+      !profile ||
+      !profile.samples
+        .slice(1, -1)
+        .some((sample) => sample.ground_m > sample.ray_m)
+    )
+      throw new Error("Obstruction claim lacks evidence");
+  }
   async function load(url) {
     if (!cache.has(url))
       cache.set(
@@ -83,8 +488,7 @@
           const response = await fetch(new URL("manifest.json", url));
           if (!response.ok) throw new Error("Bundle manifest is unavailable");
           const manifest = await response.json();
-          if (manifest.export_contract !== "san_juan_lessons_v1")
-            throw new Error("Unsupported bundle contract");
+          await validateManifest(manifest);
           const names = [
             "pairs.json",
             "cells.geojson",
@@ -95,6 +499,11 @@
             "indexes.json",
             "coverage.json",
             "distance-curve.json",
+            "production-evidence.json",
+            "inputs/display-grid.json",
+            "inputs/display-geometry.json",
+            "active-source-geometry.geojson",
+            "target-support.geojson",
           ];
           const items = await Promise.all(
             names.map(async (name) => {
@@ -107,7 +516,9 @@
               return [name, JSON.parse(new TextDecoder().decode(bytes))];
             }),
           );
-          return { manifest, ...Object.fromEntries(items) };
+          const data = { manifest, ...Object.fromEntries(items) };
+          validateEvidence(data);
+          return data;
         })().catch((error) => {
           cache.delete(url);
           throw error;
@@ -126,8 +537,13 @@
     );
     const byId = new Map(pairs.map((pair) => [pair.id, pair]));
     const cells = new Map(
-      data["cells.geojson"].features.map((feature) => [feature.id, feature]),
+      data["inputs/display-geometry.json"].cells.features.map((feature) => [
+        feature.id,
+        feature,
+      ]),
     );
+    const display = data["inputs/display-geometry.json"];
+    const grid = data["inputs/display-grid.json"];
     const cellIds = [...cells.keys()].sort();
     const targetIds = cellIds.filter(
       (cell) =>
@@ -162,7 +578,7 @@
         : (source ? "Observer area " : "Water area ") +
           (cellIds.indexOf(cell) + 1);
     const card = node("div", { class: "vs-explorer-card", tabindex: "-1" });
-    const heading = node("h3", {}, "Explore the same modeled results");
+    const heading = node("h3", {}, "Your current selection");
     const badge = node(
       "p",
       { class: "coverage-badge" },
@@ -289,6 +705,8 @@
       "aria-live": "polite",
       "aria-atomic": "true",
     });
+    const reading = node("p", { class: "vs-reading" });
+    const supportNote = node("p", { class: "vs-support-note" });
     const summary = node("div", { class: "vs-summary" });
     const legend = node(
       "p",
@@ -334,7 +752,9 @@
       heading,
       badge,
       status,
+      reading,
       visual,
+      supportNote,
       actions,
       legend,
       summary,
@@ -421,17 +841,18 @@
       );
       defs.append(pattern);
       scene.append(defs);
-      const fixed =
-        state.direction === "forward" ? state.source_h3 : state.target_h3;
-      const ring = cells.get(fixed).geometry.coordinates[0];
-      const center = [
-        ring.slice(0, -1).reduce((sum, p) => sum + p[0], 0) / (ring.length - 1),
-        ring.slice(0, -1).reduce((sum, p) => sum + p[1], 0) / (ring.length - 1),
-      ];
+      const [west, south, east, north] = display.bounds;
+      const scale = Math.min(680 / (east - west), 380 / (north - south)) * zoom;
       const project = (point) => [
-        360 + (point[0] - center[0]) * 3500 * zoom,
-        210 - (point[1] - center[1]) * 5200 * zoom,
+        360 + (point[0] - (west + east) / 2) * scale,
+        210 - (point[1] - (south + north) / 2) * scale,
       ];
+      scene.dataset.viewport = JSON.stringify({
+        bounds: display.bounds,
+        scale,
+        zoom,
+        crs: display.crs,
+      });
       scene.append(
         node(
           "rect",
@@ -440,7 +861,7 @@
           true,
         ),
       );
-      for (const feature of data["inputs/coast.geojson"].features)
+      for (const feature of display.coast.features)
         scene.append(
           node(
             "path",
@@ -453,6 +874,63 @@
             true,
           ),
         );
+      if (state.layer !== "boundaries") {
+        const maximum = state.layer === "ground" ? 400 : 60;
+        const [a, b, c, d, e, f] = grid.affine,
+          stride = grid.display_stride;
+        const [height, width] = grid.source_shape;
+        const metric = (r, col) => [a * col + b * r + c, d * col + e * r + f];
+        grid[state.layer].forEach((values, row) =>
+          values.forEach((value, col) => {
+            const r = row * stride,
+              q = col * stride,
+              bottom = Math.min(r + stride, height),
+              right = Math.min(q + stride, width);
+            const fraction =
+              value === null ? 0 : Math.min(1, Math.max(0, value / maximum));
+            const fill =
+              value === null
+                ? "#e17cab"
+                : `rgb(${Math.round(244 - 205 * fraction)},${Math.round(247 - 114 * fraction)},${Math.round(240 - 81 * fraction)})`;
+            scene.append(
+              node(
+                "polygon",
+                {
+                  points: [
+                    [r, q],
+                    [r, right],
+                    [bottom, right],
+                    [bottom, q],
+                  ]
+                    .map(([rr, cc]) => project(metric(rr, cc)).join(","))
+                    .join(" "),
+                  fill,
+                  "data-sample": `${row},${col}`,
+                  "pointer-events": "none",
+                },
+                null,
+                true,
+              ),
+            );
+          }),
+        );
+        // Raster and reference geometry share one metric transform and north-up orientation.
+        for (const feature of display.coast.features)
+          scene.append(
+            node(
+              "path",
+              {
+                d: geometryPath(feature.geometry, project),
+                fill: "none",
+                stroke: "#465e67",
+                "stroke-width": 1,
+                "pointer-events": "none",
+              },
+              null,
+              true,
+            ),
+          );
+      }
       const rowByCell = new Map(
         rows.map((pair) => [
           pair[state.direction === "forward" ? "target_h3" : "source_h3"],
@@ -466,7 +944,7 @@
       for (const cell of mapCells) {
         const pair = rowByCell.get(cell);
         let fill = "none";
-        if (pair && state.lesson !== "inputs") {
+        if (pair && state.lesson !== "inputs" && state.layer === "boundaries") {
           const [, field, stateField] = factors[state.factor];
           const value = pair[field];
           const status = pair[stateField];
@@ -547,6 +1025,50 @@
         );
         scene.append(path);
       }
+      for (const feature of display.active_sources.features) {
+        if (
+          feature.properties.source_h3 === state.source_h3 &&
+          feature.properties.source_type === state.source_type
+        )
+          scene.append(
+            node(
+              "path",
+              {
+                d: geometryPath(feature.geometry, project),
+                class: "vs-active-source",
+                fill: "#e9ad56",
+                "fill-opacity": 0.3,
+                stroke: "#ac6816",
+                "pointer-events": "none",
+              },
+              null,
+              true,
+            ),
+          );
+      }
+      for (const feature of display.target_support.features) {
+        if (
+          feature.properties.target_h3 === state.target_h3 &&
+          feature.properties.source_type === state.source_type
+        ) {
+          const [x, y] = project(feature.geometry.coordinates);
+          scene.append(
+            node(
+              "circle",
+              {
+                cx: x,
+                cy: y,
+                r: 2,
+                class: "vs-target-sample",
+                fill: "#126e88",
+                "pointer-events": "none",
+              },
+              null,
+              true,
+            ),
+          );
+        }
+      }
       for (const [cell, color] of [
         [state.source_h3, "#172d37"],
         [state.target_h3, "#126e88"],
@@ -557,7 +1079,10 @@
             {
               d: geometryPath(cells.get(cell).geometry, project),
               fill: "none",
-              class: cell === state.source_h3 ? "vs-source-outline" : "vs-target-outline",
+              class:
+                cell === state.source_h3
+                  ? "vs-source-outline"
+                  : "vs-target-outline",
               stroke: color,
               "stroke-width": "3",
               "pointer-events": "none",
@@ -566,7 +1091,7 @@
             true,
           ),
         );
-      for (const observer of data["observer-samples.geojson"].features)
+      for (const observer of display.observers.features)
         if (
           observer.properties.source_h3 === state.source_h3 &&
           observer.properties.source_type === state.source_type
@@ -580,6 +1105,8 @@
                 cy: y,
                 r: "4",
                 class: "vs-observer",
+                "data-observer-id": observer.id,
+                "data-source-type": observer.properties.source_type,
                 "pointer-events": "none",
               },
               null,
@@ -587,14 +1114,129 @@
             ),
           );
         }
+      for (const [cell, isSource] of [
+        [state.source_h3, true],
+        [state.target_h3, false],
+      ]) {
+        const ring = cells.get(cell).geometry.coordinates[0].slice(0, -1);
+        const [x, y] = project([
+          ring.reduce((sum, p) => sum + p[0], 0) / ring.length,
+          ring.reduce((sum, p) => sum + p[1], 0) / ring.length,
+        ]);
+        scene.append(
+          node(
+            "text",
+            {
+              x: isSource ? x - 24 : x + 7,
+              y: y - 12,
+              class: "vs-area-label",
+              "data-area-label": area(cell, isSource),
+              "pointer-events": "none",
+            },
+            cell === (isSource ? defaults.source_h3 : defaults.target_h3)
+              ? isSource
+                ? "A"
+                : "B"
+              : (isSource ? "S" : "T") + (cellIds.indexOf(cell) + 1),
+            true,
+          ),
+        );
+      }
+      const profile = profileByPair.get(selectedPair()?.id);
+      if (
+        profile &&
+        profile.source_type === state.source_type &&
+        ["samples", "terrain", "canopy"].includes(state.lesson)
+      ) {
+        const observer = display.observers.features.find(
+          (f) => f.id === profile.observer_id,
+        );
+        const linked = display.profiles.find(
+          (p) => p.pair_id === profile.pair_id,
+        );
+        const begin = project(observer.geometry.coordinates),
+          end = project(linked.endpoint);
+        scene.append(
+          node(
+            "path",
+            {
+              d: `M${begin.join(",")} L${end.join(",")}`,
+              class: "vs-profile-link",
+              "data-pair-id": profile.pair_id,
+              "data-observer-id": profile.observer_id,
+              "data-endpoint": JSON.stringify(linked.endpoint),
+              fill: "none",
+              stroke: "#b65a27",
+              "stroke-width": 2,
+              "pointer-events": "none",
+            },
+            null,
+            true,
+          ),
+        );
+        for (const [xy, title] of [
+          [begin, "P"],
+          [end, "Q"],
+        ]) {
+          scene.append(
+            node(
+              "circle",
+              {
+                cx: xy[0],
+                cy: xy[1],
+                r: 5,
+                fill: "#b65a27",
+                "pointer-events": "none",
+              },
+              null,
+              true,
+            ),
+            node(
+              "text",
+              {
+                x: title === "P" ? xy[0] - 18 : xy[0] + 7,
+                y: xy[1] + 18,
+                class: "vs-area-label",
+                "pointer-events": "none",
+              },
+              title,
+              true,
+            ),
+          );
+        }
+      }
+      scene.append(
+        node(
+          "path",
+          {
+            d: `M25,390 h${5000 * scale}`,
+            stroke: "#536f7b",
+            "stroke-width": 3,
+            "pointer-events": "none",
+          },
+          null,
+          true,
+        ),
+        node(
+          "text",
+          { x: 25, y: 378, class: "vs-area-label" },
+          "5 km · north ↑",
+          true,
+        ),
+      );
       return scene;
     }
     function profileView(profile) {
-      const wrap = node("figure", { class: "vs-profile" });
+      const wrap = node("figure", {
+        class: "vs-profile",
+        "data-pair-id": profile.pair_id,
+        "data-observer-id": profile.observer_id,
+        "data-source-type": profile.source_type,
+      });
       const svg = node(
         "svg",
         {
-          viewBox: "0 0 720 250",
+          viewBox: "0 0 480 280",
           role: "img",
           "aria-label":
             "One explanatory real-surface profile, not a cell aggregate or engine diagnostic",
@@ -611,6 +1253,19 @@
           1.1 +
         2;
       const length = profile.samples.at(-1).distance_m;
+      svg.append(
+        node(
+          "path",
+          {
+            d: "M40,30 V205 H450",
+            fill: "none",
+            stroke: "#647b84",
+            "stroke-width": 1,
+          },
+          null,
+          true,
+        ),
+      );
       for (const [field, color] of [
         ["ground_m", "#797c6d"],
         ["canopy_surface_m", "#12827f"],
@@ -623,10 +1278,11 @@
               points: profile.samples
                 .map(
                   (p) =>
-                    `${40 + (p.distance_m / length) * 650},${205 - (p[field] / max) * 175}`,
+                    `${40 + (p.distance_m / length) * 410},${205 - (p[field] / max) * 175}`,
                 )
                 .join(" "),
               fill: "none",
+              class: `vs-profile-${field}`,
               stroke: color,
               "stroke-width": "2",
             },
@@ -644,7 +1300,15 @@
         node(
           "text",
           { x: "40", y: "238", class: "vs-plot-text" },
-          `Observer to actual water endpoint: ${(length / 1000).toFixed(2)} km`,
+          `P source sample → Q target endpoint: ${(length / 1000).toFixed(2)} km`,
+          true,
+        ),
+      );
+      svg.append(
+        node(
+          "text",
+          { x: 40, y: 267, class: "vs-plot-text" },
+          "Vertical exaggeration · physical axes",
           true,
         ),
       );
@@ -653,18 +1317,20 @@
         node(
           "figcaption",
           {},
-          `Gray: ground; teal: ground + trees; dark: explanatory ray. Real ${profile.analysis_resolution_m} m surfaces sampled for display at up to ${profile.display_step_m} m. This path does not establish the cell aggregate.`,
+          `Gray: ground; teal: ground + trees; dark: explanatory ray. Real ${profile.analysis_resolution_m} m surfaces sampled for display at up to ${profile.display_step_m} m. One explanatory sampled path; the area result summarizes the modeled population. This is not an engine trace or every contributing path.`,
         ),
       );
       return wrap;
     }
     function distanceView(pair) {
       const figure = node("figure", { class: "vs-profile" });
-      const extent = Math.max(...data["distance-curve.json"].map((p) => p.distance_km));
+      const extent = Math.max(
+        ...data["distance-curve.json"].map((p) => p.distance_km),
+      );
       const svg = node(
         "svg",
         {
-          viewBox: "0 0 720 290",
+          viewBox: "0 0 480 300",
           role: "img",
           "aria-label":
             "Configured distance attenuation curve with the selected real pair's centroid diagnostic",
@@ -679,7 +1345,7 @@
             points: data["distance-curve.json"]
               .map(
                 (p) =>
-                  `${40 + (p.distance_km / extent) * 650},${235 - p.weight * 190}`,
+                  `${40 + (p.distance_km / extent) * 410},${235 - p.weight * 190}`,
               )
               .join(" "),
             fill: "none",
@@ -695,7 +1361,7 @@
           node(
             "circle",
             {
-              cx: 40 + (pair.distance_km / extent) * 650,
+              cx: 40 + (pair.distance_km / extent) * 410,
               cy: 235 - pair.distance_detection_weight * 190,
               r: "6",
               fill: "#16889e",
@@ -708,7 +1374,7 @@
         node(
           "text",
           { x: "40", y: "25", class: "vs-plot-text" },
-          "Diagnostic support 0–1; assumed curve, not sighting probability",
+          "Diagnostic support 0–1 · assumed rule",
           true,
         ),
         node(
@@ -740,7 +1406,12 @@
           ?.classList.toggle("vs-static-fallback", item === lesson);
       });
       (lesson || root).append(card);
-      heading.textContent = `${state.lesson === "explore" ? "Explore other areas" : "Lesson " + (lessons.findIndex((l) => l.id === state.lesson) + 1)} · ${state.direction === "forward" ? "What water could this observer area see?" : "Which observer areas could see this water area?"}`;
+      const currentLesson = lessons.find((l) => l.id === state.lesson);
+      const currentCase = currentLesson?.cases.find(
+        (c) => c.pair_id === selectedPair()?.id,
+      );
+      heading.textContent = `Your current selection · ${currentCase?.title || "Custom pair"}`;
+
       direction.value = state.direction;
       role.value = state.source_type;
       target.value = state.target_h3;
@@ -777,19 +1448,11 @@
         ? String(pair.distance_adjusted_viewability)
         : "unavailable";
       visual.replaceChildren();
-      if (state.layer === "boundaries") visual.append(map(rows));
-      else {
-        const img = node("img", {
-          src: new URL(`previews/${state.layer}.svg`, url),
-          alt: "Real prepared height grid with declared display decimation; pink marks missing inputs",
-          loading: "lazy",
-        });
-        visual.append(img);
-      }
+      visual.append(map(rows));
       if (["samples", "terrain", "canopy"].includes(state.lesson)) {
         const profile = pair && profileByPair.get(pair.id);
         visual.append(
-          profile
+          profile && profile.source_type === state.source_type
             ? profileView(profile)
             : node(
                 "p",
@@ -801,9 +1464,25 @@
       if (state.lesson === "distance") visual.append(distanceView(pair));
       const visibleActions =
         state.lesson === "inputs"
-          ? ["boundaries", "ground-layer", "canopy-layer", "next", "reset"]
+          ? [
+              "boundaries",
+              "ground-layer",
+              "canopy-layer",
+              "zoom-in",
+              "zoom-out",
+              "next",
+              "reset",
+            ]
           : state.lesson === "canopy"
-            ? ["ground-only", "ground-trees", "previous", "next", "reset"]
+            ? [
+                "ground-only",
+                "ground-trees",
+                "zoom-in",
+                "zoom-out",
+                "previous",
+                "next",
+                "reset",
+              ]
             : state.lesson === "explore"
               ? null
               : ["zoom-in", "zoom-out", "previous", "next", "reset"];
@@ -811,12 +1490,51 @@
         btn.hidden =
           visibleActions && !visibleActions.includes(btn.dataset.action);
       });
+      const sourceChanged = state.source_h3 !== defaults.source_h3;
+      const scope = sourceChanged
+        ? "Observer area changed from worked example A. "
+        : "";
+      if (!pair)
+        reading.textContent =
+          scope + "This pair has no candidate record; no zero is inferred.";
+      else if (state.lesson === "canopy") {
+        const bare = pair.line_of_sight_support,
+          canopy = pair.physical_viewability;
+        const effect =
+          state.source_type === "water"
+            ? "Canopy is not applicable to this water-role kernel."
+            : bare <= 0.02
+              ? "Baseline support is too small for a strong canopy-effect claim."
+              : canopy / bare <= 0.2
+                ? "Mapped tree heights remove most of the ground-only support."
+                : canopy / bare >= 0.98
+                  ? "Mapped tree heights change little of the ground-only support."
+                  : "Mapped tree heights reduce the ground-only support.";
+        reading.textContent =
+          scope +
+          `${effect} Unweighted support: ${format(bare)} ground alone → ${format(canopy)} with the role's obstruction model. This describes modeled geometry, not the chance of seeing an animal.`;
+      } else if (state.lesson === "distance")
+        reading.textContent =
+          scope +
+          `Centroid distance ${pair.distance_km.toFixed(2)} km → assumed distance diagnostic ${label(pair, "distance")}. ${currentLesson.shared_source ? "Nearer and farther cases share one observer area." : "The comparison changes observer areas."} Final scores are not a controlled distance experiment.`;
+      else
+        reading.textContent =
+          scope +
+          `${area(state.source_h3, true)} → ${area(state.target_h3)}: ${label(pair, state.factor)}. This describes static modeled support, not sightings or public access.`;
+      const hasSupport = display.target_support.features.some(
+        (f) =>
+          f.properties.target_h3 === state.target_h3 &&
+          f.properties.source_type === state.source_type,
+      );
+      supportNote.textContent = hasSupport
+        ? "Dots show exported target support for this role. Amber: active source geometry; dark dots: modeled source samples. P: highlighted source sample; Q: its target endpoint when a profile is shown. A/B label the worked pair; S/T numbers match the current area names."
+        : "No curated target support was exported for this target and role. No sample dots are invented; the stored aggregate remains inspectable.";
       summary.hidden = !["combined", "inverse", "explore"].includes(
         state.lesson,
       );
       legend.textContent =
         state.lesson === "inputs"
-          ? "Actual mapped areas and modeled sample dots. Change the input layer below the map. The accessible table lists stored pair values."
+          ? `Actual mapped areas and modeled sample dots. ${grid.analysis_resolution_m} m model; ${grid.display_resolution_m} m nearest-decimated display samples, no averaging. ${state.layer === "boundaries" ? "Real land/water boundaries." : `${state.layer === "ground" ? "Ground elevation" : "Tree height above ground"}, metres; fixed range 0–${state.layer === "ground" ? 400 : 60}; pink: missing input.`} All layers use ${display.crs}, north up, one scale.`
           : "Fixed scale: 0–1. Blue: positive; pale gray: modeled zero; outline: no candidate; hatch: unavailable, not applicable, or neutral canopy. No smoothing. Samples are modeled positions, not actual people.";
       summary.replaceChildren();
       for (const [title, f] of [
@@ -857,6 +1575,18 @@
         null,
         2,
       );
+      const distanceOnly = state.lesson === "distance";
+      headRow.replaceChildren(
+        ...(distanceOnly
+          ? ["Choose pair", "Centroid distance, km", "Distance diagnostic"]
+          : [
+              "Choose pair",
+              "Ground LOS",
+              "Ground + trees LOS",
+              "Combined support",
+            ]
+        ).map((title) => node("th", { scope: "col" }, title)),
+      );
       tbody.replaceChildren(
         ...rows.map((p) => {
           const tr = node("tr");
@@ -876,8 +1606,14 @@
           );
           th.append(choose);
           tr.append(th);
-          for (const f of ["bare", "canopy", "combined"])
-            tr.append(node("td", {}, label(p, f)));
+          if (distanceOnly)
+            tr.append(
+              node("td", {}, p.distance_km.toFixed(2)),
+              node("td", {}, label(p, "distance")),
+            );
+          else
+            for (const f of ["bare", "canopy", "combined"])
+              tr.append(node("td", {}, label(p, f)));
           return tr;
         }),
       );
@@ -902,18 +1638,23 @@
       );
       choose.addEventListener("click", () => chooseLesson(index), options);
       nav.append(choose);
-      for (const [i, id] of lesson.pair_ids.entries()) {
+      for (const example of lesson.cases) {
+        const id = example.pair_id;
         const btn = node(
           "button",
-          { type: "button", "data-case": id },
-          `Try real example ${i + 1}`,
+          { type: "button", "data-case": example.id, "data-pair": id },
+          example.title,
         );
         btn.addEventListener(
           "click",
           () => {
             chooseLesson(index);
             const pair = byId.get(id);
-            update({ source_h3: pair.source_h3, target_h3: pair.target_h3 });
+            update({
+              source_type: pair.source_type,
+              source_h3: pair.source_h3,
+              target_h3: pair.target_h3,
+            });
           },
           options,
         );

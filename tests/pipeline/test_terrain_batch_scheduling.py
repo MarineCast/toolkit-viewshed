@@ -506,6 +506,9 @@ def test_paired_surface_runner_prepares_batch_once(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    monkeypatch.setattr(
+        runner, "expected_partition_metadata", lambda _app, **_kwargs: {"fixture": "immutable"}
+    )
     base = load_app_config("configs/salish_sea.yaml")
     base = replace(
         base,

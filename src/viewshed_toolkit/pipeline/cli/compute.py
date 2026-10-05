@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from typing import Any
 
 from ..api import stages as pipeline
 
@@ -124,14 +123,19 @@ def _cmd_retired_water_los(_args: argparse.Namespace) -> None:
     raise ValueError("water-los-weight has been retired. Use terrain-weight --source water.")
 
 
-def register_commands(subparsers: Any, *, default_config: str) -> None:
+def register_commands(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser], *, default_config: str
+) -> None:
     def common(name: str, help_text: str) -> argparse.ArgumentParser:
         parser = subparsers.add_parser(name, help=help_text)
         parser.add_argument("--config", default=default_config)
         parser.add_argument("--overwrite", action="store_true")
         return parser
 
-    parser = common("build-vegetation-weights", "Build vegetation support weights.")
+    parser = common(
+        "build-vegetation-weights",
+        "Legacy vegetation support workflow; not paired-surface production.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--resolution-m", type=int, default=None)
     parser.add_argument("--h3-resolution", type=int, default=None)
@@ -140,7 +144,10 @@ def register_commands(subparsers: Any, *, default_config: str) -> None:
     parser.set_defaults(func=_cmd_vegetation)
 
     for name in ("build-vegetation-path-weights", "vegetation-weight"):
-        parser = common(name, "Build source-target vegetation attenuation weights.")
+        parser = common(
+            name,
+            "Legacy land ray attenuation or neutral water factors; use paired terrain for production land.",
+        )
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--limit", type=int, default=None)
         parser.add_argument("--keep-intermediates", action="store_true")
@@ -164,7 +171,6 @@ def register_commands(subparsers: Any, *, default_config: str) -> None:
     parser.add_argument("--start", type=int, default=0)
     parser.add_argument("--max-workers", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
-    parser.add_argument("--keep-intermediates", action="store_true")
     parser.set_defaults(func=_cmd_terrain)
 
     for name, combine in (
@@ -172,8 +178,6 @@ def register_commands(subparsers: Any, *, default_config: str) -> None:
         ("distance-weight", True),
     ):
         parser = common(name, "Build source-target distance weights.")
-        parser.add_argument("--limit", type=int, default=None)
-        parser.add_argument("--start", type=int, default=0)
         parser.add_argument("--combine", action="store_true", default=combine)
         parser.add_argument("--source", choices=["land", "water"], default="land")
         parser.add_argument("--clean-intermediates", action="store_true")

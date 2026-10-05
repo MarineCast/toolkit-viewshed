@@ -10,15 +10,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import uuid
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import polars as pl
+
 from viewshed_toolkit._internal.data.parquet import atomic_sink_parquet
 
 from ..config import DEFAULT_CONFIG
+from ..config.schema import load_yaml
 from ..contracts.artifacts import final_artifact_paths
+from ..contracts.lineage import validate_role_factors
 from ..finalize.final_artifacts import (
+    _promote_artifact_set,
     build_static_viewability_lazy,
 )
 
@@ -37,8 +43,46 @@ def _write_join_report(output_path: Path, report: dict[str, Any]) -> None:
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
 
 
+def _publish_scores(
+    config_path: str | Path,
+    role: str,
+    frames: dict[Path, pl.LazyFrame],
+    score_path: Path,
+    coverage: dict[str, Any],
+    *,
+    overwrite: bool,
+) -> None:
+    raw, directory = load_yaml(config_path)
+    evidence = validate_role_factors(raw, directory, role, geometry=False)
+    report_path = score_path.with_suffix(score_path.suffix + ".join_report.json")
+    if not overwrite and any(path.exists() for path in frames):
+        raise FileExistsError(
+            "View-score outputs exist; use overwrite=True after producer validation"
+        )
+    staged = {path: path.with_name(f".{path.name}.{uuid.uuid4().hex}.staged") for path in frames}
+    stage_score = staged[score_path]
+    stage_report = stage_score.with_suffix(stage_score.suffix + ".join_report.json")
+    staged[report_path] = stage_report
+    try:
+        for path, frame in frames.items():
+            atomic_sink_parquet(frame, staged[path], overwrite=True)
+        _write_join_report(
+            stage_score, {"pair_universe": coverage, "metric_semantics": AGGREGATE_METRIC_SEMANTICS}
+        )
+        if validate_role_factors(raw, directory, role, geometry=False) != evidence:
+            raise ValueError(
+                "Producer lineage changed before view-score publication; rebuild producing stages"
+            )
+        _promote_artifact_set(staged, lambda: None)
+    finally:
+        for stage in staged.values():
+            stage.unlink(missing_ok=True)
+
+
 def finalize_land_view_score(config_path: str | Path, *, overwrite: bool = False) -> Path:
     paths = final_artifact_paths(config_path)
+    raw, directory = load_yaml(config_path)
+    validate_role_factors(raw, directory, "land", geometry=False)
     joined, coverage = build_static_viewability_lazy(config_path, source_type="land")
     joined = joined.with_columns(
         pl.col("weight_static_viewability").alias("land_pair_physical_view_score")
@@ -57,16 +101,21 @@ def finalize_land_view_score(config_path: str | Path, *, overwrite: bool = False
             (pl.col("weight_terrain").max() > 0).alias("land_binary_visible"),
         ]
     )
-    atomic_sink_parquet(out, paths.land_view_score, overwrite=overwrite)
-    _write_join_report(
+    _publish_scores(
+        config_path,
+        "land",
+        {paths.land_view_score: out},
         paths.land_view_score,
-        {"pair_universe": coverage, "metric_semantics": AGGREGATE_METRIC_SEMANTICS},
+        coverage,
+        overwrite=overwrite,
     )
     return paths.land_view_score
 
 
 def finalize_water_view_score(config_path: str | Path, *, overwrite: bool = False) -> Path:
     paths = final_artifact_paths(config_path)
+    raw, directory = load_yaml(config_path)
+    validate_role_factors(raw, directory, "water", geometry=False)
     physical, coverage = build_static_viewability_lazy(config_path, source_type="water")
     physical = physical.with_columns(
         [
@@ -74,9 +123,7 @@ def finalize_water_view_score(config_path: str | Path, *, overwrite: bool = Fals
             pl.col("weight_terrain").alias("water_los_weight"),
         ]
     )
-    atomic_sink_parquet(physical, paths.ocean_physical_weights, overwrite=overwrite)
-
-    lf = pl.scan_parquet(str(paths.ocean_physical_weights))
+    lf = physical
     out = lf.group_by("target_h3").agg(
         [
             pl.col("water_physical_weight").sum().alias("water_all_platforms_physical_view_score"),
@@ -91,10 +138,13 @@ def finalize_water_view_score(config_path: str | Path, *, overwrite: bool = Fals
             (pl.col("water_los_weight").max() > 0).alias("water_binary_visible"),
         ]
     )
-    atomic_sink_parquet(out, paths.ocean_view_score, overwrite=overwrite)
-    _write_join_report(
+    _publish_scores(
+        config_path,
+        "water",
+        {paths.ocean_physical_weights: physical, paths.ocean_view_score: out},
         paths.ocean_view_score,
-        {"pair_universe": coverage, "metric_semantics": AGGREGATE_METRIC_SEMANTICS},
+        coverage,
+        overwrite=overwrite,
     )
     return paths.ocean_view_score
 

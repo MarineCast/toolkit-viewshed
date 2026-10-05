@@ -2,20 +2,23 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from viewshed_toolkit._internal.artifacts import ArtifactRef, RunManifest, checksum_path
 from viewshed_toolkit._internal.data import StageResult, ValidationReport
 
-from ..config import load_app_config
+from ..config import AppConfig, load_app_config
 from ..contracts import (
     DEFAULT_WORKFLOW_IDENTITY,
     WorkflowIdentity,
     workflow_identity_from_config,
 )
 from ..contracts.artifacts import final_artifact_paths_from_raw
+from ..contracts.components import input_checksums
+from ..contracts.provenance import validate_run_id
+from ..contracts.service import partial_run_inputs
 from .pipeline import DEFAULT_STAGES, execute_stages
 
 STAGES = DEFAULT_STAGES
@@ -190,14 +193,29 @@ def _manifest_identity_matches_run(
         existing = json.loads(manifest_path.read_text())
     except (OSError, json.JSONDecodeError):
         return False
-    return (
-        existing.get("run_id") == request.run_id
+    return bool(
+        isinstance(existing, dict)
+        and existing.get("run_id") == request.run_id
         and existing.get("config_hash") == config_hash
         and existing.get("stage_signature") == stage_signature
     )
 
 
+def _partial_input_refs(app: AppConfig, request: ViewshedRequest) -> tuple[ArtifactRef, ...]:
+    """Keep missing inputs explicit and bind vector sidecar bytes as well."""
+    return tuple(
+        ArtifactRef(
+            kind="input",
+            producer="viewshed-toolkit",
+            path=path,
+            checksum=input_checksums({"input": path})["input"] if path.exists() else None,
+        )
+        for path in partial_run_inputs(app, request.stages)
+    )
+
+
 def process(request: ViewshedRequest) -> StageResult:
+    validate_run_id(request.run_id)
     unknown = sorted(set(request.stages) - set(STAGES))
     if unknown:
         raise ValueError(f"Unknown viewshed stages: {unknown}")
@@ -211,8 +229,41 @@ def process(request: ViewshedRequest) -> StageResult:
         else app.paths.output_dir / "manifests"
     )
     manifest_path = (manifest_root / f"{request.run_id}.json").resolve()
+    if manifest_path.parent != manifest_root.resolve():
+        raise ValueError("Manifest destination must remain inside its configured directory")
     signature = _stage_signature(app.config_hash, request.stages, identity=identity)
-    if request.resume:
+    same_logical_run = _manifest_identity_matches_run(
+        manifest_path,
+        request=request,
+        config_hash=app.config_hash,
+        stage_signature=signature,
+    )
+    if manifest_path.exists() and not (request.force or same_logical_run):
+        raise FileExistsError(
+            "Refusing to replace a viewshed manifest from a different logical run. "
+            f"path={manifest_path}. Use a new run.version/run-id or pass --force."
+        )
+    if request.resume and tuple(request.stages) != STAGES and manifest_path.exists():
+        previous = json.loads(manifest_path.read_text())
+        current_inputs = _partial_input_refs(app, request)
+        if previous.get("schema_version") != "3":
+            raise ValueError(
+                "Partial resume requires input-aware manifest v3; rebuild the stage inputs"
+            )
+        recorded = {item["path"]: item.get("checksum") for item in previous.get("inputs", ())}
+        current = {str(item.path): item.checksum for item in current_inputs}
+        if recorded != current:
+            raise ValueError(
+                "Partial run inputs changed or are missing; rebuild affected stages before reuse"
+            )
+    if request.resume and not request.force and tuple(request.stages) == STAGES:
+        # A manifest alone cannot prove current scientific identity. Partial runs
+        # re-enter stage-specific cache checks; only a validated retained paired
+        # generation can bypass execution (including after permitted cleanup).
+        if manifest_path.exists():
+            from ..finalize.final_artifacts import validate_static_viewability_outputs
+
+            validate_static_viewability_outputs(request.config)
         refs = _resume_refs(
             manifest_path,
             request=request,
@@ -263,24 +314,14 @@ def process(request: ViewshedRequest) -> StageResult:
         config_hash=app.config_hash,
         resolved_config=app.raw_config,
         outputs=refs,
+        inputs=_partial_input_refs(app, request) if tuple(request.stages) != STAGES else (),
         stages=tuple({"name": stage, "status": "complete"} for stage in request.stages),
         stage_signature=signature,
-        schema_version="2",
+        schema_version="3",
     )
-    same_logical_run = _manifest_identity_matches_run(
-        manifest_path,
-        request=request,
-        config_hash=app.config_hash,
-        stage_signature=signature,
-    )
-    if manifest_path.exists() and not (request.force or request.resume or same_logical_run):
-        raise FileExistsError(
-            "Refusing to replace a viewshed manifest from a different logical run. "
-            f"path={manifest_path}. Use a new run.version/run-id or pass --force."
-        )
     manifest.write(
         manifest_path,
-        overwrite=request.force or request.resume or same_logical_run,
+        overwrite=request.force or same_logical_run,
     )
     return StageResult(refs, (report,), manifest)
 

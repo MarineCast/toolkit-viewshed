@@ -1,55 +1,285 @@
 /* Scoped to the instructional page; documentation theme owns global styles. */
-.viewshed-examples { --example-border: var(--md-default-fg-color--lightest); }
-.viewshed-examples .example-lead {font-size:1.15em;max-width:48rem;line-height:1.65}
-.viewshed-examples .coverage-badge {border-left:4px solid #168497;background:var(--md-code-bg-color);padding:.8rem 1rem;font-size:.88em;margin:1.2rem 0}
-.viewshed-examples .lesson {padding:1rem 0 1.8rem;border-bottom:1px solid var(--example-border);scroll-margin-top:5rem}
-.viewshed-examples figure {margin:1rem 0;border:1px solid var(--example-border);border-radius:8px;overflow:hidden}
-.viewshed-examples figure svg {display:block;width:100%;height:auto}
-.viewshed-examples figcaption {padding:.7rem 1rem;font-size:.85em;background:var(--md-code-bg-color)}
-.viewshed-examples .takeaway {border-left:3px solid #208497;padding:.45rem .8rem;margin:1rem 0}
-.viewshed-examples details {margin:1rem 0}
-.viewshed-examples .example-table {overflow:auto;max-width:100%;font-size:.84em}
-.viewshed-examples table {width:100%;border-collapse:collapse}
-.viewshed-examples td,.viewshed-examples th {padding:.45rem;text-align:left;border-bottom:1px solid var(--example-border)}
-.viewshed-examples caption {text-align:left;font-weight:600;padding:.6rem 0}
-.viewshed-examples button,.viewshed-examples select {font:inherit;color:inherit;background:var(--md-default-bg-color);border:1px solid var(--md-default-fg-color--light);border-radius:5px;padding:.5rem .7rem;min-height:44px}
-.viewshed-examples button {cursor:pointer}
-.viewshed-examples button:focus-visible,.viewshed-examples select:focus-visible {outline:3px solid #168497;outline-offset:3px}
-.viewshed-examples .input-previews img {max-width:100%;height:auto;display:block}
-.viewshed-examples .input-previews summary {cursor:pointer}
-@media(prefers-reduced-motion:reduce){.viewshed-examples *{scroll-behavior:auto!important;transition:none!important}}
-@media(max-width:600px){.viewshed-examples .example-lead{font-size:1em}.viewshed-examples .lesson{padding-top:.5rem}}
+.viewshed-examples {
+  --example-border: var(--md-default-fg-color--lightest);
+}
+.viewshed-examples .example-lead {
+  font-size: 1.15em;
+  max-width: 48rem;
+  line-height: 1.65;
+}
+.viewshed-examples .coverage-badge {
+  border-left: 4px solid #168497;
+  background: var(--md-code-bg-color);
+  padding: 0.8rem 1rem;
+  font-size: 0.88em;
+  margin: 1.2rem 0;
+}
+.viewshed-examples .lesson {
+  padding: 1rem 0 1.8rem;
+  border-bottom: 1px solid var(--example-border);
+  scroll-margin-top: 5rem;
+}
+.viewshed-examples figure {
+  margin: 1rem 0;
+  border: 1px solid var(--example-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.viewshed-examples figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.viewshed-examples figcaption {
+  padding: 0.7rem 1rem;
+  font-size: 0.85em;
+  background: var(--md-code-bg-color);
+}
+.viewshed-examples .takeaway {
+  border-left: 3px solid #208497;
+  padding: 0.45rem 0.8rem;
+  margin: 1rem 0;
+}
+.viewshed-examples details {
+  margin: 1rem 0;
+}
+.viewshed-examples .example-table {
+  overflow: auto;
+  max-width: 100%;
+  font-size: 0.84em;
+}
+.viewshed-examples table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.viewshed-examples td,
+.viewshed-examples th {
+  padding: 0.45rem;
+  text-align: left;
+  border-bottom: 1px solid var(--example-border);
+}
+.viewshed-examples caption {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.6rem 0;
+}
+.viewshed-examples button,
+.viewshed-examples select {
+  font: inherit;
+  color: inherit;
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--md-default-fg-color--light);
+  border-radius: 5px;
+  padding: 0.5rem 0.7rem;
+  min-height: 44px;
+}
+.viewshed-examples button {
+  cursor: pointer;
+}
+.viewshed-examples button:focus-visible,
+.viewshed-examples select:focus-visible {
+  outline: 3px solid #168497;
+  outline-offset: 3px;
+}
+.viewshed-examples .input-previews img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+.viewshed-examples .input-previews summary {
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .viewshed-examples * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
+@media (max-width: 600px) {
+  .viewshed-examples .example-lead {
+    font-size: 1em;
+  }
+  .viewshed-examples .lesson {
+    padding-top: 0.5rem;
+  }
+}
 
-.viewshed-examples figure {width:100%;max-width:none;text-align:left}
-@media(max-width:600px){.viewshed-examples figure{overflow-x:auto}.viewshed-examples figure svg{min-width:720px}.viewshed-examples figcaption{position:sticky;left:0;min-width:0}}
-.viewshed-examples .vs-explorer-card {border:1px solid var(--example-border);border-radius:8px;padding:1rem;margin-top:1rem;scroll-margin-top:5rem}
-.viewshed-examples .vs-controls {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem}
-.viewshed-examples .vs-controls label {display:flex;flex-direction:column;font-size:.88em;gap:.3rem}
-.viewshed-examples .vs-controls select {width:100%;max-width:100%}
-.viewshed-examples .vs-actions,.viewshed-examples .vs-lesson-actions {display:flex;gap:.5rem;flex-wrap:wrap;margin:.8rem 0}
-.viewshed-examples .vs-status {display:block;padding:.7rem;border-left:3px solid #198196;font-weight:600;font-size:.9em}
-.viewshed-examples .vs-map {display:block;width:100%;height:auto;overflow:hidden;border:1px solid var(--example-border);margin-top:.7rem}
-.viewshed-examples .vs-sea {fill:#eaf3f6}
-.viewshed-examples .vs-land {fill:#e9eae3;stroke:#465e67;stroke-width:1}
-.viewshed-examples .vs-cell {stroke:#647d86;stroke-width:.7;cursor:pointer}
-.viewshed-examples .vs-cell:focus {outline:none;stroke:#101d27;stroke-width:4}
-.viewshed-examples .vs-observer {fill:#192c37;stroke:#fff;stroke-width:1.4}
-.viewshed-examples .vs-legend {font-size:.8em;line-height:1.5}
-.viewshed-examples .vs-visual img {width:100%;height:auto}
-.viewshed-examples .vs-summary {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem;font-size:.88em}
-.viewshed-examples .vs-summary p {border:1px solid var(--example-border);padding:.6rem;border-radius:5px;margin:.3rem 0}
-.viewshed-examples .vs-plot-text {font-size:16px;fill:var(--md-default-fg-color)}
-.viewshed-examples .vs-profile {width:100%;margin:.6rem 0}
-.viewshed-examples .vs-static-fallback {display:none}
-.viewshed-examples .vs-explorer-card pre {max-height:24rem;overflow:auto;font-size:.75em}
-[data-md-color-scheme="slate"] .viewshed-examples .vs-sea {fill:#263842}
-[data-md-color-scheme="slate"] .viewshed-examples .vs-land {fill:#3d4545;stroke:#b6c5c9}
-[data-md-color-scheme="slate"] .viewshed-examples .vs-source-outline {stroke:#d2e4e9}
-[data-md-color-scheme="slate"] .viewshed-examples .vs-target-outline {stroke:#59bfd8}
-[data-md-color-scheme="slate"] .viewshed-examples .vs-cell:focus {stroke:#f0f5f6}
-@media(max-width:600px){.viewshed-examples .vs-controls,.viewshed-examples .vs-summary{grid-template-columns:1fr}.viewshed-examples .vs-explorer-card{padding:.7rem}.viewshed-examples .vs-profile svg{min-width:500px}.viewshed-examples .vs-actions button{flex:1 1 42%}}
-.viewshed-examples [hidden] {display:none!important}
-.viewshed-examples .vs-cell[aria-pressed="true"] {stroke:#0a2734;stroke-width:3}
-.viewshed-examples .vs-advanced summary {cursor:pointer}
-#lesson-inputs .vs-explorer-card > h3,
-#lesson-inputs .vs-explorer-card > .coverage-badge {display:none}
+.viewshed-examples figure {
+  width: 100%;
+  max-width: none;
+  text-align: left;
+}
+
+.viewshed-examples .vs-explorer-card {
+  border: 1px solid var(--example-border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+  scroll-margin-top: 5rem;
+}
+.viewshed-examples .vs-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+.viewshed-examples .vs-controls label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.88em;
+  gap: 0.3rem;
+}
+.viewshed-examples .vs-controls select {
+  width: 100%;
+  max-width: 100%;
+}
+.viewshed-examples .vs-actions,
+.viewshed-examples .vs-lesson-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.8rem 0;
+}
+.viewshed-examples .vs-status {
+  display: block;
+  padding: 0.7rem;
+  border-left: 3px solid #198196;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+.viewshed-examples .vs-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: hidden;
+  border: 1px solid var(--example-border);
+  margin-top: 0.7rem;
+}
+.viewshed-examples .vs-sea {
+  fill: #eaf3f6;
+}
+.viewshed-examples .vs-land {
+  fill: #e9eae3;
+  stroke: #465e67;
+  stroke-width: 1;
+}
+.viewshed-examples .vs-cell {
+  stroke: #647d86;
+  stroke-width: 0.7;
+  cursor: pointer;
+}
+.viewshed-examples .vs-cell:focus {
+  outline: none;
+  stroke: #101d27;
+  stroke-width: 4;
+}
+.viewshed-examples .vs-observer {
+  fill: #192c37;
+  stroke: #fff;
+  stroke-width: 1.4;
+}
+.viewshed-examples .vs-legend {
+  font-size: 0.8em;
+  line-height: 1.5;
+}
+.viewshed-examples .vs-visual img {
+  width: 100%;
+  height: auto;
+}
+.viewshed-examples .vs-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  font-size: 0.88em;
+}
+.viewshed-examples .vs-summary p {
+  border: 1px solid var(--example-border);
+  padding: 0.6rem;
+  border-radius: 5px;
+  margin: 0.3rem 0;
+}
+.viewshed-examples .vs-plot-text {
+  font-size: 16px;
+  fill: var(--md-default-fg-color);
+}
+.viewshed-examples .vs-profile {
+  width: 100%;
+  margin: 0.6rem 0;
+}
+.viewshed-examples .vs-static-fallback {
+  display: none;
+}
+.viewshed-examples .vs-explorer-card pre {
+  max-height: 24rem;
+  overflow: auto;
+  font-size: 0.75em;
+}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-sea {
+  fill: #263842;
+}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-land {
+  fill: #3d4545;
+  stroke: #b6c5c9;
+}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-source-outline {
+  stroke: #d2e4e9;
+}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-target-outline {
+  stroke: #59bfd8;
+}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-cell:focus {
+  stroke: #f0f5f6;
+}
+@media (max-width: 600px) {
+  .viewshed-examples .vs-controls,
+  .viewshed-examples .vs-summary {
+    grid-template-columns: 1fr;
+  }
+  .viewshed-examples .vs-explorer-card {
+    padding: 0.7rem;
+  }
+  .viewshed-examples .vs-actions button {
+    flex: 1 1 42%;
+  }
+}
+.viewshed-examples [hidden] {
+  display: none !important;
+}
+.viewshed-examples .vs-cell[aria-pressed="true"] {
+  stroke: #0a2734;
+  stroke-width: 3;
+}
+.viewshed-examples .vs-advanced summary {
+  cursor: pointer;
+}
+.viewshed-examples .vs-area-label {
+  font:
+    24px system-ui,
+    sans-serif;
+  fill: #172d37;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+}
+.viewshed-examples .vs-reading {
+  line-height: 1.6;
+}
+.viewshed-examples .vs-support-note {
+  font-size: 0.88em;
+}
+.viewshed-examples .vs-visual {
+  min-width: 0;
+}
+
+[data-md-color-scheme="slate"] .viewshed-examples .vs-area-label {
+  fill: #eff7fa;
+  stroke: #263842;
+}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-profile-ray_m {
+  stroke: #e0eaf0;
+}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-profile-ground_m {
+  stroke: #b9baa4;
+}
+[data-md-color-scheme="slate"] .viewshed-examples .vs-profile-canopy_surface_m {
+  stroke: #48c8bc;
+}

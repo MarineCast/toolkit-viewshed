@@ -1,35 +1,80 @@
-# Documentation
+# Viewshed Toolkit
 
-Viewshed Toolkit exposes a small supported API over a staged geospatial pipeline.
+<img class="viewshed-hero" src="assets/viewshed-toolkit-banner.png" alt="Ink panorama of coastal islands, a lookout and illustrated sight lines; decorative artwork, not a modeled result" width="2172" height="724">
 
-- [Project overview](https://github.com/MarineCast/toolkit-viewshed#readme): installation, repository layout, case-study scope, and checks.
-- [Supported API](api.md): stable imports, stage-level imports, and execution behavior.
-- [Methodology](methodology.md): scientific model, artifact grain, and interpretation limits.
-- [San Juan Islands demo](san-juan-demo.md): small real-data example, reproducible commands,
-  documentation figures and interactive map.
-- [Salish Sea case study](salish-sea-case-study.md): regional acquisition, components, and report.
-- [Historical OrcaCast snapshot](reports/case-study-salish-sea.md): preserved copied-kernel evidence.
-- [Historical OrcaCast resources](reports/orcacast-history.md): pinned source tree and artifact
-  restoration instructions.
-- [Historical validation status](reports/validation.md): migration-era checks and their limits.
-- [Historical repository organization](reports/repository-organization.md): migration-era source
-  boundaries and deferred maintainability work.
+<p class="viewshed-lead">Map the <strong>physical limits of a view</strong> from coastal land and open water.</p>
 
-Implementation modules are grouped by phase under `viewshed_toolkit.pipeline`: `prepare`,
-`weights`, `finalize`, and `visualization`, with `api`, `cli`, `config`, `contracts`, and
-`diagnostics` supporting those phases. Shared persistence, geometry, raster, and configuration
-primitives live under the private `viewshed_toolkit._internal` namespace.
+An observation needs a line of sight. Terrain, trees and distance can constrain that view before
+anyone arrives. Viewshed Toolkit makes those constraints inspectable: it turns mapped inputs and
+explicit assumptions into reproducible source-to-water viewing support.
 
-## Explicit component workflow
+For researchers and applications, this provides a physical layer to consider alongside separately
+measured observer activity or sightings. A quiet patch of water and a hidden patch of water are
+different questions; this toolkit addresses the geometry of the view.
 
-- [Architecture](architecture.md)
-- [Configuration](configuration.md)
-- [Acquisition](data-acquisition.md)
-- [Pipelines](pipelines.md)
-- [Scientific methodology](scientific-methodology.md)
-- [Distance products](distance-products.md): reusable pair distances and attenuation profiles.
-- [Performance](performance.md)
-- [Salish Sea case study](salish-sea-case-study.md)
-- [Refactor validation](reports/productionization.md)
+<div class="viewshed-actions" markdown="1">
 
-- [Examples: understand what can be seen](examples.md): a real San Juan walkthrough, no coding required.
+[Explore the San Juan example](examples.md){ .md-button .md-button--primary }
+[Get started](getting-started/quick-start.md){ .md-button }
+
+</div>
+
+!!! important "What a result means"
+    These are **static physical viewability** products. A score is not the probability of seeing
+    an animal, a measure of observer effort, evidence of public access, or a forecast. Mapped input
+    coverage and model assumptions travel with the result.
+
+## Find your starting point
+
+<div class="grid cards" markdown="1">
+
+-   **See the model in action**
+
+    Follow seven questions over real San Juan Islands data, then explore source and target areas.
+    No coding or downloads needed.
+
+    [Open the guided example](examples.md)
+
+-   **Run a first workflow**
+
+    Set up the native geospatial environment, inspect a configuration, and choose a bounded run.
+
+    [Installation](getting-started/installation.md) · [Quick start](getting-started/quick-start.md)
+
+-   **Understand the calculation**
+
+    Learn what a source area means, how land and water differ, and how trees and distance enter.
+
+    [Viewing concepts](understand/index.md) · [Scientific contracts](scientific-methodology.md)
+
+-   **Use the outputs**
+
+    Choose pair-level viewability, observation geometry, or reusable distance products for your task.
+
+    [Product guide](products/index.md) · [API overview](api/overview.md)
+
+</div>
+
+## From mapped inputs to viewing support
+
+| Start with | Inspect | Use |
+| --- | --- | --- |
+| Ground elevation, canopy height and land/water boundaries | Matched ground and canopy line of sight for land sources; opaque-land geometry for water sources | Static source-to-water pair weights |
+| Source areas, target water and deterministic sample positions | Unweighted LOS, distance-integrated support and coverage states | Observation-geometry diagnostics |
+| A validated source–target lookup | Centroid distances and named attenuation curves | Independent distance products |
+
+Each result retains its source role and pair identity. Component values help explain the output;
+missing data and modeling assumptions remain visible. [Choose a product](products/index.md) or
+[trace the method](methodology.md).
+
+## A small place to learn: the San Juan Islands
+
+The guided example lets you compare real ground elevation, mapped tree heights and coastal
+geometry on one map. Follow one observer area toward one water area, reveal the sampled profile,
+and compare the same pair looking forward or back toward possible sources.
+
+The committed bundle can be read without GDAL. It is a bounded real-data illustration with recorded
+coverage gaps and assumptions; it is not field validation or a full Salish Sea release.
+
+[Start the seven lessons](examples.md){ .md-button }
+[Choose a workflow](workflows/index.md) · [Reproduce the bundle](documentation-examples.md)

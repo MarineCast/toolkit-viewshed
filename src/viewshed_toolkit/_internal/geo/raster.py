@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import rasterio
-from rasterio.features import rasterize
 from rasterio.warp import Resampling, calculate_default_transform, reproject
 from rasterio.windows import Window, from_bounds
 
@@ -246,48 +244,3 @@ def clip_raster_to_bounds(
         remove_partial(dst_path)
         raise
     return dst_path
-
-
-def rasterize_geometries_to_match(
-    geometries: Any,
-    reference_raster_path: Path,
-    out_path: Path,
-    *,
-    fill: int = 0,
-    default_value: int = 1,
-    dtype: str = "uint8",
-    overwrite: bool = False,
-    compress: str | None = "deflate",
-    block_size: int = GEOTIFF_BLOCK_SIZE,
-) -> Path:
-    if reuse_or_remove_raster(out_path, overwrite):
-        return out_path
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with rasterio.open(reference_raster_path) as src:
-            arr = rasterize(
-                [
-                    (geom, default_value)
-                    for geom in geometries
-                    if geom is not None and not geom.is_empty
-                ],
-                out_shape=(src.height, src.width),
-                transform=src.transform,
-                fill=fill,
-                dtype=dtype,
-            )
-            profile = update_geotiff_profile(
-                src.profile,
-                compress=compress,
-                block_size=block_size,
-                dtype=dtype,
-                count=1,
-                nodata=fill,
-            )
-            with rasterio.open(out_path, "w", **profile) as dst:
-                dst.write(arr, 1)
-    except Exception:
-        remove_partial(out_path)
-        raise
-    return out_path

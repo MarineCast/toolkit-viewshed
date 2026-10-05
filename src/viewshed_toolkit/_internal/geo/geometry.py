@@ -6,10 +6,8 @@ import logging
 from typing import Any
 
 import geopandas as gpd
-import pandas as pd
-from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, box
+from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import unary_union
-from shapely.validation import explain_validity
 
 LOGGER = logging.getLogger(__name__)
 CRS_WGS84 = "EPSG:4326"
@@ -43,27 +41,6 @@ def safe_make_valid(geom: Any) -> Any:
     except Exception:
         pass
     return geom
-
-
-def normalize_polygonal_geometry(geom: Any) -> Polygon | MultiPolygon:
-    """Return a valid Polygon/MultiPolygon from polygonal or collection input."""
-    if geom is None or geom.is_empty:
-        raise ValueError("Geometry is empty.")
-
-    geom = safe_make_valid(geom)
-    if isinstance(geom, GeometryCollection):
-        polys = [
-            part
-            for part in geom.geoms
-            if isinstance(part, (Polygon, MultiPolygon)) and not part.is_empty
-        ]
-        if not polys:
-            raise ValueError("Geometry collection contains no polygons.")
-        geom = safe_make_valid(unary_union(polys))
-
-    if isinstance(geom, (Polygon, MultiPolygon)):
-        return geom
-    raise TypeError(f"Unsupported geometry type: {type(geom)}")
 
 
 def safe_polygonal_union(
@@ -188,70 +165,6 @@ def _safe_polygonal_binary(
     if not polygonal.is_valid:
         raise ValueError(f"{label}: result could not be repaired to valid polygonal geometry.")
     return polygonal
-
-
-def ensure_epsg4326(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Return a GeoDataFrame in EPSG:4326, raising if CRS metadata is missing."""
-    if gdf.crs is None:
-        raise ValueError("GeoDataFrame has no CRS; expected EPSG:4326 (lon/lat).")
-    if gdf.crs.to_epsg() != 4326:
-        return gdf.to_crs(CRS_WGS84)
-    return gdf
-
-
-def buffer_meters(
-    gdf: gpd.GeoDataFrame,
-    meters: float,
-    *,
-    working_crs: int | str = 3857,
-) -> gpd.GeoDataFrame:
-    """Buffer geometries by meters using a projected CRS, returning EPSG:4326."""
-    if meters <= 0:
-        return gdf
-    projected = gdf.to_crs(working_crs)
-    projected["geometry"] = projected.geometry.buffer(float(meters))
-    return projected.to_crs(CRS_WGS84)
-
-
-def clip_to_bbox(
-    gdf: gpd.GeoDataFrame,
-    bbox: dict[str, float] | tuple[float, float, float, float] | list[float],
-) -> gpd.GeoDataFrame:
-    """Clip a WGS84 GeoDataFrame to a bbox."""
-    if isinstance(bbox, dict):
-        bounds = (
-            bbox["min_lon"],
-            bbox["min_lat"],
-            bbox["max_lon"],
-            bbox["max_lat"],
-        )
-    else:
-        bounds = tuple(float(x) for x in bbox)
-    bbox_gdf = gpd.GeoDataFrame(geometry=[box(*bounds)], crs=CRS_WGS84)
-    return gpd.clip(gdf, bbox_gdf)
-
-
-def report_invalid(
-    gdf: gpd.GeoDataFrame,
-    name: str,
-    id_col: str | None = None,
-    *,
-    logger: logging.Logger | None = None,
-) -> int:
-    """Log invalid geometry counts and sample reasons."""
-    log = logger or LOGGER
-    invalid = ~gdf.geometry.is_valid
-    invalid_count = int(invalid.sum())
-    if invalid_count == 0:
-        log.info("%s: no invalid geometries", name)
-        return 0
-
-    log.warning("%s: invalid geometries = %s / %s", name, invalid_count, len(gdf))
-    sample = gdf.loc[invalid, [id_col] if id_col and id_col in gdf.columns else []].head(5)
-    if not sample.empty:
-        reasons = gdf.loc[sample.index, "geometry"].apply(explain_validity)
-        log.warning("%s invalid sample ids/reasons: %s", name, list(zip(sample.values, reasons)))
-    return invalid_count
 
 
 def _dist2(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -383,57 +296,3 @@ def clean_geometry(geom: Any, tol: float = 1e-9) -> Polygon | MultiPolygon | Non
     if fixed is None:
         return None
     return clean_geometry(fixed, tol=tol)
-
-
-def clean_h3_gdf(
-    gdf: gpd.GeoDataFrame,
-    geometry_col: str = "geometry",
-    tol: float = 1e-9,
-    drop_empty: bool = True,
-) -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
-    """Clean H3 polygon geometries and return a row-level repair report."""
-    if geometry_col != "geometry":
-        gdf = gdf.copy()
-        gdf.set_geometry(geometry_col, inplace=True)
-
-    out = gdf.copy()
-    report_rows = []
-    for idx, geom in out.geometry.items():
-        before = geom
-        before_valid = before is not None and not before.is_empty and before.is_valid
-        before_type = None if before is None else before.geom_type
-        before_area = None if before is None or before.is_empty else float(before.area)
-
-        after = clean_geometry(before, tol=tol)
-        after_valid = after is not None and not after.is_empty and after.is_valid
-        after_type = None if after is None else after.geom_type
-        after_area = None if after is None or after.is_empty else float(after.area)
-
-        changed = True
-        if before is None and after is None:
-            changed = False
-        elif before is not None and after is not None:
-            changed = (
-                before_valid != after_valid
-                or before_area != after_area
-                or before_type != after_type
-            )
-        out.at[idx, "geometry"] = after
-        report_rows.append(
-            {
-                "index": idx,
-                "before_type": before_type,
-                "after_type": after_type,
-                "before_valid": before_valid,
-                "after_valid": after_valid,
-                "before_area": before_area,
-                "after_area": after_area,
-                "changed": changed,
-            }
-        )
-
-    report = pd.DataFrame(report_rows)
-    if drop_empty:
-        out = out[out.geometry.notna() & ~out.geometry.is_empty].copy()
-    out.set_crs(gdf.crs, inplace=True, allow_override=True)
-    return out, report
