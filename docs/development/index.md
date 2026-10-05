@@ -35,7 +35,7 @@ maps and figures need captions that distinguish illustration from modeled eviden
 
 Retain existing published page URLs when reorganizing navigation. In particular, `examples.md`
 owns `/examples/` and `api.md` owns `/api/`; do not add competing `index.md` files at those paths.
-Check light/dark presentation, mobile reflow, keyboard access and the guided explorer after a
+Check light/dark presentation, mobile reflow, keyboard access and the static visual walkthrough after a
 navigation or styling change.
 
 ## Code and scientific changes

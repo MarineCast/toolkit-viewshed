@@ -14,8 +14,8 @@ different questions; this toolkit addresses the geometry of the view.
 
 <div class="viewshed-actions" markdown="1">
 
-[Explore the San Juan example](examples.md){ .md-button .md-button--primary }
-[Get started](getting-started/quick-start.md){ .md-button }
+[Read the visual walkthrough](examples.md){ .md-button .md-button--primary }
+[Install and run](getting-started/quick-start.md){ .md-button }
 
 </div>
 
@@ -30,7 +30,7 @@ different questions; this toolkit addresses the geometry of the view.
 
 -   **See the model in action**
 
-    Follow seven questions over real San Juan Islands data, then explore source and target areas.
+    Read three connected chapters: one pair, one source’s surrounding targets, then a summary for each target cell.
     No coding or downloads needed.
 
     [Open the guided example](examples.md)
@@ -70,11 +70,11 @@ missing data and modeling assumptions remain visible. [Choose a product](product
 ## A small place to learn: the San Juan Islands
 
 The guided example lets you compare real ground elevation, mapped tree heights and coastal
-geometry on one map. Follow one observer area toward one water area, reveal the sampled profile,
-and compare the same pair looking forward or back toward possible sources.
+geometry in finished figures. Follow one source and water target through a sampled profile,
+three coverage maps, and the strongest included land-source support for each target.
 
 The committed bundle can be read without GDAL. It is a bounded real-data illustration with recorded
 coverage gaps and assumptions; it is not field validation or a full Salish Sea release.
 
-[Start the seven lessons](examples.md){ .md-button }
+[Read the three chapters](examples.md){ .md-button }
 [Choose a workflow](workflows/index.md) · [Reproduce the bundle](documentation-examples.md)

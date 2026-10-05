@@ -1,4 +1,7 @@
-# Your first result
+# Your first result: synthetic distances
+
+This page is an executable **synthetic, distance-only** workflow. To understand the toolkit
+without installing or running anything, read the [real visual walkthrough](../examples.md).
 
 Get a small, validated distance product before acquiring regional terrain or canopy data.
 After [installation](installation.md), run from the repository root:

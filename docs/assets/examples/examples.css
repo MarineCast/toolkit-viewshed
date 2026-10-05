@@ -283,3 +283,32 @@
 [data-md-color-scheme="slate"] .viewshed-examples .vs-profile-canopy_surface_m {
   stroke: #48c8bc;
 }
+
+/* A reading atlas: full-size figures, restrained prose, no dashboard controls. */
+.md-grid:has(.walkthrough) { max-width: 72rem; }
+.walkthrough > p, .walkthrough .chapter > p, .walkthrough .chapter-question,
+.walkthrough > details { max-width: 48rem; }
+.walkthrough .example-lead { font-size: 1.25em; }
+.walkthrough .example-metadata { color: var(--md-default-fg-color--light); font-size: .85em; }
+.walkthrough .chapter-route { display: flex; flex-wrap: wrap; gap: .7rem 2rem; border-block: 1px solid var(--example-border); padding: .9rem 0; margin: 1.8rem 0 .5rem; color: var(--md-accent-fg-color); font-weight: 600; }
+.walkthrough .chapter { padding: 1.4rem 0 2rem; border-bottom: 1px solid var(--example-border); scroll-margin-top: 5rem; }
+.walkthrough .chapter h2 { margin-top: .8rem; margin-bottom: .4rem; font-weight: 600; }
+.walkthrough .chapter-question { color: var(--md-default-fg-color--light); font-size: 1.2em; margin-top: .3rem; }
+.walkthrough figure { margin: 1.6rem 0 1.2rem; border-radius: .35rem; background: #fff; }
+.walkthrough picture, .walkthrough figure img { display: block; width: 100%; max-width: 100%; height: auto; margin: 0; }
+.walkthrough figcaption { color: var(--md-default-fg-color); background: var(--md-code-bg-color); padding: .9rem 1rem; line-height: 1.6; }
+.walkthrough .what-to-notice { padding-left: 1rem; border-left: 3px solid var(--md-accent-fg-color); line-height: 1.7; }
+.walkthrough .example-table { margin: 1.2rem 0; font-size: .9em; }
+.walkthrough table:not([class]) { display: table; max-width: 100%; }
+.walkthrough .figure-dark { display: none; }
+[data-md-color-scheme="slate"] .walkthrough .figure-light { display: none; }
+[data-md-color-scheme="slate"] .walkthrough .figure-dark { display: block; }
+[data-md-color-scheme="slate"] .walkthrough figure { background: #182b33; }
+@media (max-width: 600px) {
+  .walkthrough .chapter-route { display: grid; gap: .5rem; }
+  .walkthrough .chapter { padding: .8rem 0 1.2rem; }
+  .walkthrough .example-lead { font-size: 1.12em; }
+  .walkthrough figcaption { padding: .7rem; font-size: .9em; }
+}
+
+.walkthrough figcaption { max-width: none; margin: 0; text-align: left; font-style: normal; }

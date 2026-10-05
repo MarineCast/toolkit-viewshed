@@ -42,3 +42,9 @@ This illustration explains the workflow; it is not a measured view or ecological
 The [method overview](../methodology.md) provides the staged explanation. The
 [scientific contracts](../scientific-methodology.md) define the exact formulas, denominators,
 clearance, horizon and missingness rules and remain the numerical source of truth.
+
+## Follow the three scales
+
+1. **[One pair](../examples.md#one-pair):** source A and target B define the area relationship. Recorded samples and one explanatory profile describe how the geometry is represented; that path is not the population result.
+2. **[One source’s targets](../examples.md#one-source):** hold A fixed and retain every candidate target, including computed zeros. Compare directly calculated unweighted ground and canopy support with the combined distance-integrated score.
+3. **[A summary per target](../examples.md#target-summary):** hold each target separately and take the maximum valid combined weight across its included land-source records. Retain the valid, missing and outside-candidate counts. This example summary is not union visibility or a supported new product.
