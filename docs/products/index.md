@@ -10,7 +10,15 @@ observer activity.
 | Separate unweighted LOS from distance attenuation | Observation geometry with directly calculated unweighted diagnostics and recorded states | [Direct unweighted diagnostics](../scientific-methodology.md#direct-unweighted-canopy-diagnostics-and-migration) |
 | Inspect ground and canopy contributions | Matched terrain/canopy kernels and conditional canopy factors | [Land-source kernel](../scientific-methodology.md#land-source-raster-kernel), [canopy](../scientific-methodology.md#canopy-surface-and-observer-clearance) |
 | Reuse geometry or explore an attenuation curve | Standalone pair distances and named distance profiles | [Distance products](../distance-products.md) |
-| Explore results spatially | Static maps or the committed instructional explorer | [Pipeline map export](../pipelines.md), [guided example](../examples.md) |
+| Explore results spatially | Static maps or the committed visual walkthrough | [Pipeline map export](../pipelines.md), [guided example](../examples.md) |
+
+## Read one result
+
+{{read_one_result}}
+
+See the [same pair in the visual walkthrough](../examples.md#one-pair).
+The walkthrough’s per-target maximum is an example-derived summary across **land** sources;
+it is not a new supported product or the visibility of a union of viewpoints.
 
 ## Keep the pair and its evidence together
 

@@ -57,6 +57,44 @@ resampling and modeled LOS. Raw regional assets are not committed. No new third-
 redistributed. Offline checks validate bundled integrity and scientific assertions; they do not
 independently reproduce the real model from raw data.
 
+## Static walkthrough presentation
+
+The default page presents three chapters: one pair, one source’s candidate targets, and a
+per-target maximum across included **land** sources. All six principal figures, comparisons
+and contributor records are visible without JavaScript. The original scientific bundle and its
+`san_juan_lessons_v2` identity remain unchanged; the historical lessons/indexes remain archived
+canonical evidence, not the current reader journey.
+
+After exporting the scientific bundle, generate the presentation separately:
+
+```bash
+python -S scripts/render_documentation_walkthrough.py
+python -S scripts/render_documentation_walkthrough.py --check
+```
+
+The renderer needs only the committed bundle and the Python standard library. It checks the
+scientific bundle before reading it. `assets/examples/walkthrough/` contains six full-resolution
+SVG figures in desktop/mobile and light/dark variants, a per-target summary, and a separate
+checksummed presentation manifest. The read-only check regenerates expected bytes in memory;
+it rejects edited values, stale figures, changed source identities, and stale summaries.
+The strict MkDocs hook runs both checks.
+
+`target-summary.json` records the maximum valid combined pair weight for each included target,
+source role, complete included-source population, original scientific generation and pair checksum.
+It verifies unique role/source/target keys before aggregation. Candidate, valid, missing and
+outside-candidate counts remain separate. No-valid-contributor results stay null, computed zeros
+stay zero, and partial maxima retain their missing counts. This is an example-derived summary,
+not a new supported product. It does not pool roles, compute union visibility, or multiply the
+centroid diagnostic into the combined value.
+
+The maps use the recorded projected coastline/cells and uniform metres-to-pixels transforms.
+A shared linear 0–1 scale is used for all three source comparisons and the target maximum.
+Source A’s local candidate footprint defines the shared first/second-chapter extent with extra
+coastal context; the final map fits all recorded cell corners with 1.2 km of geographic padding, including candidates beyond the prepared-raster footprint. Static profile exaggeration
+is calculated from the physical axis ranges and drawing dimensions. Light/dark variants and
+mobile layouts change only rendering. Island-label reference: the
+[BLM regional map](https://www.blm.gov/sites/default/files/orwa-rac-sanjuan-map.pdf).
+
 ## Browser checks
 
 The explorer filters the committed pair records. It never recalculates LOS in the browser.
@@ -69,11 +107,12 @@ python -m mkdocs build --strict
 python scripts/check_documentation_browser.py --engines chromium webkit --output work/browser-qa
 ```
 
-The checker serves the built site locally and blocks third-party requests. It checks every
-lesson, pair parity, role/factor changes, missing results, keyboard selection, reset, theme,
-mobile layout, 200% CSS zoom reflow, navigation back and JavaScript-disabled reading. Screenshots and a
-machine-readable receipt are saved in the output directory. These are automated checks,
-not a human novice review.
+The checker serves the built site locally and blocks third-party requests. It verifies the
+homepage and all three chapters at desktop/mobile widths in light/dark themes, loaded figure
+assets, visible results/contributors, absence of required controls, 200% CSS zoom reflow,
+compatibility URLs under the GitHub Pages base path, and the complete JavaScript-disabled page.
+Screenshots and a machine-readable receipt are saved in the output directory. Screenshots
+still need visual inspection; automated assertions are not a human novice study.
 
 The [executed validation and limitations report](reports/real-data-examples-validation.md)
 records full model/export operations, both supported Python checks, browser evidence and the
@@ -90,12 +129,10 @@ pink is categorical missingness. Changing input layers preserves the selected pa
 The static and interactive transforms agree within one rendered pixel after coordinate rounding.
 Profiles retain physical distance and elevation axes with explicit vertical exaggeration.
 
-Fixed prose and default tables are labeled **Worked example A → B**. The explorer's
-**Your current selection** heading, numeric inspector, map and profile describe its current state.
-Named cases use stable exported references with checked evidence thresholds: strong canopy effect
-retains at most 20% of unweighted ground support, and little effect retains at least 98%, with
-baseline support above 0.02. These indices are not percentages of visible area. The distance
-comparison shares one source; its primary result shows the assumed diagnostic, not final scores.
+The fixed walkthrough carries the same manifest-selected land pair A → B through all three
+chapters. Historical seven-lesson references in the scientific bundle preserve recorded curated
+evidence; the main page no longer requires the old explorer. All displayed values are inserted
+from canonical records at build time, including the product guide’s “Read one result.”
 
 The retired `--render-only` command errors with a migration message. Explicit `--legacy-render`
 uses existing validated results and writes to ignored `work/legacy-demo/`; `--legacy-output`
@@ -104,14 +141,10 @@ The supported default and `--model-only` never replace the compatibility redirec
 
 ## Manual reader checklist
 
-- Identify ground, tree height, coastline, source area and water target.
-- Follow the source sample and target endpoint on the map and profile; explain why one path is not an area result.
-- Explain the assumed distance rule, ground obstruction and matched canopy comparison.
-- Read the same role/source/target pair forward and inverse without changing its value.
-- Recognize modeled zero, tiny positive, missing input, no candidate and neutral/not-applicable canopy.
-- Avoid conclusions about sighting probability, actual observers, public access or field accuracy.
-
-Automated CSS reflow is not a manual browser-zoom check or a novice usability study. Sampling,
-resolution and clearance sensitivity, human reader validation and empirical field validation remain unperformed.
-
-The [instructional polish validation report](reports/instructional-polish-validation.md) records the projected display, exact pair/generation parity, isolated bounded rebuild and browser inspection for PR B.
+- Locate A and B within recognizable island geography.
+- Match P/Q on the map and profile; distinguish one explanatory path from the pair population.
+- Read the ground-only and ground-plus-trees comparison without toggling anything.
+- Follow all A’s candidate targets, including zeros and the surrounding noncandidate cells.
+- Explain the per-target maximum across included land sources and find A in B’s contributor table.
+- Distinguish a valid zero, missing candidate evidence and sources outside the candidate set.
+- Confirm that complete coverage means the recorded candidate population, not all viewpoints.

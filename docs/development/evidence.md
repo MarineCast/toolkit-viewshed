@@ -11,6 +11,9 @@ limitations before using them. Current behavior is defined by source/tests and t
 
 ## San Juan instructional work
 
+- [Static visual walkthrough validation](../reports/visual-walkthrough-validation.md): three chapters,
+  separately checked presentation assets, per-target land-source maxima and rendered browser evidence.
+
 - [Real-data example validation](../reports/real-data-examples-validation.md): model, export,
   software/browser checks and unperformed acceptance work.
 - [Producer-lineage validation](../reports/producer-lineage-export-integrity.md): publication integrity

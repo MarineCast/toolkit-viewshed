@@ -50,8 +50,8 @@ nav:
       - Artifact dictionary: products/artifacts.md
       - Distance products: distance-products.md
   - Examples:
+      - One sightline to regional support: examples.md
       - Choose a workflow: workflows/index.md
-      - San Juan guided example: examples.md
       - San Juan model setup: san-juan-demo.md
       - Salish Sea case study: salish-sea-case-study.md
   - API:

@@ -7,7 +7,7 @@ building reusable components require different inputs and validation.
 
 -   **Learn from a real result**
 
-    Explore the committed San Juan bundle. Read the seven lessons and compare pairs without
+    Explore the committed San Juan bundle. Read the three-chapter visual walkthrough without
     installing the toolkit or acquiring data.
 
     [Open the guided example](../examples.md)
