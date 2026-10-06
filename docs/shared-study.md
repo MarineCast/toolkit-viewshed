@@ -1,7 +1,6 @@
 # MarineCast study v1 adapter
 
-The optional shared study file sets reporting selection or rectangular compatibility
-support, a requested calendar window,
+The optional shared study file sets coastal reporting selection, a requested calendar window,
 R7 Viewshed grid, producer buffers, marine mask identity and portable Data root. The
 toolkit remains standalone: it imports no sibling checkout, guesses no study-file
 location and bundles its schema. Install the declared `jsonschema` dependency.
@@ -23,6 +22,10 @@ inland waters; its rectangle is an acquisition/planning envelope. The materializ
 coastal mask, source-relative geometry and registry remain pending. Policy approval
 does not authorize production; these pending states fail the production gate even
 if domain approval and nominal registry metadata are supplied.
+`bbox_role`, `geometry_status` and `selection_policy` are mandatory as a complete
+coastal contract for both planning and production. Omitted, null or malformed
+fields fail before execution or export. This requirement applies only when a
+shared study is selected; standalone YAML behavior is unchanged.
 
 Python callers can select the same file without mutating process environment:
 
@@ -45,9 +48,8 @@ qualification and a separately reviewed acquisition/runtime budget.
 
 ## Roles, geometry and paths
 
-The rectangular compatibility contract uses marine-water intersections within its
-reporting rectangle. The coastal contract additionally requires a materialized
-qualified coastal-plus-inland selection mask; its enclosing rectangle is not a
+The coastal contract requires a materialized qualified coastal-plus-inland
+selection mask; its enclosing rectangle is not a
 reporting-water selection. Eligible
 land and water observers extend outward by the LOS distance (30 km in the example).
 Native rasters cover source-to-target paths and the additional AOI margin (1 km).

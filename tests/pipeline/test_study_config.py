@@ -41,8 +41,8 @@ from viewshed_toolkit.pipeline.prepare.area.lookup import build_source_target_lo
 from viewshed_toolkit.pipeline.prepare.area.universe import _physical_cell_type_frame
 
 ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = ROOT / "tests/fixtures/marinecast_study_proposed_v1.json"
-CONFIG_HASH = "16ff9f7e75cc4b2a79d193b9364921d4453ef569a93d148557588e642e429060"
+FIXTURE = ROOT / "tests/fixtures/marinecast_coastal_policy_v1.json"
+CONFIG_HASH = "bacf22ea2b0beb32d1ef5607f52b2f6104419dd329edf25657bca196acc8018c"
 GEOMETRY_HASH = "6d79e4dfd29a4ada66625e20fdcd01e7bfe6076bf6ebb4c449581eb3a0cdfb68"
 
 
@@ -70,6 +70,17 @@ def approved_study(tmp_path):
             "scope": "rectangular_selection_only",
             "statement": "Synthetic fixture approval; no real domain approved.",
         }
+        config["domain"]["geometry_status"] = "source_relative_validated"
+        config["domain"]["selection_policy"].update(
+            mask_status="source_relative_validated",
+            approval={
+                "approved_at": "2026-10-06T00:00:00Z",
+                "source_message_id": "synthetic-test-only",
+                "scope": "coastal_collection_policy",
+                "statement": "Synthetic fixture only; no real mask certified.",
+                "confirmed_question_id": "synthetic-question-only",
+            },
+        )
         config["grid_registry"].update(
             status="validated",
             mask_revision="synthetic-test-only",
@@ -537,3 +548,54 @@ def test_current_coastal_policy_is_planning_only_until_geometry_and_mask_qualifi
     path.write_text(json.dumps(config))
     with pytest.raises(ValueError, match="validated coastal mask and geometry"):
         load_study_config(path)
+
+
+@pytest.mark.parametrize("field", ["selection_policy", "geometry_status", "bbox_role"])
+@pytest.mark.parametrize("bad_value", ["omitted", None, {}, "malformed"])
+@pytest.mark.parametrize("planning", [False, True])
+def test_coastal_fields_cannot_be_omitted_null_or_malformed(tmp_path, field, bad_value, planning):
+    path = approved_study(tmp_path)
+    config = json.loads(path.read_bytes())
+    # Keep coastal pending support while supplying nominal domain approval/registry.
+    config["domain"]["geometry_status"] = "pending_qualified_coastline_validation"
+    if bad_value == "omitted":
+        config["domain"].pop(field)
+    else:
+        config["domain"][field] = bad_value
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError):
+        load_study_config(path, planning=planning)
+
+
+@pytest.mark.parametrize("field", ["selection_policy", "geometry_status", "bbox_role"])
+def test_incomplete_coastal_selection_fails_entrypoints_without_writes(
+    tmp_path, monkeypatch, field
+):
+    from viewshed_toolkit.pipeline.api.stages import export_static_maps
+
+    path = approved_study(tmp_path)
+    config = json.loads(path.read_bytes())
+    config["domain"].pop(field)
+    path.write_text(json.dumps(config))
+    monkeypatch.setenv("MARINECAST_STUDY_CONFIG", str(path))
+    before = sorted(tmp_path.rglob("*"))
+    with pytest.raises(ValueError):
+        load_app_config(ROOT / "configs/salish_sea.yaml", study_config=path)
+    with pytest.raises(ValueError):
+        export_static_maps(ROOT / "configs/salish_sea.yaml")
+    with pytest.raises(ValueError):
+        main(["export-static-maps", "--study-config", str(path)])
+    with pytest.raises(ValueError):
+        main(["plan-study", "--study-config", str(path)])
+    assert sorted(tmp_path.rglob("*")) == before
+
+
+def test_removing_all_coastal_fields_does_not_enable_shared_rectangular_fallback(tmp_path):
+    path = approved_study(tmp_path)
+    config = json.loads(path.read_bytes())
+    for field in ("selection_policy", "geometry_status", "bbox_role"):
+        config["domain"].pop(field)
+    path.write_text(json.dumps(config))
+    for planning in (True, False):
+        with pytest.raises(ValueError):
+            load_study_config(path, planning=planning)

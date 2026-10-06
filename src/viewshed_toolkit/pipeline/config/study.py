@@ -117,6 +117,11 @@ def load_study_config(path: str | Path | None = None, *, planning: bool = False)
     )
     if errors:
         raise ValueError(f"Invalid study config at {errors[0].json_path}: {errors[0].message}")
+    required_coastal_fields = {"bbox_role", "geometry_status", "selection_policy"}
+    if not required_coastal_fields.issubset(config["domain"]):
+        raise ValueError(
+            "Incomplete coastal study contract: envelope, geometry and policy required"
+        )
     west, south, east, north = config["domain"]["bbox_wgs84"]
     if not all(math.isfinite(v) for v in (west, south, east, north)) or not (
         -180 <= west < east <= 180 and -90 < south < north < 90
@@ -138,12 +143,9 @@ def load_study_config(path: str | Path | None = None, *, planning: bool = False)
         raise ValueError("Study geometry_sha256 mismatch")
     if config["domain"]["status"] == "approved" and not config["domain"].get("approval"):
         raise ValueError("Approved study requires explicit approval provenance")
-    policy = config["domain"].get("selection_policy")
-    if policy is not None:
-        if not config["domain"].get("bbox_role") or not config["domain"].get("geometry_status"):
-            raise ValueError("Selection policy requires explicit envelope role and geometry status")
-        if policy["status"] == "approved" and not policy["approval"]:
-            raise ValueError("Approved selection policy requires approval provenance")
+    policy = config["domain"]["selection_policy"]
+    if policy["status"] == "approved" and not policy["approval"]:
+        raise ValueError("Approved selection policy requires approval provenance")
     if date.fromisoformat(config["time"]["start"]) >= date.fromisoformat(
         config["time"]["end_exclusive"]
     ):
@@ -169,14 +171,10 @@ def load_study_config(path: str | Path | None = None, *, planning: bool = False)
         raise ValueError("Study domain remains proposed; production requires approved geometry")
     if not planning and registry["status"] != "validated":
         raise ValueError("Study production requires a validated marine mask and H3 registry")
-    if (
-        not planning
-        and policy is not None
-        and (
-            policy["status"] != "approved"
-            or policy["mask_status"] != "source_relative_validated"
-            or config["domain"]["geometry_status"] != "source_relative_validated"
-        )
+    if not planning and (
+        policy["status"] != "approved"
+        or policy["mask_status"] != "source_relative_validated"
+        or config["domain"]["geometry_status"] != "source_relative_validated"
     ):
         raise ValueError("Study production requires validated coastal mask and geometry")
     return StudyConfig(
