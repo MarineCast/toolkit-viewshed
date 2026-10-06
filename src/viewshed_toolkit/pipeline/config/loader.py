@@ -356,6 +356,7 @@ class ViewshedConfig:
     map_dir: Path
     run_name: str
     viewshed_version: str
+    reporting_water_polygon_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -733,6 +734,12 @@ def viewshed_config_from_app_config(app: AppConfig) -> ViewshedConfig:
         map_dir=app.paths.map_dir,
         run_name=app.run.name,
         viewshed_version=app.run.version,
+        reporting_water_polygon_path=(
+            Path(app.raw_config["paths"]["reporting_water_polygon_path"])
+            if "marinecast_study" in app.raw_config
+            and app.raw_config["paths"].get("reporting_water_polygon_path")
+            else None
+        ),
     )
 
 

@@ -8,12 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from ..config import (
-    AppConfig,
-    apply_source_type_policy,
-    initialize_app_config,
-    load_app_config,
-)
+from ..config import AppConfig, apply_source_type_policy, initialize_app_config, load_app_config
 from .registry import StageInvocation
 
 
@@ -445,6 +440,25 @@ def run_stage(config: str | Path | AppConfig, invocation: StageInvocation) -> ob
 def _run_stage(config: str | Path | AppConfig, invocation: StageInvocation) -> object:
     config_path = config.config_path if isinstance(config, AppConfig) else config
     stage = invocation.stage
+    app = config if isinstance(config, AppConfig) else load_app_config(config)
+    if "marinecast_study" in app.raw_config:
+        from ..config.reporting import load_reporting_support
+
+        load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+    if stage in {
+        "terrain-weight",
+        "build-dual-surface-canopy-weights",
+        "build-vegetation-path-weights",
+        "finalize-viewshed-lookups",
+    }:
+        if "marinecast_study" in app.raw_config:
+            from ..config.reporting import validate_native_path_coverage
+
+            validate_native_path_coverage(
+                app.raw_config,
+                app.viewshed.crs_projected,
+                canopy=invocation.source_type != "water",
+            )
     if stage == "download-data":
         return download_data(config_path, overwrite=invocation.overwrite)
     if stage == "build-land-cells":

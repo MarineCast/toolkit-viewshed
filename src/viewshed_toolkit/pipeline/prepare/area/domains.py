@@ -260,15 +260,19 @@ def load_land_water_domains(
         if water_path_value
         else seascape_water_polygon_path()
     )
-    if "marinecast_study" in runtime.raw_config and water_path.is_file():
-        from ...config.study import validate_shared_mask
-
-        validate_shared_mask(runtime.raw_config, water_path)
+    shared_mode = "marinecast_study" in runtime.raw_config
     water_union, water_source = _load_optional_clipped_union(
         water_path,
         bbox_gdf=bbox_gdf,
         label="Water",
     )
+    if shared_mode:
+        from ...config.reporting import load_reporting_support
+
+        support = load_reporting_support(runtime.raw_config, runtime.projected_crs)
+        if extent == "target":
+            water_union = support.reporting_water
+            water_source = str(support.mask_path)
 
     land_path_value = paths_cfg.get("land_polygon_path")
     land_source_path: Path | None = None
@@ -287,7 +291,6 @@ def load_land_water_domains(
         label="Land",
     )
 
-    shared_mode = "marinecast_study" in runtime.raw_config
     if shared_mode:
         if not water_path.is_file() or land_source_path is None or not land_source_path.is_file():
             raise ValueError(

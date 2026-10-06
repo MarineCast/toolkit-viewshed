@@ -281,6 +281,13 @@ def _lookup_fingerprint_payload(
     """Return the subset of run/config state that defines the lookup universe."""
 
     paths_cfg = runtime.raw_config.get("paths", {}) or {}
+    support_identity = None
+    if "marinecast_study" in runtime.raw_config:
+        from ...config.reporting import load_reporting_support
+
+        support_identity = load_reporting_support(
+            runtime.raw_config, runtime.projected_crs
+        ).identity
     return {
         "algorithm_version": LOOKUP_ALGORITHM_VERSION,
         "schema": list(SOURCE_TARGET_LOOKUP_SCHEMA),
@@ -288,6 +295,7 @@ def _lookup_fingerprint_payload(
         "source_resolution": int(runtime.source_resolution),
         "target_resolution": int(runtime.target_resolution),
         "bbox_wgs84": tuple(float(v) for v in runtime.bbox_wgs84),
+        **({"reporting_support": support_identity} if support_identity is not None else {}),
         **(
             {"marinecast_study": runtime.raw_config["marinecast_study"]}
             if "marinecast_study" in runtime.raw_config

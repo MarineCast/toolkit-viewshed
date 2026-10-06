@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,13 @@ from viewshed_toolkit.pipeline.api.components import run_component_stage
 from viewshed_toolkit.pipeline.api.regional import validate_region
 from viewshed_toolkit.pipeline.cli.main import main
 from viewshed_toolkit.pipeline.config import load_app_config
+from viewshed_toolkit.pipeline.config.reporting import (
+    load_reporting_support,
+    reporting_cells_for_geometry,
+    support_polygons_for_reporting_geometry,
+    validate_native_path_coverage,
+    validate_reporting_membership_ids,
+)
 from viewshed_toolkit.pipeline.config.study import (
     adapt_raw_config,
     canonical_bytes,
@@ -97,6 +105,40 @@ def approved_study(tmp_path):
         )
 
     return write_study(tmp_path, approve)
+
+
+def reporting_fixture_files(tmp_path, geometry, *, config_directory=None):
+    directory = tmp_path / "Data/shared/synthetic"
+    directory.mkdir(parents=True, exist_ok=True)
+    mask = directory / "reporting_water.parquet"
+    members = directory / "water_reporting.r7.txt"
+    gpd.GeoDataFrame(geometry=[geometry], crs=4326).to_parquet(mask)
+    cells = reporting_cells_for_geometry(geometry, 7)
+    members.write_bytes("".join(f"{cell}\n" for cell in cells).encode("ascii"))
+    entry = {
+        "resolution": 7,
+        "role": "water_reporting",
+        "relative_path": os.path.relpath(members, config_directory or tmp_path),
+        "count": len(cells),
+        "sha256": hashlib.sha256(members.read_bytes()).hexdigest(),
+    }
+    return mask, entry
+
+
+def bind_reporting_raw(raw, tmp_path, geometry):
+    mask, entry = reporting_fixture_files(tmp_path, geometry)
+    raw["paths"]["reporting_water_polygon_path"] = str(mask)
+    raw["marinecast_study"].update(
+        resolved_data_root=str(tmp_path / "Data"),
+        study_config_directory=str(tmp_path),
+        grid_registry={
+            "status": "validated",
+            "mask_revision": "synthetic-test-only",
+            "mask_sha256": hashlib.sha256(mask.read_bytes()).hexdigest(),
+            "memberships": [entry],
+        },
+    )
+    return mask
 
 
 def test_pinned_identities_and_read_only_plan(tmp_path, monkeypatch):
@@ -266,6 +308,7 @@ def test_reporting_targets_outside_land_sources_and_native_margin(tmp_path):
     raw = adapt_raw_config(load_app_config(ROOT / "configs/salish_sea.yaml").raw_config, study)
     # Small fixture avoids enumerating the large proposed universe.
     raw["marinecast_study"]["reporting_bbox_wgs84"] = [-123.01, 48.0, -123.0, 48.01]
+    bind_reporting_raw(raw, tmp_path, box(-123.01, 48, -123, 48.01))
     runtime = SimpleNamespace(
         raw_config=raw, projected_crs="EPSG:32610", bbox_wgs84=(-123.01, 48, -123, 48.01)
     )
@@ -298,9 +341,7 @@ def test_explicit_land_and_marine_mask_no_water_or_land_complement(tmp_path):
         },
         "paths": {"land_polygon_path": str(land_path), "water_polygon_path": str(water_path)},
     }
-    raw["marinecast_study"]["grid_registry"] = {
-        "mask_sha256": hashlib.sha256(water_path.read_bytes()).hexdigest()
-    }
+    bind_reporting_raw(raw, tmp_path, water.intersection(box(-123.01, 48, -123, 48.01)))
     runtime = SimpleNamespace(
         raw_config=raw,
         projected_crs="EPSG:32610",
@@ -439,6 +480,13 @@ def coastal_study(tmp_path):
     gpd.GeoDataFrame(geometry=[box(-123.6, 47.6, -123.02, 48.4)], crs=4326).to_file(land)
     gpd.GeoDataFrame(geometry=[box(-123.02, 47.6, -122.4, 48.4)], crs=4326).to_parquet(water)
     config["grid_registry"]["mask_sha256"] = hashlib.sha256(water.read_bytes()).hexdigest()
+    reporting_mask, membership = reporting_fixture_files(
+        tmp_path, box(*bbox), config_directory=selected.parent
+    )
+    config["grid_registry"].update(
+        mask_sha256=hashlib.sha256(reporting_mask.read_bytes()).hexdigest(),
+        memberships=[membership],
+    )
     selected.write_text(json.dumps(config))
     raw = copy.deepcopy(load_app_config(ROOT / "configs/salish_sea.yaml").raw_config)
     raw["paths"].update(
@@ -446,6 +494,7 @@ def coastal_study(tmp_path):
         water_polygon_path=str(water),
         regional_dem_path=str(tmp_path / "dem.tif"),
         canopy_height_path=str(tmp_path / "chm.tif"),
+        reporting_water_polygon_path=str(reporting_mask),
     )
     raw["source_target_lookup"]["parallel_workers"] = 1
     path = tmp_path / "viewshed.yaml"
@@ -488,11 +537,13 @@ def test_shared_actual_land_and_pair_stages_retain_inland_observers(coastal_stud
 
 @pytest.mark.parametrize("changed", ["mask", "land", "receipt"])
 def test_shared_land_cache_rejects_changed_inputs_before_reuse(coastal_study, changed):
-    selected, path, app, land, water = coastal_study
+    selected, path, app, land, _water = coastal_study
     with study_selection(selected):
         result = build_land_cells_for_config(path, overwrite=True)
         if changed == "mask":
-            water.write_bytes(b"wrong-mask-bytes")
+            Path(app.raw_config["paths"]["reporting_water_polygon_path"]).write_bytes(
+                b"wrong-mask-bytes"
+            )
             message = "mask_sha256"
         elif changed == "land":
             gpd.GeoDataFrame(geometry=[box(-123.6, 47.6, -123.03, 48.4)], crs=4326).to_file(land)
@@ -599,3 +650,232 @@ def test_removing_all_coastal_fields_does_not_enable_shared_rectangular_fallback
     for planning in (True, False):
         with pytest.raises(ValueError):
             load_study_config(path, planning=planning)
+
+
+def test_actual_reporting_geometry_derives_halo_without_enclosing_bbox_fallback():
+    reporting = box(-123.01, 47.98, -122.97, 48.03)
+    selected, source, native = support_polygons_for_reporting_geometry(
+        reporting, "EPSG:32610", 30000, 1000
+    )
+    assert selected.equals(reporting)
+    assert not selected.covers(Point(-123.15, 48.005))
+    assert source.covers(Point(-123.15, 48.005))
+    # Far offshore lies inside the planning rectangle, outside this actual halo.
+    assert not selected.covers(Point(-126, 48.005))
+    assert not source.covers(Point(-126, 48.005))
+    assert native.covers(source)
+
+
+@pytest.mark.parametrize("invalid", [None, Point(-123, 48), box(0, 0, 0, 0)])
+def test_invalid_reporting_geometry_has_no_bbox_fallback(invalid):
+    with pytest.raises(ValueError, match="Reporting water"):
+        support_polygons_for_reporting_geometry(invalid, "EPSG:32610", 30000, 1000)
+
+
+def test_reporting_support_rejects_degree_buffers():
+    with pytest.raises(ValueError, match="projected CRS in metres"):
+        support_polygons_for_reporting_geometry(
+            box(-123.01, 48, -123, 48.01), "EPSG:4326", 30000, 1000
+        )
+
+
+def test_decoded_membership_identity_is_strict_and_uses_owner_canonical_ids():
+    cells = sorted({h3.latlng_to_cell(48, -123, 7), h3.latlng_to_cell(48.03, -123, 7)})
+    digest = hashlib.sha256("".join(f"{cell}\n" for cell in cells).encode()).hexdigest()
+    assert validate_reporting_membership_ids(cells, resolution=7, count=2, sha256=digest) == tuple(
+        cells
+    )
+    for invalid in (
+        [cells[0], cells[0]],
+        cells[::-1],
+        [None],
+        [cells[0].upper()],
+        [h3.latlng_to_cell(48, -123, 6)],
+    ):
+        with pytest.raises(ValueError):
+            validate_reporting_membership_ids(invalid, resolution=7, count=2, sha256=digest)
+    with pytest.raises(ValueError, match="SHA256"):
+        validate_reporting_membership_ids(cells, resolution=7, count=2, sha256="0" * 64)
+
+
+def test_registry_targets_and_outside_water_and_land_roles(coastal_study):
+    from viewshed_toolkit.pipeline.config import apply_source_type_policy
+    from viewshed_toolkit.pipeline.prepare.area.target_cells import build_target_cells
+    from viewshed_toolkit.pipeline.weights.terrain.gdal import (
+        _load_terrain_source_cells,
+        _water_terrain_domains_for_app,
+    )
+
+    selected, path, app, _, _ = coastal_study
+    support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+    with study_selection(selected):
+        targets = gpd.read_parquet(build_target_cells(app))
+        assert tuple(targets.h3_cell) == support.cells
+        build_land_cells_for_config(path, overwrite=True)
+        build_source_target_lookup(path)
+        water_app = apply_source_type_policy(app, "water")
+        sources = _load_terrain_source_cells(water_app)
+        outside = h3.latlng_to_cell(48.005, -122.85, 7)
+        assert outside not in support.cells
+        assert outside in set(sources.h3_cell)
+        assert not sources.loc[sources.h3_cell == outside, "water_geometry"].item().is_empty
+        domains = _water_terrain_domains_for_app(water_app)
+        assert domains.land_domain.covers(Point(-123.15, 48.005))
+        assert domains.water_domain.equals(support.reporting_water)
+
+
+@pytest.mark.parametrize("damage", ["escape", "count", "hash", "missing_cell", "mask_bytes"])
+def test_reporting_artifacts_reject_damage_before_cache_reuse(coastal_study, damage):
+    _, _, app, _, _ = coastal_study
+    raw = copy.deepcopy(app.raw_config)
+    support = load_reporting_support(raw, app.viewshed.crs_projected)
+    entry = raw["marinecast_study"]["grid_registry"]["memberships"][0]
+    if damage == "escape":
+        entry["relative_path"] = "../../escape.txt"
+    elif damage == "count":
+        entry["count"] += 1
+    elif damage == "hash":
+        entry["sha256"] = "0" * 64
+    elif damage == "missing_cell":
+        payload = "".join(f"{cell}\n" for cell in support.cells[1:]).encode("ascii")
+        support.membership_path.write_bytes(payload)
+        entry.update(count=len(support.cells) - 1, sha256=hashlib.sha256(payload).hexdigest())
+    else:
+        support.mask_path.write_bytes(b"changed after qualification")
+    with pytest.raises(ValueError):
+        load_reporting_support(raw, app.viewshed.crs_projected)
+
+
+def synthetic_native_rasters(app):
+    import math
+
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+    west, south, east, north = (
+        gpd.GeoSeries([support.native_extent], crs=4326)
+        .to_crs(app.viewshed.crs_projected)
+        .iloc[0]
+        .bounds
+    )
+    resolution = 1000
+    west, south, east, north = west - 2000, south - 2000, east + 2000, north + 2000
+    width = math.ceil((east - west) / resolution)
+    height = math.ceil((north - south) / resolution)
+    for name, path in (("dem", app.paths.regional_dem_path), ("chm", app.paths.canopy_height_path)):
+        with rasterio.open(
+            path,
+            "w",
+            driver="GTiff",
+            width=width,
+            height=height,
+            count=1,
+            dtype="float32",
+            crs=app.viewshed.crs_projected,
+            transform=from_origin(west, north, resolution, resolution),
+            nodata=-9999,
+        ) as raster:
+            raster.write(np.full((height, width), 10 if name == "dem" else 0, dtype="float32"), 1)
+            raster.update_tags(
+                source_date="2020-01-01",
+                **(
+                    {"vertical_reference": "synthetic_test_only", "vertical_units": "m"}
+                    if name == "dem"
+                    else {"height_reference": "above_ground", "height_units": "m"}
+                ),
+            )
+
+
+def test_native_path_qualification_and_separate_canonical_masks(coastal_study):
+    from dataclasses import replace
+
+    import rasterio
+
+    from viewshed_toolkit.pipeline.prepare.area.raster_stack import ensure_canonical_raster_stack
+
+    selected, _, app, _, _ = coastal_study
+    synthetic_native_rasters(app)
+    receipt = validate_native_path_coverage(app.raw_config, app.viewshed.crs_projected, canopy=True)
+    assert receipt["native_rasters"]["dem"]["valid_land_pixels"] > 0
+    assert receipt["native_rasters"]["chm"]["source_date"] == "2020-01-01"
+    app = replace(app, viewshed=replace(app.viewshed, dem_resolution_m=1000))
+    with study_selection(selected):
+        stack = ensure_canonical_raster_stack(app, include_canopy=False)
+        assert stack.reporting_water_mask_path is not None
+        with (
+            rasterio.open(stack.water_mask_path) as native,
+            rasterio.open(stack.reporting_water_mask_path) as reporting,
+        ):
+            assert native.transform == reporting.transform
+            assert native.read(1).sum() > reporting.read(1).sum() > 0
+        assert ensure_canonical_raster_stack(app, include_canopy=False) == stack
+        from viewshed_toolkit.pipeline.prepare.area.context import prepare_batch_context
+
+        build_land_cells_for_config(app.config_path, overwrite=True)
+        app = replace(app, viewshed=replace(app.viewshed, surface_model="bare_earth"))
+        context = prepare_batch_context(app, [h3.latlng_to_cell(48.005, -123.15, 7)], 0)
+        assert context.canonical_water_mask_path == stack.reporting_water_mask_path
+        assert context.surface_metadata["aggregation_water_role"] == "water_reporting"
+        assert context.water_mask_path.name.endswith("_reporting_water_mask.tif")
+        native_mask = Path(context.surface_metadata["endpoint_native_water_mask_path"])
+        with rasterio.open(native_mask) as native:
+            assert native.read(1).sum() > context.water_mask_arr.sum() > 0
+
+
+@pytest.mark.parametrize(
+    "damage", ["missing_tags", "missing_land", "missing_canopy", "short_water", "short_land"]
+)
+def test_native_path_qualification_rejects_incomplete_inputs(coastal_study, damage):
+    import numpy as np
+    import rasterio
+
+    _, _, app, land, water = coastal_study
+    synthetic_native_rasters(app)
+    if damage == "missing_tags":
+        with rasterio.open(app.paths.regional_dem_path, "r+") as raster:
+            raster.update_tags(source_date="")
+    elif damage in {"missing_land", "missing_canopy"}:
+        path = (
+            app.paths.canopy_height_path
+            if damage == "missing_canopy"
+            else app.paths.regional_dem_path
+        )
+        with rasterio.open(path, "r+") as raster:
+            raster.write(np.full((raster.height, raster.width), -9999, dtype="float32"), 1)
+    else:
+        path = water if damage == "short_water" else land
+        frame = gpd.GeoDataFrame(geometry=[box(-123, 48, -122.99, 48.01)], crs=4326)
+        if damage == "short_water":
+            frame.to_parquet(path)
+        else:
+            frame.to_file(path)
+    with pytest.raises(ValueError):
+        validate_native_path_coverage(app.raw_config, app.viewshed.crs_projected, canopy=True)
+
+
+def test_positive_area_membership_retains_cell_without_center(tmp_path):
+    from viewshed_toolkit._internal.geo.h3 import cell_to_polygon
+
+    cell = h3.latlng_to_cell(48.005, -122.99, 7)
+    polygon = cell_to_polygon(cell)
+    vertex = polygon.exterior.coords[0]
+    fragment = polygon.intersection(Point(vertex).buffer(0.0001))
+    center = Point(*reversed(h3.cell_to_latlng(cell)))
+    assert not fragment.covers(center)
+    assert cell in reporting_cells_for_geometry(fragment, 7)
+
+
+def test_consumer_never_falls_back_to_planning_envelope(coastal_study):
+    from viewshed_toolkit.pipeline.contracts.components import acquisition_request
+
+    _, _, app, _, _ = coastal_study
+    raw = copy.deepcopy(app.raw_config)
+    del raw["paths"]["reporting_water_polygon_path"]
+    with pytest.raises(ValueError, match=r"explicit paths\.reporting"):
+        load_reporting_support(raw, app.viewshed.crs_projected)
+    support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+    request = acquisition_request(app, "dem")
+    assert request["acquisition_bbox"] == list(support.native_extent.bounds)
+    assert request["reporting_support"]["membership"]["count"] == len(support.cells)

@@ -171,6 +171,15 @@ def acquisition_request(app: AppConfig, dataset: str) -> dict[str, Any]:
                 )
             }
         )
+    if "marinecast_study" in app.raw_config:
+        from ..config.reporting import load_reporting_support
+
+        support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+        return {
+            "dataset": settings.model_dump(mode="json"),
+            "acquisition_bbox": list(support.native_extent.bounds),
+            "reporting_support": support.identity,
+        }
     forward = Transformer.from_crs(4326, app.viewshed.crs_projected, always_xy=True)
     inverse = Transformer.from_crs(app.viewshed.crs_projected, 4326, always_xy=True)
     west, south, east, north = forward.transform_bounds(

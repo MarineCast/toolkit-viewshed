@@ -53,6 +53,18 @@ def prepare_dataset(app: AppConfig, dataset: str, *, overwrite: bool = False) ->
     # Buffer supports the full target domain and the edge observer windows.
     margin = app.viewshed.max_distance_m + app.viewshed.aoi_margin_m
     bounds = (bounds[0] - margin, bounds[1] - margin, bounds[2] + margin, bounds[3] + margin)
+    if "marinecast_study" in app.raw_config:
+        import geopandas as gpd
+
+        from ..config.reporting import load_reporting_support
+
+        support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+        bounds = (
+            gpd.GeoSeries([support.native_extent], crs=4326)
+            .to_crs(app.viewshed.crs_projected)
+            .iloc[0]
+            .bounds
+        )
     resolution = app.viewshed.dem_resolution_m
     try:
         import rasterio

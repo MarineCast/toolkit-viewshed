@@ -203,12 +203,19 @@ def _build_source_universe(
     source_type_df = _physical_cell_type_frame(source_classification, lookup_cfg)
 
     target_polygon = domains.target_domain_polygon(runtime)
-    target_candidates = domains.bbox_h3_cells(
-        tuple(float(v) for v in target_polygon.bounds),
-        resolution,
-        buffer_rings=lookup_cfg.bbox_buffer_rings,
-        strict_intersection=False,
-    )
+    if "marinecast_study" in runtime.raw_config:
+        from ...config.reporting import load_reporting_support
+
+        target_candidates = list(
+            load_reporting_support(runtime.raw_config, runtime.projected_crs).cells
+        )
+    else:
+        target_candidates = domains.bbox_h3_cells(
+            tuple(float(v) for v in target_polygon.bounds),
+            resolution,
+            buffer_rings=lookup_cfg.bbox_buffer_rings,
+            strict_intersection=False,
+        )
     target_classification = _classify_bbox_cells(
         runtime,
         lookup_cfg,

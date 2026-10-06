@@ -60,6 +60,7 @@ class CanonicalRasterStack:
     canopy_metadata_path: Path | None
     core_fingerprint: str
     canopy_fingerprint: str | None
+    reporting_water_mask_path: Path | None = None
 
 
 @lru_cache(maxsize=4)
@@ -171,7 +172,10 @@ def load_and_clip_water(
     aoi_wgs84: gpd.GeoDataFrame,
 ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     water = _load_water_layer_cached(str(config.water_polygon_path))
-    clipped = _filled_water_domain(water, aoi_wgs84, config.land_polygon_path)
+    if config.reporting_water_polygon_path is not None:
+        clipped = water.clip(aoi_wgs84)
+    else:
+        clipped = _filled_water_domain(water, aoi_wgs84, config.land_polygon_path)
     return clipped, clipped.to_crs(config.crs_projected)
 
 
@@ -293,13 +297,22 @@ def _write_canonical_metadata(
 
 
 def _canonical_water_source_contract(app: AppConfig) -> dict[str, Any]:
-    return {
+    result = {
         "water_polygon": _canonical_dataset_signature(app.paths.water_polygon_path),
         "natural_earth_land": _canonical_dataset_signature(app.paths.land_polygon_path),
         "water_fill_algorithm": "high_res_water_plus_edge_open_water_v1",
         "water_mask_algorithm": "viewshed_water_mask_v2",
         "water_mask_all_touched": True,
     }
+    if "marinecast_study" in app.raw_config:
+        from ...config.reporting import load_reporting_support
+
+        support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+        result.update(
+            reporting=support.identity,
+            water_fill_algorithm="explicit_native_water_no_complement_v1",
+        )
+    return result
 
 
 def ensure_canonical_raster_stack(
@@ -310,6 +323,14 @@ def ensure_canonical_raster_stack(
     """Create or reuse the immutable domain-aligned terrain raster stack."""
 
     config = viewshed_config_from_app_config(app)
+    shared_support = None
+    if "marinecast_study" in app.raw_config:
+        from ...config.reporting import load_reporting_support, validate_native_path_coverage
+
+        shared_support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+        validate_native_path_coverage(
+            app.raw_config, app.viewshed.crs_projected, canopy=include_canopy
+        )
     projected_dem = ensure_projected_regional_dem(app)
     core_contract = {
         "algorithm_version": CANONICAL_RASTER_STACK_ALGORITHM_VERSION,
@@ -329,6 +350,11 @@ def ensure_canonical_raster_stack(
         "water_mask": water_mask_path,
         "endpoint_dem": endpoint_dem_path,
     }
+    reporting_mask_path = (
+        cache_root / "reporting_water_mask.tif" if shared_support is not None else None
+    )
+    if reporting_mask_path is not None:
+        core_outputs["reporting_water_mask"] = reporting_mask_path
 
     canopy_contract: dict[str, Any] | None = None
     canopy_fingerprint: str | None = None
@@ -387,6 +413,18 @@ def ensure_canonical_raster_stack(
             compress=app.raster.intermediate_compress,
             block_size=app.raster.block_size,
         )
+        if reporting_mask_path is not None and shared_support is not None:
+            reporting_frame = gpd.GeoDataFrame(
+                geometry=[shared_support.reporting_water], crs=4326
+            ).to_crs(config.crs_projected)
+            rasterize_water_to_match_dem(
+                reporting_frame,
+                projected_dem,
+                reporting_mask_path,
+                overwrite=True,
+                compress=app.raster.intermediate_compress,
+                block_size=app.raster.block_size,
+            )
         flatten_water_pixels_to_sea_level(
             projected_dem,
             water_mask_path,
@@ -479,6 +517,7 @@ def ensure_canonical_raster_stack(
         canopy_metadata_path=canopy_metadata_path,
         core_fingerprint=core_fingerprint,
         canopy_fingerprint=canopy_fingerprint,
+        reporting_water_mask_path=reporting_mask_path,
     )
     _CANONICAL_RASTER_STACK_READY_THIS_PROCESS[ready_key] = stack
     return stack

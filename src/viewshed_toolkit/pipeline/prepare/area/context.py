@@ -311,6 +311,18 @@ def prepare_batch_context(
             }
         )
 
+    if canonical_stack.reporting_water_mask_path is not None:
+        surface_metadata["endpoint_native_water_mask_path"] = str(water_mask_path)
+        water_mask_path = batch_dir / f"{batch_id}_reporting_water_mask.tif"
+        clip_raster_to_bounds(
+            canonical_stack.reporting_water_mask_path,
+            water_mask_path,
+            tuple(aoi_projected.total_bounds),
+            overwrite=True,
+            compress=app.raster.intermediate_compress,
+            block_size=app.raster.block_size,
+        )
+        surface_metadata["aggregation_water_role"] = "water_reporting"
     with rasterio.open(water_mask_path) as mask_src:
         water_mask_arr = mask_src.read(1) == 1
         water_transform = mask_src.transform
@@ -381,7 +393,9 @@ def prepare_batch_context(
         water_crs=water_crs,
         water_shape=(raster_height, raster_width),
         water_pixel_area_m2=water_pixel_area_m2,
-        canonical_water_mask_path=canonical_stack.water_mask_path,
+        canonical_water_mask_path=(
+            canonical_stack.reporting_water_mask_path or canonical_stack.water_mask_path
+        ),
         aligned_canopy_height_path=aligned_canopy_height_path,
         surface_metadata=surface_metadata,
     )

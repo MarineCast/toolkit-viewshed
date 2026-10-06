@@ -53,22 +53,33 @@ selection mask; its enclosing rectangle is not a
 reporting-water selection. Eligible
 land and water observers extend outward by the LOS distance (30 km in the example).
 Native rasters cover source-to-target paths and the additional AOI margin (1 km).
-Constant latitude/longitude edges are densified at at most 0.02 degrees before
-projected buffering; geometry identity remains the five-vertex semantic rectangle.
+Reporting geometry comes from the explicit qualified mask. Observer and native
+extents buffer that geometry in the configured metric CRS. The rectangle hash
+identifies only the planning envelope; it supplies no reporting-water fallback.
 Standalone configurations keep their established source rectangle and target halo.
 
-Shared YAML requires explicit `paths.water_polygon_path`, `land_polygon_path`,
-`regional_dem_path` and `canopy_height_path`. The actual marine-water file must match
-the registry's raw-byte `mask_sha256`. No land or marine-water complement fallback
-is allowed. Mixed cells may have both source roles; positive marine-water area is
-required for targets. Land remains the declared mapped land, including observers
-outside the reporting rectangle. Shared land filtering uses the explicit marine
-mask rather than interpreting all unmapped areas or freshwater as marine water.
-Shared source eligibility retains every positive mapped land intersection within
-the declared source extent. It overrides the legacy fractional eligibility
+Shared YAML requires explicit `paths.reporting_water_polygon_path`,
+`water_polygon_path`, `land_polygon_path`, `regional_dem_path` and
+`canopy_height_path`. Reporting water is distinct from native/source water. Only
+the reporting mask must match registry `mask_sha256`; this consumer supports
+`sha256_exact_file_bytes`. Native source-water polygons support outside observers
+and endpoint surfaces; native mapped land supports intervening obstructions.
+There is no shared land/water complement or edge-open-water fallback.
+
+The owner-pinned `registry-artifact-interface.v1.json` defines membership files:
+ASCII lowercase canonical H3 IDs, sorted uniquely, one per LF-terminated line,
+without a header. SHA256 identifies exact bytes. The single R7 water_reporting
+entry resolves from the selected study directory and must remain under Data.
+The reader validates count, resolution, hash and exact equality with positive
+WGS84 ellipsoidal-area intersections of the qualified reporting mask. It uses
+H3 4.4 or later overlap enumeration; cell-center fill and zero-area touches are
+excluded. Mask and membership bytes are checked again before cached reuse.
+
+Mixed cells may retain both observer roles. Shared source eligibility retains
+all positive mapped land/water intersections in the source extent, including
+observers outside reporting water. It overrides legacy fractional eligibility
 thresholds and does not apply the standalone 6 km coastal-distance filter.
-An empty declared land intersection in an all-water reporting rectangle is valid;
-it does not prevent mapped land observers in the outside source halo.
+Empty mapped reporting land is valid when outside land observers exist.
 
 Both land-cell entrypoints validate current marine-mask bytes before cache reuse.
 Shared land-cell receipts additionally bind configuration, mapped land and water
@@ -97,11 +108,27 @@ The retained CHM describes 2020, not a reconstruction of 2009. Native scientific
 contracts, role-specific pair completeness, nulls and missing-canopy policies remain
 in force. Sums describe aggregate static support, never probability or activity.
 
-The adapter validates registry metadata and binds the native mask bytes; it does not
-yet read registry membership artifacts to verify row counts or enforce exact shared
-H3 membership equality. The shared contract does not specify their artifact format.
-That consumer integration, source/vertical-reference qualification, raster coverage,
-separation of reporting selection from native/source-water geometry,
+The functional consumer reads owner-format membership artifacts and enforces
+exact reporting membership. Geometry-only preparation can inspect eligible source
+and target roles. Before physical shared stages or canonical raster creation,
+read-only qualification requires native land/water union coverage through the
+31 km path extent, native water coverage of reporting water, declared raster CRS
+and complete raster footprints, finite non-null mapped-land DEM/CHM pixels,
+ISO `source_date`, DEM `vertical_reference` and metre units, and canopy
+`height_reference=above_ground` and metre units. ETH sentinel 255 remains missing.
+These conservative gates do not repair missing canopy or infer source provenance
+from requested dates. The raster tags are required qualification declarations,
+not independent proof that a vertical datum transformation or source date is correct;
+qualified producer receipts and independent source review are still required.
+Current prepared inputs lacking these declarations cannot run physical stages.
+
+Native-water endpoint/canopy surfaces and reporting-water aggregation masks are
+separate aligned rasters. The water kernel retains native land outside reporting
+water as an obstruction and samples water observers from source water. Target
+water-area denominators use reporting-water geometry under the established
+native area method; LOS equations and standalone behavior are unchanged.
+
+Real coastal geometry, registry artifacts, source/vertical-reference qualification,
 resource approval and regional independent validation remain release gates. Neither
 synthetic tests nor historical pair parity establish regional readiness. No immutable
-Data release is published by this adapter change.
+Data release is published by this consumer change.

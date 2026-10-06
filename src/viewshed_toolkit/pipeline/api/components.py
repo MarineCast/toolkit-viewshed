@@ -45,6 +45,22 @@ def run_component_stage(
         raise ValueError(f"Unknown component stage: {stage}")
     if source_type not in {"land", "water"}:
         raise ValueError("source_type must be land or water")
+    if "marinecast_study" in app.raw_config:
+        from ..config.reporting import load_reporting_support
+
+        load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+    if "marinecast_study" in app.raw_config and stage in {
+        "build-dem-weights",
+        "build-chm-weights",
+        "compose-static-weights",
+        "finalize",
+        "validate",
+    }:
+        from ..config.reporting import validate_native_path_coverage
+
+        validate_native_path_coverage(
+            app.raw_config, app.viewshed.crs_projected, canopy=source_type == "land"
+        )
     root = component_root(app)
     if stage == "resolve-area":
         if "case_study" in app.raw_config:
@@ -87,9 +103,9 @@ def run_component_stage(
         from ..contracts.components import cache_matches, provenance, record_product
 
         if "marinecast_study" in app.raw_config:
-            from ..config.study import validate_shared_mask
+            from ..config.reporting import load_reporting_support
 
-            validate_shared_mask(app.raw_config, app.paths.water_polygon_path)
+            support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
 
         contract = provenance(
             app,
@@ -98,7 +114,18 @@ def run_component_stage(
                 if "marinecast_study" in app.raw_config
                 else "land_source_cells_v1"
             ),
-            {"land": app.paths.land_polygon_path, "water": app.paths.water_polygon_path},
+            {
+                "land": app.paths.land_polygon_path,
+                "water": app.paths.water_polygon_path,
+                **(
+                    {
+                        "reporting_mask": support.mask_path,
+                        "reporting_membership": support.membership_path,
+                    }
+                    if "marinecast_study" in app.raw_config
+                    else {}
+                ),
+            },
         )
         if not overwrite and cache_matches(app.paths.land_h3_path, contract):
             return app.paths.land_h3_path

@@ -170,14 +170,19 @@ def build_land_cells_for_config(
     shared_contract = None
     if shared is not None:
         from ...config import load_app_config
-        from ...config.study import validate_shared_mask
+        from ...config.reporting import load_reporting_support
         from ...contracts.components import cache_matches, provenance, record_product
 
-        validate_shared_mask(raw, water_path)
+        support = load_reporting_support(raw, projected_crs)
         shared_contract = provenance(
             load_app_config(config_path),
             "land_source_cells_shared_v2",
-            {"land": ne_path, "water": water_path},
+            {
+                "land": ne_path,
+                "water": water_path,
+                "reporting_mask": support.mask_path,
+                "reporting_membership": support.membership_path,
+            },
         )
 
     if land_h3_path.exists() and not overwrite:

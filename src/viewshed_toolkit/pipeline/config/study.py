@@ -300,6 +300,9 @@ def adapt_raw_config(raw: dict[str, Any], study: StudyConfig) -> dict[str, Any]:
         ),
     }
     adapted["marinecast_study"] = study.provenance()
+    adapted["marinecast_study"].update(
+        resolved_data_root=str(study.data_root), study_config_directory=str(study.path.parent)
+    )
     paths = adapted.setdefault("paths", {})
     for key in (
         "water_polygon_path",
@@ -314,6 +317,11 @@ def adapt_raw_config(raw: dict[str, Any], study: StudyConfig) -> dict[str, Any]:
             parts = value.parts[1:] if value.parts and value.parts[0] == "data" else value.parts
             value = study.data_root.joinpath(*parts)
         paths[key] = str(value.resolve())
+    if "reporting_water_polygon_path" in paths:
+        value = Path(paths["reporting_water_polygon_path"]).expanduser()
+        if not value.is_absolute():
+            value = study.data_root / value
+        paths["reporting_water_polygon_path"] = str(value.resolve())
     for dataset in adapted.get("datasets", {}).values():
         if dataset.get("provider") == "local":
             assets = []
@@ -349,10 +357,10 @@ def domain_polygons_from_raw(raw: dict[str, Any], crs: str) -> tuple[Any, Any, A
     study = raw.get("marinecast_study")
     if study is None:
         return None
-    buffers = study["producer_buffers"]
-    return support_polygons(
-        study["reporting_bbox_wgs84"], crs, buffers["line_of_sight_m"], buffers["aoi_margin_m"]
-    )
+    from .reporting import load_reporting_support
+
+    support = load_reporting_support(raw, crs)
+    return support.reporting_water, support.source_extent, support.native_extent
 
 
 def with_study_config(function: Callable[_P, _R]) -> Callable[_P, _R]:
@@ -405,7 +413,7 @@ def validate_study_app(app: Any) -> None:
 
 
 def validate_shared_mask(raw: dict[str, Any], path: Path) -> None:
-    """Bind actual native water bytes to the registry's raw SHA-256 mask identity."""
+    """Bind reporting mask bytes to the registry's raw SHA-256 identity."""
     study = raw.get("marinecast_study")
     if study is None:
         return
