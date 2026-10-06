@@ -73,7 +73,9 @@ entry resolves from the selected study directory and must remain under Data.
 The reader validates count, resolution, hash and exact equality with positive
 WGS84 ellipsoidal-area intersections of the qualified reporting mask. It uses
 H3 4.4 or later overlap enumeration; cell-center fill and zero-area touches are
-excluded. Mask and membership bytes are checked again before cached reuse.
+excluded. Mask and membership bytes are checked again before cached reuse. The cache binds
+all transported study validation metadata, including the planning envelope, and
+revalidates envelope containment before returning a warm cached result.
 
 Mixed cells may retain both observer roles. Shared source eligibility retains
 all positive mapped land/water intersections in the source extent, including
@@ -113,7 +115,8 @@ exact reporting membership. Geometry-only preparation can inspect eligible sourc
 and target roles. Before physical shared stages or canonical raster creation,
 read-only qualification requires native land/water union coverage through the
 31 km path extent, native water coverage of reporting water, declared raster CRS
-and complete raster footprints, finite non-null mapped-land DEM/CHM pixels,
+and complete actual affine raster footprints (including rotation/skew), with
+explicit uncovered-path accounting, finite non-null mapped-land DEM/CHM pixels,
 ISO `source_date`, DEM `vertical_reference` and metre units, and canopy
 `height_reference=above_ground` and metre units. ETH sentinel 255 remains missing.
 These conservative gates do not repair missing canopy or infer source provenance

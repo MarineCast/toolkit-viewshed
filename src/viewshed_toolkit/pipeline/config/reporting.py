@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -13,7 +14,7 @@ from typing import Any
 import geopandas as gpd
 import h3
 from pyproj import Geod
-from shapely.geometry import box, mapping
+from shapely.geometry import Polygon, box, mapping
 from shapely.geometry.polygon import orient
 
 from viewshed_toolkit._internal.geo.geometry import safe_polygonal_union
@@ -189,6 +190,9 @@ def load_reporting_support(raw: dict[str, Any], crs: str) -> ReportingSupport:
     if mask_hash != registry["mask_sha256"]:
         raise ValueError("Reporting mask does not match shared mask_sha256 (raw file bytes)")
     buffers = study["producer_buffers"]
+    validation_hash = hashlib.sha256(
+        json.dumps(study, sort_keys=True, allow_nan=False).encode("utf-8")
+    ).hexdigest()
     key = (
         str(mask_path),
         mask_hash,
@@ -197,9 +201,14 @@ def load_reporting_support(raw: dict[str, Any], crs: str) -> ReportingSupport:
         crs,
         registry["mask_revision"],
         json.dumps(buffers, sort_keys=True),
+        validation_hash,
     )
     cached = _SUPPORT_CACHE.get(key)
     if cached is not None:
+        if not box(*study["reporting_bbox_wgs84"]).covers(cached.reporting_water):
+            raise ValueError("Reporting mask lies outside declared acquisition envelope")
+        if cached.identity["study_validation_sha256"] != validation_hash:
+            raise ValueError("Cached reporting support has stale study validation provenance")
         return cached
     water = read_polygon(mask_path)
     if file_sha256(mask_path) != mask_hash:
@@ -213,15 +222,16 @@ def load_reporting_support(raw: dict[str, Any], crs: str) -> ReportingSupport:
     )
     identity = {
         "interface_version": 1,
+        "study_validation_sha256": validation_hash,
         "mask_revision": registry["mask_revision"],
         "mask_sha256": mask_hash,
         "mask_hash_policy": "sha256_exact_file_bytes",
-        "membership": entry,
+        "membership": copy.deepcopy(entry),
         "membership_file_sha256": hashlib.sha256(payload).hexdigest(),
         "role": "water_reporting",
         "h3_version": h3.__version__,
         "area_engine": "pyproj.Geod WGS84 ellipsoid; positive polygon area",
-        "producer_buffers": buffers,
+        "producer_buffers": copy.deepcopy(buffers),
         "source_extent_wkb_sha256": hashlib.sha256(source.wkb).hexdigest(),
         "native_extent_wkb_sha256": hashlib.sha256(native.wkb).hexdigest(),
         "projected_crs": crs,
@@ -260,9 +270,24 @@ def validate_native_path_coverage(raw: dict[str, Any], crs: str, *, canopy: bool
             if raster.crs is None:
                 raise ValueError(f"Native {name} raster has no CRS")
             native = gpd.GeoSeries([support.native_extent], crs=4326).to_crs(raster.crs).iloc[0]
-            if not box(*raster.bounds).covers(native):
+            footprint = Polygon(
+                [
+                    raster.transform * point
+                    for point in (
+                        (0, 0),
+                        (raster.width, 0),
+                        (raster.width, raster.height),
+                        (0, raster.height),
+                    )
+                ]
+            )
+            if footprint.is_empty or not footprint.is_valid:
+                raise ValueError(f"Native {name} raster has an invalid affine footprint")
+            uncovered = native.difference(footprint)
+            if not footprint.covers(native):
                 raise ValueError(
-                    f"Native {name} raster does not cover complete paths plus AOI margin"
+                    f"Native {name} raster does not cover complete paths plus AOI margin; "
+                    f"uncovered area in raster CRS squared units={uncovered.area}"
                 )
             tags = raster.tags()
             if not tags.get("source_date"):
@@ -312,6 +337,8 @@ def validate_native_path_coverage(raw: dict[str, Any], crs: str, *, canopy: bool
                 "valid_land_pixels": valid_land_pixels,
                 "missing_land_pixels": missing_land_pixels,
                 "native_path_coverage": "complete",
+                "affine_footprint_wkb_sha256": hashlib.sha256(footprint.wkb).hexdigest(),
+                "uncovered_path_area_raster_crs_squared_units": float(uncovered.area),
             }
     result["native_water_sha256"] = file_sha256(native_water_path)
     result["native_land_sha256"] = file_sha256(land_path)

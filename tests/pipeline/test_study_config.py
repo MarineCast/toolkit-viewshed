@@ -879,3 +879,71 @@ def test_consumer_never_falls_back_to_planning_envelope(coastal_study):
     request = acquisition_request(app, "dem")
     assert request["acquisition_bbox"] == list(support.native_extent.bounds)
     assert request["reporting_support"]["membership"]["count"] == len(support.cells)
+
+
+def test_reporting_cache_revalidates_changed_planning_envelope(coastal_study):
+    from viewshed_toolkit.pipeline.config.reporting import _SUPPORT_CACHE
+
+    _, _, app, _, _ = coastal_study
+    support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+    assert load_reporting_support(app.raw_config, app.viewshed.crs_projected) == support
+    raw = copy.deepcopy(app.raw_config)
+    raw["marinecast_study"]["reporting_bbox_wgs84"] = [-123, 48, -122.99, 48.01]
+    with pytest.raises(ValueError, match="outside declared acquisition envelope"):
+        load_reporting_support(raw, app.viewshed.crs_projected)
+    _SUPPORT_CACHE.clear()
+    with pytest.raises(ValueError, match="outside declared acquisition envelope"):
+        load_reporting_support(raw, app.viewshed.crs_projected)
+
+
+@pytest.mark.parametrize("side_km,qualified", [(50, False), (100, True)])
+def test_native_coverage_uses_rotated_affine_footprint(coastal_study, side_km, qualified):
+    import numpy as np
+    import rasterio
+    from affine import Affine
+    from shapely.geometry import Polygon
+
+    _, _, app, _, _ = coastal_study
+    support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+    native = (
+        gpd.GeoSeries([support.native_extent], crs=4326).to_crs(app.viewshed.crs_projected).iloc[0]
+    )
+    cx, cy = native.centroid.coords[0]
+    transform = (
+        Affine.translation(cx, cy)
+        * Affine.rotation(45)
+        * Affine.translation(-side_km * 500, side_km * 500)
+        * Affine.scale(1000, -1000)
+    )
+    footprint = Polygon(
+        [transform * point for point in [(0, 0), (side_km, 0), (side_km, side_km), (0, side_km)]]
+    )
+    with rasterio.open(
+        app.paths.regional_dem_path,
+        "w",
+        driver="GTiff",
+        width=side_km,
+        height=side_km,
+        count=1,
+        dtype="float32",
+        crs=app.viewshed.crs_projected,
+        transform=transform,
+        nodata=-9999,
+    ) as raster:
+        raster.write(np.full((side_km, side_km), 10, dtype="float32"), 1)
+        raster.update_tags(
+            source_date="2020-01-01", vertical_reference="synthetic_test_only", vertical_units="m"
+        )
+    with rasterio.open(app.paths.regional_dem_path) as raster:
+        assert box(*raster.bounds).covers(native)
+    assert footprint.covers(native) is qualified
+    if qualified:
+        receipt = validate_native_path_coverage(
+            app.raw_config, app.viewshed.crs_projected, canopy=False
+        )
+        assert receipt["native_rasters"]["dem"]["uncovered_path_area_raster_crs_squared_units"] == 0
+        assert receipt["native_rasters"]["dem"]["valid_land_pixels"] > 0
+    else:
+        assert native.difference(footprint).area > 1e9
+        with pytest.raises(ValueError, match="uncovered area"):
+            validate_native_path_coverage(app.raw_config, app.viewshed.crs_projected, canopy=False)
