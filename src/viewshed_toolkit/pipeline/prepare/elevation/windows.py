@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import rasterio
 from rasterio.crs import CRS
+from rasterio.enums import MaskFlags
 from rasterio.warp import Resampling, calculate_default_transform, reproject
 from rasterio.windows import Window, from_bounds
 
@@ -20,44 +21,61 @@ from ...config.study import require_shared_owned_output, with_study_config
 from ...contracts.warp import GlobalWarpChunkPlan, validate_global_warp_chunk_plan
 from .cache import cache_fingerprint, input_signature
 from .terrain import validate_batch_guardrails
+from .warp_planner import generate_native_warp_chunk_plan, warp_plan_contract
 
 
 def _load_chunk_plan(
-    app: AppConfig, source: Any, transform: Any, width: int, height: int
+    app: AppConfig, source_path: Path, transform: Any, width: int, height: int, *, kind: str
 ) -> tuple[GlobalWarpChunkPlan, dict[str, str | int]]:
-    if app.batch.warp_chunk_plan_path is None:
-        raise ValueError(
-            "Cross-CRS/resolution windowing requires a pinned producer global warp chunk plan; "
-            "warp parity is unqualified without it"
+    supplied = (
+        app.batch.warp_chunk_plan_path if kind == "dem" else app.batch.canopy_warp_chunk_plan_path
+    )
+    pinned = (
+        app.batch.warp_chunk_plan_sha256
+        if kind == "dem"
+        else app.batch.canopy_warp_chunk_plan_sha256
+    )
+    if supplied is None:
+        path = generate_native_warp_chunk_plan(
+            app, source_path, transform, width, height, kind=kind
         )
-    path = Path(app.batch.warp_chunk_plan_path)
-    if not path.is_absolute():
-        path = app.config_path.parent / path
+    else:
+        path = Path(supplied)
+        if not path.is_absolute():
+            path = app.config_path.parent / path
     signature = input_signature(path)
-    if signature["sha256"] != app.batch.warp_chunk_plan_sha256:
+    if supplied is not None and signature["sha256"] != pinned:
         raise ValueError("Global warp chunk plan SHA256 mismatch")
-    expected = {
-        "schema_version": 1,
-        "method": "rasterio_global_gdal_chunks_v1",
-        "source_sha256": input_signature(app.paths.regional_dem_path)["sha256"],
-        "source_bytes": app.paths.regional_dem_path.stat().st_size,
-        "transform": list(transform),
-        "shape": [height, width],
-        "crs": app.viewshed.crs_projected,
-        "destination_block_size": app.raster.block_size,
-        "rasterio_version": rasterio.__version__,
-        "gdal_version": rasterio.__gdal_version__,
-        "resampling": "bilinear",
-        "transformer_tolerance": 0.125,
-        "warp_memory_mib": 64,
-        "num_threads": 1,
-    }
-    plan = validate_global_warp_chunk_plan(json.loads(path.read_text()), expected=expected)
-    return plan, signature
+    payload = json.loads(path.read_text())
+    expected = warp_plan_contract(
+        app,
+        source_path,
+        transform,
+        width,
+        height,
+        kind=kind,
+        schema_version=payload.get("schema_version", 1),
+    )
+    return validate_global_warp_chunk_plan(payload, expected=expected), signature
 
 
 @with_study_config
 def ensure_projected_dem_window(app: AppConfig, bounds: tuple[float, float, float, float]) -> Path:
+    return _ensure_source_window(app, bounds, kind="dem")
+
+
+@with_study_config
+def ensure_canopy_window(app: AppConfig, reference_window: Path) -> Path:
+    if app.viewshed.canopy_resampling != "max":
+        raise ValueError("Windowed canopy requires the established maximum resampler")
+    with rasterio.open(reference_window) as reference:
+        bounds = tuple(reference.bounds)
+    return _ensure_source_window(app, bounds, kind="canopy")
+
+
+def _ensure_source_window(
+    app: AppConfig, bounds: tuple[float, float, float, float], *, kind: str
+) -> Path:
     """Stream one aligned window; never materialize the full regional DEM.
 
     Already aligned inputs are copied exactly. Other inputs replay pinned
@@ -68,28 +86,30 @@ def ensure_projected_dem_window(app: AppConfig, bounds: tuple[float, float, floa
     """
     if len(bounds) != 4 or not all(math.isfinite(value) for value in bounds):
         raise ValueError("Projected window bounds must be finite")
-    with rasterio.open(app.paths.regional_dem_path) as source:
+    source_path = app.paths.regional_dem_path if kind == "dem" else app.paths.canopy_height_path
+    with rasterio.open(app.paths.regional_dem_path) as dem:
+        transform, width, height = calculate_default_transform(
+            dem.crs,
+            app.viewshed.crs_projected,
+            dem.width,
+            dem.height,
+            *dem.bounds,
+            resolution=app.viewshed.dem_resolution_m,
+        )
+    with rasterio.open(source_path) as source:
+        if source.count != 1 or source.mask_flag_enums[0] not in (
+            [MaskFlags.nodata],
+            [MaskFlags.all_valid],
+        ):
+            raise ValueError("Window replay requires a single band without external/alpha masks")
+        if source.gcps[0] or source.tags(ns="RPC") or source.tags(ns="GEOLOCATION"):
+            raise ValueError("Window replay requires qualified affine georeferencing")
         aligned = (
             source.crs == CRS.from_user_input(app.viewshed.crs_projected)
-            and source.transform.b == 0
-            and source.transform.d == 0
-            and source.transform.a == app.viewshed.dem_resolution_m
-            and source.transform.e == -app.viewshed.dem_resolution_m
+            and source.transform == transform
         )
         plan = None
         plan_signature = None
-        if aligned:
-            transform, width, height = source.transform, source.width, source.height
-        else:
-            transform, width, height = calculate_default_transform(
-                source.crs,
-                app.viewshed.crs_projected,
-                source.width,
-                source.height,
-                *source.bounds,
-                resolution=app.viewshed.dem_resolution_m,
-            )
-            plan, plan_signature = _load_chunk_plan(app, source, transform, width, height)
         window = from_bounds(*bounds, transform).round_offsets().round_lengths()
         window = window.intersection(Window(0, 0, width, height))
         if window.width <= 0 or window.height <= 0:
@@ -102,6 +122,10 @@ def ensure_projected_dem_window(app: AppConfig, bounds: tuple[float, float, floa
             max_batch_aoi_pixels=app.batch.max_batch_aoi_pixels,
             max_estimated_batch_memory_mb=app.batch.max_estimated_batch_memory_mb,
         )
+        if not aligned:
+            plan, plan_signature = _load_chunk_plan(
+                app, source_path, transform, width, height, kind=kind
+            )
         selected_chunks = []
         if plan is not None:
             for x, y, w, h in plan.chunks:
@@ -117,24 +141,33 @@ def ensure_projected_dem_window(app: AppConfig, bounds: tuple[float, float, floa
                 )
                 selected_chunks.append(chunk)
         identity = {
-            "algorithm": "projected_dem_original_warp_chunks_window_v2",
-            "source": input_signature(app.paths.regional_dem_path),
+            "algorithm": "original_warp_chunks_window_v3",
+            "kind": kind,
+            "source": input_signature(source_path),
             "global_grid": {
                 "transform": list(transform),
                 "shape": [height, width],
                 "crs": app.viewshed.crs_projected,
             },
             "window": [window.col_off, window.row_off, window.width, window.height],
-            "resampling": "none_exact_source_window" if aligned else "bilinear",
+            "resampling": (
+                "exact_grid_nodata_normalization"
+                if aligned and kind == "canopy"
+                else (
+                    "none_exact_source_window"
+                    if aligned
+                    else "bilinear" if kind == "dem" else "max"
+                )
+            ),
             "producer_chunk_plan": plan_signature,
             "computed_chunks": [list(chunk.flatten()) for chunk in selected_chunks],
         }
         fingerprint = cache_fingerprint(identity)
         path = (
             app.paths.projected_dem_path.parent
-            / "projected_dem_windows"
+            / ("projected_dem_windows" if kind == "dem" else "aligned_canopy_windows")
             / fingerprint[:20]
-            / "projected_dem.tif"
+            / ("projected_dem.tif" if kind == "dem" else "aligned_canopy.tif")
         )
         require_shared_owned_output(app.raw_config, path)
         receipt_path = path.with_suffix(".tif.metadata.json")
@@ -156,6 +189,7 @@ def ensure_projected_dem_window(app: AppConfig, bounds: tuple[float, float, floa
             transform=rasterio.windows.transform(window, transform),
             width=int(window.width),
             height=int(window.height),
+            **({"dtype": "float32", "nodata": np.nan} if kind == "canopy" else {}),
         )
         with (
             rasterio.Env(GDAL_CACHEMAX=64 * 1024**2),
@@ -169,22 +203,37 @@ def ensure_projected_dem_window(app: AppConfig, bounds: tuple[float, float, floa
                         block.width,
                         block.height,
                     )
-                    destination.write(source.read(1, window=source_window), 1, window=block)
+                    values = (
+                        source.read(1, window=source_window, masked=True, boundless=True)
+                        .astype("float32")
+                        .filled(np.nan)
+                        if kind == "canopy"
+                        else source.read(
+                            1,
+                            window=source_window,
+                            boundless=True,
+                            fill_value=source.nodata if source.nodata is not None else 0,
+                        )
+                    )
+                    destination.write(values, 1, window=block)
             else:
                 for chunk in selected_chunks:
                     # The original source band is kept intact: GDAL computes
                     # its original halo/context for the complete producer chunk.
-                    values = np.empty((int(chunk.height), int(chunk.width)), dtype=source.dtypes[0])
+                    values = np.empty(
+                        (int(chunk.height), int(chunk.width)),
+                        dtype="float32" if kind == "canopy" else source.dtypes[0],
+                    )
                     reproject(
                         source=rasterio.band(source, 1),
                         destination=values,
                         src_transform=source.transform,
                         src_crs=source.crs,
                         src_nodata=source.nodata,
-                        dst_nodata=source.nodata,
+                        dst_nodata=np.nan if kind == "canopy" else source.nodata,
                         dst_transform=rasterio.windows.transform(chunk, transform),
                         dst_crs=app.viewshed.crs_projected,
-                        resampling=Resampling.bilinear,
+                        resampling=Resampling.max if kind == "canopy" else Resampling.bilinear,
                         tolerance=0.125,
                         warp_mem_limit=64,
                         num_threads=1,
@@ -213,8 +262,8 @@ def ensure_projected_dem_window(app: AppConfig, bounds: tuple[float, float, floa
         and input_signature(Path(str(plan_signature["path"]))) != plan_signature
     ):
         raise ValueError("Producer chunk plan changed during window reprojection")
-    if input_signature(app.paths.regional_dem_path) != identity["source"]:
-        raise ValueError("Source DEM changed during window reprojection")
+    if input_signature(source_path) != identity["source"]:
+        raise ValueError("Source raster changed during window reprojection")
     receipt: dict[str, Any] = {"identity": identity, "output": input_signature(path)}
     receipt_path.write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
     return path

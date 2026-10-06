@@ -1149,10 +1149,35 @@ def test_windowed_canopy_resolution_warp_needs_independent_qualification(coastal
     assert not (app.paths.projected_dem_path.parent / "projected_dem_windows").exists()
 
 
+@pytest.fixture(scope="module")
+def study_native_helper(tmp_path_factory):
+    import subprocess
+    import sys
+
+    path = tmp_path_factory.mktemp("study-native-helper") / "planner"
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/build_native_warp_helper.py"),
+            "--output",
+            str(path),
+            "--gdal-config",
+            str(Path(sys.prefix) / "bin/gdal-config"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return path
+
+
+@pytest.mark.parametrize("resolution", [1000, 500])
 @pytest.mark.parametrize(
     "surface,role", [("bare_earth", "land"), ("canopy", "land"), ("bare_earth", "water")]
 )
-def test_windowed_native_h3_kernel_matches_global_stack(coastal_study, surface, role):
+def test_windowed_native_h3_kernel_matches_global_stack(
+    coastal_study, study_native_helper, surface, role, resolution
+):
     from dataclasses import replace
 
     import pandas as pd
@@ -1166,8 +1191,13 @@ def test_windowed_native_h3_kernel_matches_global_stack(coastal_study, surface, 
     app = apply_source_type_policy(app, role)
     app = replace(
         app,
-        viewshed=replace(app.viewshed, dem_resolution_m=1000, surface_model=surface),
-        batch=replace(app.batch, max_workers=1),
+        viewshed=replace(app.viewshed, dem_resolution_m=resolution, surface_model=surface),
+        batch=replace(
+            app.batch,
+            max_workers=1,
+            native_warp_helper_path=str(study_native_helper),
+            native_warp_helper_sha256=hashlib.sha256(study_native_helper.read_bytes()).hexdigest(),
+        ),
         run=replace(app.run, keep_batch_intermediates=True),
     )
     cell = h3.latlng_to_cell(48.005, -123.035 if role == "land" else -122.99, 7)

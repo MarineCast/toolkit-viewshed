@@ -233,17 +233,29 @@ class BatchConfig:
     raster_stack_mode: str = "global"
     warp_chunk_plan_path: str | None = None
     warp_chunk_plan_sha256: str | None = None
+    canopy_warp_chunk_plan_path: str | None = None
+    canopy_warp_chunk_plan_sha256: str | None = None
+    native_warp_helper_path: str | None = None
+    native_warp_helper_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if self.raster_stack_mode not in {"global", "windowed"}:
             raise ValueError("batch.raster_stack_mode must be global or windowed")
-        if (self.warp_chunk_plan_path is None) != (self.warp_chunk_plan_sha256 is None):
-            raise ValueError("Warp chunk plan path and SHA256 must be supplied together")
-        if self.warp_chunk_plan_sha256 is not None and (
-            len(self.warp_chunk_plan_sha256) != 64
-            or any(c not in "0123456789abcdef" for c in self.warp_chunk_plan_sha256)
+        for name, path, checksum in (
+            ("DEM chunk plan", self.warp_chunk_plan_path, self.warp_chunk_plan_sha256),
+            (
+                "canopy chunk plan",
+                self.canopy_warp_chunk_plan_path,
+                self.canopy_warp_chunk_plan_sha256,
+            ),
+            ("native warp helper", self.native_warp_helper_path, self.native_warp_helper_sha256),
         ):
-            raise ValueError("Warp chunk plan SHA256 must be canonical lowercase hexadecimal")
+            if (path is None) != (checksum is None):
+                raise ValueError(f"{name} path and SHA256 must be supplied together")
+            if checksum is not None and (
+                len(checksum) != 64 or any(c not in "0123456789abcdef" for c in checksum)
+            ):
+                raise ValueError(f"{name} SHA256 must be canonical lowercase hexadecimal")
 
 
 @dataclass(frozen=True)

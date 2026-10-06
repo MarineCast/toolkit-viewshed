@@ -337,7 +337,11 @@ def ensure_canonical_raster_stack(
     if window_bounds is not None:
         from ..elevation.windows import ensure_projected_dem_window
 
-        if include_canopy:
+        if (
+            include_canopy
+            and app.batch.native_warp_helper_path is None
+            and app.batch.canopy_warp_chunk_plan_path is None
+        ):
             # A differently warped CHM can change maximum canopy heights at
             # tile edges even when the DEM is already aligned. Until native
             # warp parity is qualified, require the original shared grid.
@@ -362,6 +366,11 @@ def ensure_canonical_raster_stack(
         projected_dem = ensure_projected_dem_window(app, window_bounds)
     else:
         projected_dem = ensure_projected_regional_dem(app)
+    canopy_window = None
+    if include_canopy and window_bounds is not None:
+        from ..elevation.windows import ensure_canopy_window
+
+        canopy_window = ensure_canopy_window(app, projected_dem)
     core_contract = {
         "algorithm_version": CANONICAL_RASTER_STACK_ALGORITHM_VERSION,
         "projected_dem": _canonical_raster_signature(projected_dem),
@@ -405,6 +414,9 @@ def ensure_canonical_raster_stack(
             ),
             "missing_canopy_base_value_m": 0.0,
             "nodata_policy_validation": "deferred_to_batch",
+            "windowed_alignment": (
+                _canonical_raster_signature(canopy_window) if canopy_window is not None else None
+            ),
         }
         canopy_fingerprint = _canonical_contract_fingerprint(canopy_contract)
         canopy_root = cache_root / "canopy" / canopy_fingerprint[:20]
@@ -509,14 +521,26 @@ def ensure_canonical_raster_stack(
             reference_path=endpoint_dem_path,
         )
         if not canopy_valid:
-            align_canopy_height_to_endpoint_dem(
-                config.canopy_height_path,
-                endpoint_dem_path,
-                aligned_canopy_path,
-                resampling=config.canopy_resampling,
-                overwrite=True,
-                compress=app.raster.intermediate_compress,
-            )
+            if canopy_window is not None:
+                with rasterio.open(endpoint_dem_path) as endpoint:
+                    endpoint_bounds = tuple(endpoint.bounds)
+                core_raster.clip_raster_to_bounds(
+                    canopy_window,
+                    aligned_canopy_path,
+                    endpoint_bounds,
+                    overwrite=True,
+                    compress=app.raster.intermediate_compress,
+                    block_size=app.raster.block_size,
+                )
+            else:
+                align_canopy_height_to_endpoint_dem(
+                    config.canopy_height_path,
+                    endpoint_dem_path,
+                    aligned_canopy_path,
+                    resampling=config.canopy_resampling,
+                    overwrite=True,
+                    compress=app.raster.intermediate_compress,
+                )
             build_canonical_canopy_base_surface(
                 endpoint_dem_path=endpoint_dem_path,
                 water_mask_path=water_mask_path,

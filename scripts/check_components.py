@@ -19,6 +19,7 @@ PATTERNS = (
     "src/viewshed_toolkit/pipeline/finalize/aggregate.py",
     "src/viewshed_toolkit/pipeline/prepare/datasets.py",
     "src/viewshed_toolkit/pipeline/prepare/elevation/windows.py",
+    "src/viewshed_toolkit/pipeline/prepare/elevation/warp_planner.py",
     "src/viewshed_toolkit/pipeline/prepare/area/target_cells.py",
     "src/viewshed_toolkit/pipeline/providers/*.py",
     "src/viewshed_toolkit/pipeline/weights/distance/products.py",
@@ -35,6 +36,8 @@ def main() -> None:
         "tests/pipeline/test_case_study.py",
         "tests/pipeline/test_distance_products.py",
         "tests/pipeline/test_study_config.py",
+        "tests/pipeline/test_native_warp_planner.py",
+        "scripts/build_native_warp_helper.py",
         __file__,
     ]
     subprocess.run(

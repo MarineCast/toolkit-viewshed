@@ -213,8 +213,8 @@ for the intentionally preserved scientific model.
 ## Bounded DEM preparation
 
 The existing source runner can select `batch.raster_stack_mode: windowed`; cross-CRS/resolution
-inputs additionally require a pinned producer chunk receipt in `batch.warp_chunk_plan_path` and
-`batch.warp_chunk_plan_sha256`. This opt-in preserves the established global warp processing
+inputs additionally require a pinned producer chunk receipt or an explicitly built and pinned
+native metadata planner. Canopy alignment has its own maximum-resampling receipt. This opt-in preserves the established global warp processing
 contexts and crops only requested LOS windows. See [bounded native windows](BOUNDED_WINDOWS.md)
-for qualification, receipt provenance, canopy restrictions and resource-limit requirements.
+for qualification, receipt provenance, helper build instructions and resource-limit requirements.
 No acquisition or full reference warp runs implicitly, and default global behavior is unchanged.
