@@ -257,3 +257,14 @@ def test_aligned_source_mask_cannot_skip_window_qualification(tmp_path):
     with pytest.raises(ValueError, match="without external/alpha masks"):
         ensure_projected_dem_window(app, (500000, 5399000, 501000, 5400000))
     assert not list(tmp_path.rglob("projected_dem_windows"))
+
+
+def test_boolean_schema_cannot_become_legacy_receipt():
+    expected = {
+        "schema_version": True,
+        "shape": [10, 10],
+        "transform": [30, 0, 0, 0, -30, 0, 0, 0, 1],
+    }
+    payload = {**expected, "chunks": [[0, 0, 10, 10]], "producer_reference_sha256": "a" * 64}
+    with pytest.raises(ValueError, match="Unsupported"):
+        validate_global_warp_chunk_plan(payload, expected=expected)

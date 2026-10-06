@@ -29,7 +29,7 @@ def validate_global_warp_chunk_plan(
     not interchangeable with the original warp's processing chunks.
     """
     version = expected.get("schema_version", 1)
-    if version not in {1, 2}:
+    if type(version) is not int or version not in {1, 2}:
         raise ValueError("Unsupported global warp chunk schema")
     required = {*expected, "chunks", "producer_reference_sha256" if version == 1 else "planner"}
     if set(payload) != required or any(
