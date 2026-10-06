@@ -231,10 +231,19 @@ class BatchConfig:
     max_estimated_batch_memory_mb: float | None = None
     strategy: str = "sequential"
     raster_stack_mode: str = "global"
+    warp_chunk_plan_path: str | None = None
+    warp_chunk_plan_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if self.raster_stack_mode not in {"global", "windowed"}:
             raise ValueError("batch.raster_stack_mode must be global or windowed")
+        if (self.warp_chunk_plan_path is None) != (self.warp_chunk_plan_sha256 is None):
+            raise ValueError("Warp chunk plan path and SHA256 must be supplied together")
+        if self.warp_chunk_plan_sha256 is not None and (
+            len(self.warp_chunk_plan_sha256) != 64
+            or any(c not in "0123456789abcdef" for c in self.warp_chunk_plan_sha256)
+        ):
+            raise ValueError("Warp chunk plan SHA256 must be canonical lowercase hexadecimal")
 
 
 @dataclass(frozen=True)

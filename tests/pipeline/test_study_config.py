@@ -1137,6 +1137,18 @@ def test_windowed_canopy_grid_mismatch_fails_before_allocation(coastal_study):
     assert not (app.paths.projected_dem_path.parent / "projected_dem_windows").exists()
 
 
+def test_windowed_canopy_resolution_warp_needs_independent_qualification(coastal_study):
+    from viewshed_toolkit.pipeline.prepare.area.raster_stack import ensure_canonical_raster_stack
+
+    selected, _, app, _, _ = coastal_study
+    synthetic_native_rasters(app)
+    with study_selection(selected), pytest.raises(ValueError, match="canopy maximum-resampling"):
+        ensure_canonical_raster_stack(
+            app, include_canopy=True, window_bounds=(460000, 5290000, 530000, 5360000)
+        )
+    assert not (app.paths.projected_dem_path.parent / "projected_dem_windows").exists()
+
+
 @pytest.mark.parametrize(
     "surface,role", [("bare_earth", "land"), ("canopy", "land"), ("bare_earth", "water")]
 )
@@ -1198,3 +1210,174 @@ def test_windowed_native_h3_kernel_matches_global_stack(coastal_study, surface, 
         right.combined_observers.reset_index(drop=True),
         check_exact=True,
     )
+
+
+@pytest.mark.parametrize("source_crs", ["EPSG:4326", "EPSG:5070"])
+@pytest.mark.parametrize("nodata", [None, -9999, float("nan")])
+def test_original_global_warp_chunks_preserve_cross_crs_pixels(
+    tmp_path, caplog, source_crs, nodata
+):
+    import logging
+    import re
+    from dataclasses import replace
+
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+    from rasterio.windows import Window
+
+    from viewshed_toolkit._internal.geo.raster import reproject_raster
+    from viewshed_toolkit.pipeline.prepare.elevation.windows import ensure_projected_dem_window
+
+    app = load_app_config(ROOT / "configs/salish_sea.yaml")
+    source = tmp_path / "source.tif"
+    transform = (
+        from_origin(-123.06, 48.06, 0.0003, 0.0003)
+        if source_crs == "EPSG:4326"
+        else from_origin(-2029873, 3099663, 8.113975, 8.113975)
+    )
+    rows, columns = np.mgrid[:181, :191]
+    values = (20 + 7 * np.sin(rows / 4) + columns / 2).astype("float32")
+    if nodata is not None:
+        values[50:70, 60:80] = nodata
+    with rasterio.open(
+        source,
+        "w",
+        driver="GTiff",
+        width=191,
+        height=181,
+        count=1,
+        dtype="float32",
+        crs=source_crs,
+        transform=transform,
+        nodata=nodata,
+    ) as raster:
+        raster.write(values, 1)
+    global_path = tmp_path / "global.tif"
+    with caplog.at_level(logging.DEBUG, logger="rasterio._err"), rasterio.Env(CPL_DEBUG=True):
+        reproject_raster(
+            source,
+            global_path,
+            "EPSG:32610",
+            30,
+            compress=app.raster.intermediate_compress,
+            block_size=app.raster.block_size,
+        )
+    chunks = []
+    for record in caplog.records:
+        match = re.search(r"GDALWarpKernel\(\).*Dst=(\d+),(\d+),(\d+)x(\d+)", record.getMessage())
+        if match:
+            chunks.append([int(value) for value in match.groups()])
+    with rasterio.open(global_path) as global_raster:
+        transform, width, height = (
+            global_raster.transform,
+            global_raster.width,
+            global_raster.height,
+        )
+    assert chunks == [[0, 0, width, height]]
+    payload = {
+        "schema_version": 1,
+        "method": "rasterio_global_gdal_chunks_v1",
+        "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        "source_bytes": source.stat().st_size,
+        "transform": list(transform),
+        "shape": [height, width],
+        "crs": "EPSG:32610",
+        "destination_block_size": app.raster.block_size,
+        "rasterio_version": rasterio.__version__,
+        "gdal_version": rasterio.__gdal_version__,
+        "resampling": "bilinear",
+        "transformer_tolerance": 0.125,
+        "warp_memory_mib": 64,
+        "num_threads": 1,
+        "producer_reference_sha256": hashlib.sha256(global_path.read_bytes()).hexdigest(),
+        "chunks": chunks,
+    }
+    plan = tmp_path / "chunk-plan.json"
+    plan.write_text(json.dumps(payload))
+    app = replace(
+        app,
+        paths=replace(
+            app.paths, regional_dem_path=source, projected_dem_path=tmp_path / "unused_global.tif"
+        ),
+        batch=replace(
+            app.batch,
+            warp_chunk_plan_path=str(plan),
+            warp_chunk_plan_sha256=hashlib.sha256(plan.read_bytes()).hexdigest(),
+        ),
+    )
+    window = Window(7, 9, 21, 19)
+    with rasterio.open(global_path) as global_raster:
+        expected = global_raster.read(1, window=window)
+        bounds = global_raster.window_bounds(window)
+        expected_transform = global_raster.window_transform(window)
+    tiled = ensure_projected_dem_window(app, bounds)
+    with rasterio.open(tiled) as raster:
+        assert raster.transform == expected_transform
+        np.testing.assert_array_equal(raster.read(1), expected, strict=True)
+    assert ensure_projected_dem_window(app, bounds) == tiled
+    # Reject an oversized original context even when the requested crop is tiny.
+    guarded = replace(app, batch=replace(app.batch, max_batch_aoi_pixels=500))
+    with pytest.raises(ValueError, match="too large"):
+        ensure_projected_dem_window(guarded, bounds)
+    # Pinned receipt mutation fails before returning a previously cached output.
+    plan.write_text(json.dumps({**payload, "transformer_tolerance": 0.0}))
+    with pytest.raises(ValueError, match="SHA256 mismatch"):
+        ensure_projected_dem_window(app, bounds)
+    assert not app.paths.projected_dem_path.exists()
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "duplicate",
+        "gap",
+        "outside",
+        "fractional",
+        "boolean",
+        "resampler",
+        "tolerance",
+        "version",
+        "extra",
+        "source",
+    ],
+)
+def test_warp_chunk_receipt_contract_rejects_invalid_partitions_and_method(damage):
+    from viewshed_toolkit.pipeline.contracts.warp import validate_global_warp_chunk_plan
+
+    expected = {
+        "transform": [30, 0, 500000, 0, -30, 5400000, 0, 0, 1],
+        "shape": [100, 100],
+        "resampling": "bilinear",
+        "transformer_tolerance": 0.125,
+        "gdal_version": "current",
+        "source_sha256": "a" * 64,
+    }
+    payload = {
+        **expected,
+        "producer_reference_sha256": "b" * 64,
+        "chunks": [[0, 0, 100, 50], [0, 50, 100, 50]],
+    }
+    validate_global_warp_chunk_plan(payload, expected=expected)
+    if damage == "duplicate":
+        payload["chunks"] = [[0, 0, 100, 50], [0, 0, 100, 50]]
+    elif damage == "gap":
+        payload["chunks"] = [[0, 0, 100, 99]]
+    elif damage == "outside":
+        payload["chunks"] = [[0, 0, 101, 100]]
+    elif damage == "fractional":
+        payload["chunks"][0][0] = 0.0
+    elif damage == "boolean":
+        payload["chunks"][0][0] = False
+    elif damage == "resampler":
+        payload["resampling"] = "nearest"
+    elif damage == "tolerance":
+        payload["transformer_tolerance"] = 0
+    elif damage == "version":
+        payload["gdal_version"] = "other"
+    elif damage == "source":
+        payload["source_sha256"] = "c" * 64
+    else:
+        payload["extra"] = "silently ignored"
+    with pytest.raises(ValueError):
+        validate_global_warp_chunk_plan(payload, expected=expected)

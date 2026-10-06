@@ -347,6 +347,18 @@ def ensure_canonical_raster_stack(
                 label_a="windowed_source_canopy",
                 label_b="windowed_source_dem",
             )
+            with rasterio.open(app.paths.regional_dem_path) as native:
+                if (
+                    native.crs != rasterio.crs.CRS.from_user_input(config.crs_projected)
+                    or native.transform.b != 0
+                    or native.transform.d != 0
+                    or native.transform.a != config.dem_resolution_m
+                    or native.transform.e != -config.dem_resolution_m
+                ):
+                    raise ValueError(
+                        "Windowed canopy requires an already aligned native grid; "
+                        "canopy maximum-resampling chunk parity is unqualified"
+                    )
         projected_dem = ensure_projected_dem_window(app, window_bounds)
     else:
         projected_dem = ensure_projected_regional_dem(app)
