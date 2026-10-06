@@ -230,6 +230,11 @@ class BatchConfig:
     max_batch_aoi_pixels: int | None = None
     max_estimated_batch_memory_mb: float | None = None
     strategy: str = "sequential"
+    raster_stack_mode: str = "global"
+
+    def __post_init__(self) -> None:
+        if self.raster_stack_mode not in {"global", "windowed"}:
+            raise ValueError("batch.raster_stack_mode must be global or windowed")
 
 
 @dataclass(frozen=True)

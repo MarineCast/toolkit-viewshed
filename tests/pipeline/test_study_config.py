@@ -947,3 +947,254 @@ def test_native_coverage_uses_rotated_affine_footprint(coastal_study, side_km, q
         assert native.difference(footprint).area > 1e9
         with pytest.raises(ValueError, match="uncovered area"):
             validate_native_path_coverage(app.raw_config, app.viewshed.crs_projected, canopy=False)
+
+
+@pytest.mark.parametrize("affine_type", ["rotated", "sheared"])
+@pytest.mark.parametrize("missing", ["none", "all", "partial"])
+def test_affine_blocks_cannot_skip_required_land_pixels(coastal_study, affine_type, missing):
+    import numpy as np
+    import rasterio
+    from affine import Affine
+    from rasterio.features import geometry_mask
+    from shapely.geometry import mapping
+
+    from viewshed_toolkit.pipeline.config.reporting import read_polygon
+
+    _, _, app, land_path, _ = coastal_study
+    support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+    native = (
+        gpd.GeoSeries([support.native_extent], crs=4326).to_crs(app.viewshed.crs_projected).iloc[0]
+    )
+    cx, cy = native.centroid.coords[0]
+    rotation = Affine.rotation(45) if affine_type == "rotated" else Affine.shear(25, 10)
+    transform = (
+        Affine.translation(cx, cy)
+        * rotation
+        * Affine.translation(-64000, 64000)
+        * Affine.scale(1000, -1000)
+    )
+    land = (
+        gpd.GeoSeries([read_polygon(land_path).intersection(support.native_extent)], crs=4326)
+        .to_crs(app.viewshed.crs_projected)
+        .iloc[0]
+    )
+    required = geometry_mask(
+        [mapping(land)], out_shape=(128, 128), transform=transform, invert=True, all_touched=True
+    )
+    assert required.sum() > 1000
+    values = np.full((128, 128), 10, dtype="float32")
+    if missing == "all":
+        values[:] = -9999
+    elif missing == "partial":
+        row, column = np.argwhere(required)[len(np.argwhere(required)) // 2]
+        values[row, column] = -9999
+    with rasterio.open(
+        app.paths.regional_dem_path,
+        "w",
+        driver="GTiff",
+        width=128,
+        height=128,
+        count=1,
+        dtype="float32",
+        crs=app.viewshed.crs_projected,
+        transform=transform,
+        nodata=-9999,
+        tiled=True,
+        blockxsize=32,
+        blockysize=32,
+    ) as raster:
+        raster.write(values, 1)
+        raster.update_tags(
+            source_date="2020-01-01", vertical_reference="synthetic_test_only", vertical_units="m"
+        )
+    if missing == "none":
+        receipt = validate_native_path_coverage(
+            app.raw_config, app.viewshed.crs_projected, canopy=False
+        )
+        assert receipt["native_rasters"]["dem"]["valid_land_pixels"] == int(required.sum())
+        assert receipt["native_rasters"]["dem"]["required_land_pixels"] == int(required.sum())
+    else:
+        with pytest.raises(ValueError, match="missing land pixels"):
+            validate_native_path_coverage(app.raw_config, app.viewshed.crs_projected, canopy=False)
+
+
+@pytest.mark.parametrize("cache_damage", ["stale", "incomplete"])
+def test_streamed_projected_windows_equal_global_grid(tmp_path, cache_damage):
+    from dataclasses import replace
+
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+    from rasterio.windows import Window
+
+    from viewshed_toolkit._internal.geo.raster import reproject_raster
+    from viewshed_toolkit.pipeline.prepare.elevation.windows import ensure_projected_dem_window
+
+    values = (np.arange(151 * 161).reshape(151, 161) / 30).astype("float32")
+    values[40:44, 58:64] = -9999
+    source = tmp_path / "raw.tif"
+    transform = from_origin(500000, 5400000, 30, 30)
+    with rasterio.open(
+        source,
+        "w",
+        driver="GTiff",
+        width=161,
+        height=151,
+        count=1,
+        dtype="float32",
+        crs="EPSG:32610",
+        transform=transform,
+        nodata=-9999,
+    ) as raster:
+        raster.write(values, 1)
+    global_path = tmp_path / "global.tif"
+    reproject_raster(source, global_path, "EPSG:32610", 30)
+    app = load_app_config(ROOT / "configs/salish_sea.yaml")
+    app = replace(
+        app,
+        paths=replace(
+            app.paths, regional_dem_path=source, projected_dem_path=tmp_path / "unused_global.tif"
+        ),
+        viewshed=replace(app.viewshed, dem_resolution_m=30),
+    )
+    with rasterio.open(global_path) as global_raster:
+        window = Window(10, 10, 65, 73)
+        bounds = global_raster.window_bounds(window)
+        expected = global_raster.read(1, window=window)
+        expected_transform = global_raster.window_transform(window)
+    tiled = ensure_projected_dem_window(app, bounds)
+    assert not app.paths.projected_dem_path.exists()
+    with rasterio.open(tiled) as raster:
+        assert raster.transform == expected_transform
+        assert np.array_equal(raster.read(1), expected, equal_nan=True)
+    assert ensure_projected_dem_window(app, bounds) == tiled
+    if cache_damage == "stale":
+        with rasterio.open(tiled, "r+") as raster:
+            altered = raster.read(1)
+            altered[0, 0] += 1
+            raster.write(altered, 1)
+        message = "Stale projected"
+    else:
+        receipt = tiled.with_suffix(".tif.metadata.json")
+        receipt.rename(receipt.with_suffix(".preserved.json"))
+        message = "Incomplete projected"
+    preserved = tiled.read_bytes()
+    with pytest.raises(ValueError, match=message):
+        ensure_projected_dem_window(app, bounds)
+    assert tiled.read_bytes() == preserved
+
+
+def test_projected_window_guard_runs_before_raster_allocation(coastal_study):
+    from dataclasses import replace
+
+    from viewshed_toolkit.pipeline.prepare.elevation.windows import ensure_projected_dem_window
+
+    _, _, app, _, _ = coastal_study
+    synthetic_native_rasters(app)
+    app = replace(
+        app,
+        batch=replace(app.batch, max_batch_aoi_pixels=10),
+        viewshed=replace(app.viewshed, dem_resolution_m=1000),
+    )
+    with pytest.raises(ValueError, match="too large"):
+        ensure_projected_dem_window(app, (460000, 5290000, 530000, 5360000))
+    assert not (app.paths.projected_dem_path.parent / "projected_dem_windows").exists()
+
+
+def test_windowed_reprojection_fails_closed_before_allocation(coastal_study):
+    from viewshed_toolkit.pipeline.prepare.elevation.windows import ensure_projected_dem_window
+
+    _, _, app, _, _ = coastal_study
+    synthetic_native_rasters(app)  # 1000 m source cannot silently become the 30 m grid.
+    with pytest.raises(ValueError, match="warp parity is unqualified"):
+        ensure_projected_dem_window(app, (460000, 5290000, 530000, 5360000))
+    assert not (app.paths.projected_dem_path.parent / "projected_dem_windows").exists()
+
+
+def test_windowed_canopy_grid_mismatch_fails_before_allocation(coastal_study):
+    from dataclasses import replace
+
+    import rasterio
+    from affine import Affine
+
+    from viewshed_toolkit.pipeline.prepare.area.raster_stack import ensure_canonical_raster_stack
+
+    selected, _, app, _, _ = coastal_study
+    synthetic_native_rasters(app)
+    with rasterio.open(app.paths.canopy_height_path) as canopy:
+        profile = canopy.profile
+        data = canopy.read(1)
+        tags = canopy.tags()
+    profile["transform"] = Affine.translation(1, 0) * profile["transform"]
+    with rasterio.open(app.paths.canopy_height_path, "w", **profile) as canopy:
+        canopy.write(data, 1)
+        canopy.update_tags(**tags)
+    app = replace(app, viewshed=replace(app.viewshed, dem_resolution_m=1000))
+    with study_selection(selected), pytest.raises(ValueError, match="transform mismatch"):
+        ensure_canonical_raster_stack(
+            app, include_canopy=True, window_bounds=(460000, 5290000, 530000, 5360000)
+        )
+    assert not (app.paths.projected_dem_path.parent / "projected_dem_windows").exists()
+
+
+@pytest.mark.parametrize(
+    "surface,role", [("bare_earth", "land"), ("canopy", "land"), ("bare_earth", "water")]
+)
+def test_windowed_native_h3_kernel_matches_global_stack(coastal_study, surface, role):
+    from dataclasses import replace
+
+    import pandas as pd
+
+    from viewshed_toolkit.pipeline.config.loader import apply_source_type_policy
+    from viewshed_toolkit.pipeline.weights.terrain.runner import run_single_cell
+
+    pytest.importorskip("osgeo.gdal")
+    selected, _, app, _, _ = coastal_study
+    synthetic_native_rasters(app)
+    app = apply_source_type_policy(app, role)
+    app = replace(
+        app,
+        viewshed=replace(app.viewshed, dem_resolution_m=1000, surface_model=surface),
+        batch=replace(app.batch, max_workers=1),
+        run=replace(app.run, keep_batch_intermediates=True),
+    )
+    cell = h3.latlng_to_cell(48.005, -123.035 if role == "land" else -122.99, 7)
+    results = []
+    with study_selection(selected):
+        build_land_cells_for_config(app.config_path, overwrite=True)
+        build_source_target_lookup(app.config_path, overwrite=False)
+        for mode in ("global", "windowed"):
+            configured = replace(
+                app,
+                batch=replace(app.batch, raster_stack_mode=mode),
+                run=replace(app.run, name=f"parity_{surface}_{role}_{mode}"),
+                paths=replace(
+                    app.paths,
+                    partitioned_visibility_dir=app.paths.output_dir
+                    / "parity"
+                    / mode
+                    / "partitions",
+                ),
+            )
+            result = run_single_cell(configured, cell)
+            assert result.combined_h3 is not None
+            assert result.combined_observers is not None
+            results.append(result)
+    # Compare scientific fields while excluding run-specific metadata columns.
+    left, right = results
+    assert left.n_rows == right.n_rows > 0
+    scientific = [
+        name
+        for name in left.combined_h3.columns
+        if not name.startswith(("run_", "viewshed_", "config_"))
+    ]
+    pd.testing.assert_frame_equal(
+        left.combined_h3[scientific].reset_index(drop=True),
+        right.combined_h3[scientific].reset_index(drop=True),
+        check_exact=True,
+    )
+    pd.testing.assert_frame_equal(
+        left.combined_observers.reset_index(drop=True),
+        right.combined_observers.reset_index(drop=True),
+        check_exact=True,
+    )

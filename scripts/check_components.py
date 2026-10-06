@@ -17,6 +17,7 @@ PATTERNS = (
     "src/viewshed_toolkit/pipeline/prepare/area/case_study.py",
     "src/viewshed_toolkit/pipeline/finalize/aggregate.py",
     "src/viewshed_toolkit/pipeline/prepare/datasets.py",
+    "src/viewshed_toolkit/pipeline/prepare/elevation/windows.py",
     "src/viewshed_toolkit/pipeline/prepare/area/target_cells.py",
     "src/viewshed_toolkit/pipeline/providers/*.py",
     "src/viewshed_toolkit/pipeline/weights/distance/products.py",

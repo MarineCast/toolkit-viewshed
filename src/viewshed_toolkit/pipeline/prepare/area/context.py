@@ -150,6 +150,11 @@ def prepare_batch_context(
     canonical_stack = ensure_canonical_raster_stack(
         app,
         include_canopy=surface_model == "canopy",
+        **(
+            {"window_bounds": tuple(aoi_projected.total_bounds)}
+            if app.batch.raster_stack_mode == "windowed"
+            else {}
+        ),
     )
     raw_dem = app.paths.regional_dem_path
     dem_projected = canonical_stack.projected_dem_path

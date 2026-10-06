@@ -319,6 +319,7 @@ def ensure_canonical_raster_stack(
     app: AppConfig,
     *,
     include_canopy: bool,
+    window_bounds: tuple[float, float, float, float] | None = None,
 ) -> CanonicalRasterStack:
     """Create or reuse the immutable domain-aligned terrain raster stack."""
 
@@ -331,7 +332,24 @@ def ensure_canonical_raster_stack(
         validate_native_path_coverage(
             app.raw_config, app.viewshed.crs_projected, canopy=include_canopy
         )
-    projected_dem = ensure_projected_regional_dem(app)
+    if app.batch.raster_stack_mode == "windowed" and window_bounds is None:
+        raise ValueError("Windowed raster stack requires complete observer LOS bounds")
+    if window_bounds is not None:
+        from ..elevation.windows import ensure_projected_dem_window
+
+        if include_canopy:
+            # A differently warped CHM can change maximum canopy heights at
+            # tile edges even when the DEM is already aligned. Until native
+            # warp parity is qualified, require the original shared grid.
+            validate_raster_grid_alignment(
+                app.paths.canopy_height_path,
+                app.paths.regional_dem_path,
+                label_a="windowed_source_canopy",
+                label_b="windowed_source_dem",
+            )
+        projected_dem = ensure_projected_dem_window(app, window_bounds)
+    else:
+        projected_dem = ensure_projected_regional_dem(app)
     core_contract = {
         "algorithm_version": CANONICAL_RASTER_STACK_ALGORITHM_VERSION,
         "projected_dem": _canonical_raster_signature(projected_dem),
@@ -403,7 +421,14 @@ def ensure_canonical_raster_stack(
                 crs=projected_source.crs,
             )
         domain_wgs84 = domain_projected.to_crs(CRS_WGS84)
-        _, water_projected = load_and_clip_water(config, domain_wgs84)
+        if shared_support is not None:
+            # Use unchanged native geometry so a geographic clip cannot create
+            # a new projected edge along a tile seam.
+            water_projected = _load_water_layer_cached(str(config.water_polygon_path)).to_crs(
+                config.crs_projected
+            )
+        else:
+            _, water_projected = load_and_clip_water(config, domain_wgs84)
         cache_root.mkdir(parents=True, exist_ok=True)
         rasterize_water_to_match_dem(
             water_projected,

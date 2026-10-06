@@ -305,8 +305,19 @@ def validate_native_path_coverage(raw: dict[str, Any], crs: str, *, canopy: bool
             valid_land_pixels = 0
             missing_land_pixels = 0
             for _, window in raster.block_windows(1):
-                bounds = rasterio.windows.bounds(window, raster.transform)
-                if projected_land.is_empty or not projected_land.intersects(box(*bounds)):
+                window_transform = raster.window_transform(window)
+                block_footprint = Polygon(
+                    [
+                        window_transform * point
+                        for point in (
+                            (0, 0),
+                            (window.width, 0),
+                            (window.width, window.height),
+                            (0, window.height),
+                        )
+                    ]
+                )
+                if projected_land.is_empty or not projected_land.intersects(block_footprint):
                     continue
                 values = raster.read(1, window=window, masked=True)
                 active = geometry_mask(
@@ -336,6 +347,7 @@ def validate_native_path_coverage(raw: dict[str, Any], crs: str, *, canopy: bool
                 "reference": reference,
                 "valid_land_pixels": valid_land_pixels,
                 "missing_land_pixels": missing_land_pixels,
+                "required_land_pixels": valid_land_pixels + missing_land_pixels,
                 "native_path_coverage": "complete",
                 "affine_footprint_wkb_sha256": hashlib.sha256(footprint.wkb).hexdigest(),
                 "uncovered_path_area_raster_crs_squared_units": float(uncovered.area),
