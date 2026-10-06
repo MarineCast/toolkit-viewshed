@@ -45,6 +45,9 @@ def download_dem(
     resolutions: Sequence[int] | None = None,
     keep_intermediates: bool | None = None,
 ) -> object:
+    from ..config.study import reject_shared_legacy_acquisition
+
+    reject_shared_legacy_acquisition()
     from ..prepare.elevation import download_dem_for_config
 
     return download_dem_for_config(
@@ -66,6 +69,9 @@ def download_data(
     resolutions: Sequence[int] | None = None,
     keep_intermediates: bool | None = None,
 ) -> tuple[object, object]:
+    from ..config.study import reject_shared_legacy_acquisition
+
+    reject_shared_legacy_acquisition()
     from ..prepare.vegetation import download_canopy_height_for_config
 
     dem = download_dem(
@@ -83,6 +89,9 @@ def download_data(
 def download_canopy_height(
     config: str | Path, *, overwrite: bool = False, dry_run: bool = False
 ) -> object:
+    from ..config.study import reject_shared_legacy_acquisition
+
+    reject_shared_legacy_acquisition()
     from ..prepare.vegetation import download_canopy_height_for_config
 
     return download_canopy_height_for_config(config, overwrite=overwrite, dry_run=dry_run)
@@ -95,6 +104,9 @@ def download_landcover(
     dry_run: bool = False,
     method: str | None = None,
 ) -> object:
+    from ..config.study import reject_shared_legacy_acquisition
+
+    reject_shared_legacy_acquisition()
     from ..prepare.vegetation import download_landcover_for_config
 
     return download_landcover_for_config(
@@ -421,6 +433,16 @@ def export_static_maps(
 def run_stage(config: str | Path | AppConfig, invocation: StageInvocation) -> object:
     """Run one registered workflow stage without routing through a CLI parser."""
 
+    from ..config.study import study_selection, validate_study_app
+
+    validate_study_app(config)
+    if isinstance(config, AppConfig) and config.study_config_path is not None:
+        with study_selection(config.study_config_path):
+            return _run_stage(config, invocation)
+    return _run_stage(config, invocation)
+
+
+def _run_stage(config: str | Path | AppConfig, invocation: StageInvocation) -> object:
     config_path = config.config_path if isinstance(config, AppConfig) else config
     stage = invocation.stage
     if stage == "download-data":

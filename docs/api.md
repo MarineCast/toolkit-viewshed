@@ -29,6 +29,9 @@ from viewshed_toolkit.resources import default_config_path
 
 `load_app_config` reads and validates configuration without creating output directories:
 
+An optional `study_config=Path(...)` selects the portable MarineCast study v1 contract;
+`ViewshedRequest` accepts the same field. See [shared-study selection, roles and gates](shared-study.md).
+
 ```python
 from viewshed_toolkit import load_app_config
 from viewshed_toolkit.resources import default_config_path

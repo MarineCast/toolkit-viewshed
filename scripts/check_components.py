@@ -11,6 +11,7 @@ PATTERNS = (
     "src/viewshed_toolkit/pipeline/api/regional.py",
     "src/viewshed_toolkit/pipeline/config/datasets.py",
     "src/viewshed_toolkit/pipeline/config/case_study.py",
+    "src/viewshed_toolkit/pipeline/config/study.py",
     "src/viewshed_toolkit/pipeline/contracts/distance.py",
     "src/viewshed_toolkit/pipeline/prepare/area/case_study.py",
     "src/viewshed_toolkit/pipeline/finalize/aggregate.py",
@@ -30,6 +31,7 @@ def main() -> None:
         "tests/pipeline/test_component_workflow.py",
         "tests/pipeline/test_case_study.py",
         "tests/pipeline/test_distance_products.py",
+        "tests/pipeline/test_study_config.py",
         __file__,
     ]
     subprocess.run(

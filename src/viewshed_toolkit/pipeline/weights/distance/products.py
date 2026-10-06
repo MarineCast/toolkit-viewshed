@@ -20,6 +20,7 @@ from ...config.distance import (
     load_distance_runtime,
     load_distance_weight_config,
 )
+from ...config.study import with_study_config
 from ...contracts.artifacts import final_artifact_paths_from_raw
 from ...contracts.components import PAIR_KEYS, fingerprint
 from ...contracts.distance import (
@@ -341,6 +342,7 @@ def _pair_contract(
     return contract, lookup_checksum
 
 
+@with_study_config
 def build_pair_distances(
     config: str | Path | AppConfig,
     *,

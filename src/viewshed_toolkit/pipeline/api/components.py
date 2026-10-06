@@ -13,6 +13,7 @@ from viewshed_toolkit._internal.performance import measure_stage
 from ..config import AppConfig, load_app_config
 from ..config.datasets import CompositionConfig, DatasetsConfig
 from ..config.paths import bbox_from_config
+from ..config.study import with_study_config
 from ..contracts.components import (
     component_path,
     component_root,
@@ -30,6 +31,7 @@ from .registry import COMPONENT_STAGES, component_plan
 from .stages import build_land_cells, prepare_source_target_lookup
 
 
+@with_study_config
 def run_component_stage(
     config: str | Path | AppConfig,
     stage: str,
@@ -67,6 +69,11 @@ def run_component_stage(
                 "name": app.region.name,
                 "bbox": list(bbox_from_config(app.raw_config)),
                 "config_hash": app.config_hash,
+                **(
+                    {"marinecast_study": app.raw_config["marinecast_study"]}
+                    if "marinecast_study" in app.raw_config
+                    else {}
+                ),
             },
         )
         return path
@@ -171,6 +178,7 @@ def run_component_stage(
     return report
 
 
+@with_study_config
 def run_components(
     config: str | Path | AppConfig,
     *,

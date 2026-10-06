@@ -180,7 +180,7 @@ def _build_source_universe(
     resolution = int(lookup_cfg.h3_resolution or runtime.source_resolution)
 
     source_cells = domains.bbox_h3_cells(
-        runtime.bbox_wgs84,
+        domains.source_domain_polygon(runtime).bounds,
         resolution,
         buffer_rings=lookup_cfg.bbox_buffer_rings,
         strict_intersection=lookup_cfg.strict_bbox_intersection,

@@ -264,6 +264,7 @@ class AppConfig:
     raster: RasterConfig
     source_type: str = "land"
     observer_height_class: str | None = None
+    study_config_path: Path | None = None
 
 
 def apply_source_type_policy(app: AppConfig, source_type: str) -> AppConfig:
@@ -471,7 +472,9 @@ def _infer_water_polygon_path(paths: dict[str, Any], config_dir: Path) -> Path:
     )
 
 
-def load_app_config(config_path: str | Path) -> AppConfig:
+def load_app_config(
+    config_path: str | Path, *, study_config: str | Path | None = None
+) -> AppConfig:
     """Load and validate viewshed configuration without mutating the filesystem.
 
     Runtime commands that need output directories or partition metadata must
@@ -481,7 +484,13 @@ def load_app_config(config_path: str | Path) -> AppConfig:
 
     config_path = resolve_existing_or_relative_path(config_path, Path.cwd())
     config_dir = config_path.parent
-    raw = load_yaml_config(config_path)
+    from .study import selected_study_path, study_selection
+
+    if study_config is None:
+        raw = load_yaml_config(config_path)
+    else:
+        with study_selection(study_config):
+            raw = load_yaml_config(config_path)
     h3_raw = dict(raw.get("h3", {}) or {})
     h3_raw["source_sampling_mode"] = (
         str(h3_raw.get("source_sampling_mode", "fixed")).strip().lower()
@@ -627,6 +636,7 @@ def load_app_config(config_path: str | Path) -> AppConfig:
         batch=BatchConfig(**batch_raw),
         region=RegionConfig(**raw.get("region", {})),
         raster=RasterConfig(**raw.get("raster", {})),
+        study_config_path=selected_study_path(study_config),
     )
 
     if cfg.h3.aggregation_mode not in {"sampled", "full"}:

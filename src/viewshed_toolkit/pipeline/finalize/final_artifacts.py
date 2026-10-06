@@ -756,6 +756,11 @@ def static_scientific_config_hash(raw: Mapping[str, object]) -> str:
             "vegetation_weights",
         )
     }
+    study = raw.get("marinecast_study")
+    if isinstance(study, dict):
+        payload["marinecast_study"] = {
+            key: study[key] for key in ("geometry_sha256", "producer_buffers", "grid_registry")
+        }
     return stable_config_hash(payload, length=16)
 
 

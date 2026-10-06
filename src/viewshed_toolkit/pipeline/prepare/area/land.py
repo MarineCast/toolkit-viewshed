@@ -141,6 +141,11 @@ def build_land_cells_for_config(
         or region_cfg.get("crs_projected")
         or DEFAULT_PROJECTED_CRS
     )
+    from ...config.study import domain_polygons_from_raw
+
+    shared = domain_polygons_from_raw(raw, projected_crs)
+    source_polygon = shared[1] if shared is not None else box(*bbox_wgs84)
+    bbox_wgs84 = source_polygon.bounds
     coastal_buffer_m = float(region_cfg.get("coastal_buffer_m", 6_000))
     min_land_fraction = float(region_cfg.get("min_source_cell_land_fraction", 0.01))
     max_water_fraction_raw = region_cfg.get("max_source_cell_water_fraction", 0.95)
@@ -173,9 +178,7 @@ def build_land_cells_for_config(
         )
 
     land = gpd.read_file(ne_path).to_crs(CRS_WGS84)
-    bbox_gdf = gpd.GeoDataFrame(
-        {"name": ["config_bbox"]}, geometry=[box(*bbox_wgs84)], crs=CRS_WGS84
-    )
+    bbox_gdf = gpd.GeoDataFrame({"name": ["config_bbox"]}, geometry=[source_polygon], crs=CRS_WGS84)
     bbox_polygon = bbox_gdf.geometry.iloc[0]
     try:
         land_union = safe_polygonal_union(land, clip_geometry=bbox_polygon)
@@ -212,6 +215,10 @@ def build_land_cells_for_config(
             else seascape_water_polygon_path(config_path)
         )
         if water_path.exists():
+            if shared is not None:
+                from ...config.study import validate_shared_mask
+
+                validate_shared_mask(raw, water_path)
             water = gpd.read_parquet(water_path)
             if water.crs is None:
                 raise ValueError(f"Water polygon has no CRS metadata: {water_path}")
@@ -224,14 +231,27 @@ def build_land_cells_for_config(
                 if "No polygonal geometry remains" not in str(exc):
                     raise
 
-        # Land is all available land with the high-resolution water polygon
-        # carved out; water is everything else inside the bbox.
-        land_domain = _land_domain_geometry(bbox_polygon, land_union, water_union)
-        water_domain = safe_polygonal_difference(
-            bbox_polygon,
-            land_domain,
-            label="land-cell water domain as bbox minus land",
+        # Shared mode retains declared land and uses the explicit marine mask;
+        # it must not reinterpret unmapped areas or freshwater as marine water.
+        land_domain = (
+            safe_polygonal_intersection(
+                land_union, bbox_polygon, label="shared land source support"
+            )
+            if shared is not None
+            else _land_domain_geometry(bbox_polygon, land_union, water_union)
         )
+        if shared is not None:
+            if water_union is None:
+                raise ValueError(
+                    "Shared study requires explicit marine-water geometry; no fallback"
+                )
+            water_domain = water_union
+        else:
+            water_domain = safe_polygonal_difference(
+                bbox_polygon,
+                land_domain,
+                label="land-cell water domain as bbox minus land",
+            )
 
         candidate_cells = sorted(bbox_candidate_h3_cells(bbox_wgs84, resolution))
         LOGGER.info("Candidate H3 source cells before land clipping: %d", len(candidate_cells))

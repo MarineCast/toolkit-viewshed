@@ -11,9 +11,11 @@ from pyproj import Transformer
 from ..config import AppConfig
 from ..config.datasets import DatasetsConfig
 from ..config.paths import bbox_from_config
+from ..config.study import require_shared_owned_output, with_study_config
 from ..contracts.components import cache_matches, component_root, provenance, record_product
 
 
+@with_study_config
 def prepare_dataset(app: AppConfig, dataset: str, *, overwrite: bool = False) -> Path:
     if dataset not in {"dem", "chm"}:
         raise ValueError("dataset must be dem or chm")
@@ -36,6 +38,7 @@ def prepare_dataset(app: AppConfig, dataset: str, *, overwrite: bool = False) ->
         "inputs"
     ]
     output = app.paths.regional_dem_path if dataset == "dem" else app.paths.canopy_height_path
+    require_shared_owned_output(app.raw_config, output)
     if not overwrite and cache_matches(output, contract):
         return output
 

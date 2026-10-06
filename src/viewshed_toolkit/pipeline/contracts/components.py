@@ -84,6 +84,11 @@ def provenance(app: AppConfig, algorithm: str, inputs: Mapping[str, Path]) -> di
         "source_h3_resolution": app.h3.source_resolution,
         "target_h3_resolution": app.h3.target_resolution,
         "inputs": input_checksums(inputs),
+        **(
+            {"marinecast_study": app.raw_config["marinecast_study"]}
+            if "marinecast_study" in app.raw_config
+            else {}
+        ),
     }
 
 

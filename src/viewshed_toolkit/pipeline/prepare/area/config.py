@@ -44,6 +44,7 @@ from ...contracts.artifacts import tmp_dir_for_stage
 
 LOGGER = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class SourceTargetLookupConfig:
     """Configuration for the canonical source-target lookup builder.
@@ -287,6 +288,11 @@ def _lookup_fingerprint_payload(
         "source_resolution": int(runtime.source_resolution),
         "target_resolution": int(runtime.target_resolution),
         "bbox_wgs84": tuple(float(v) for v in runtime.bbox_wgs84),
+        **(
+            {"marinecast_study": runtime.raw_config["marinecast_study"]}
+            if "marinecast_study" in runtime.raw_config
+            else {}
+        ),
         "bbox_buffer_rings": int(lookup_cfg.bbox_buffer_rings),
         "strict_bbox_intersection": bool(lookup_cfg.strict_bbox_intersection),
         "target_domain_buffer_m": float(

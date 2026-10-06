@@ -201,6 +201,14 @@ def _land_domain_geometry(
     )
 
 
+def source_domain_polygon(runtime: Any) -> Any:
+    """Shared mode includes outside observers within LOS of reporting targets."""
+    from ...config.study import domain_polygons_from_raw
+
+    shared = domain_polygons_from_raw(runtime.raw_config, runtime.projected_crs)
+    return shared[1] if shared is not None else box(*runtime.bbox_wgs84)
+
+
 def target_domain_polygon(runtime: Any) -> Any:
     """Return the configured target domain around the observer-source bbox.
 
@@ -210,6 +218,11 @@ def target_domain_polygon(runtime: Any) -> Any:
     are never treated as metres.
     """
 
+    from ...config.study import domain_polygons_from_raw
+
+    shared = domain_polygons_from_raw(runtime.raw_config, runtime.projected_crs)
+    if shared is not None:
+        return shared[0]
     source_polygon = box(*runtime.bbox_wgs84)
     viewshed = runtime.raw_config.get("viewshed", {}) or {}
     max_distance_m = float(viewshed.get("max_distance_m", 30_000.0))
@@ -237,7 +250,7 @@ def load_land_water_domains(
         raise ValueError("extent must be 'source' or 'target'")
     paths_cfg = runtime.raw_config.get("paths", {}) or {}
     bbox_polygon = (
-        box(*runtime.bbox_wgs84) if extent == "source" else target_domain_polygon(runtime)
+        source_domain_polygon(runtime) if extent == "source" else target_domain_polygon(runtime)
     )
     bbox_gdf = gpd.GeoDataFrame({"name": ["bbox"]}, geometry=[bbox_polygon], crs=CRS_WGS84)
 
@@ -247,6 +260,10 @@ def load_land_water_domains(
         if water_path_value
         else seascape_water_polygon_path()
     )
+    if "marinecast_study" in runtime.raw_config and water_path.is_file():
+        from ...config.study import validate_shared_mask
+
+        validate_shared_mask(runtime.raw_config, water_path)
     water_union, water_source = _load_optional_clipped_union(
         water_path,
         bbox_gdf=bbox_gdf,
@@ -270,6 +287,11 @@ def load_land_water_domains(
         label="Land",
     )
 
+    shared_mode = "marinecast_study" in runtime.raw_config
+    if shared_mode and (water_union is None or land_union is None):
+        raise ValueError(
+            "Shared study requires explicit marine-water and land geometry; no fallback"
+        )
     if water_union is None and land_union is None:
         raise FileNotFoundError(
             "Could not build land/water domains. Provide paths.water_polygon_path, "
@@ -297,6 +319,10 @@ def load_land_water_domains(
             label="land domain as bbox minus water",
         )
         land_source = "bbox_minus_water"
+    elif shared_mode:
+        land_domain = safe_polygonal_intersection(
+            land_union, bbox_polygon, label="shared explicit land support"
+        )
     else:
         land_domain = _land_domain_geometry(bbox_polygon, land_union, water_union)
 
