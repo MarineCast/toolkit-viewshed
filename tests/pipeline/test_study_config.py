@@ -7,15 +7,19 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import geopandas as gpd
+import h3
 import pandas as pd
 import pytest
+import yaml
 from shapely.geometry import Point, box
 
+from viewshed_toolkit.pipeline.api.components import run_component_stage
 from viewshed_toolkit.pipeline.api.regional import validate_region
 from viewshed_toolkit.pipeline.cli.main import main
 from viewshed_toolkit.pipeline.config import load_app_config
 from viewshed_toolkit.pipeline.config.study import (
     adapt_raw_config,
+    canonical_bytes,
     load_study_config,
     planning_report,
     require_shared_owned_output,
@@ -32,6 +36,8 @@ from viewshed_toolkit.pipeline.prepare.area.domains import (
     source_domain_polygon,
     target_domain_polygon,
 )
+from viewshed_toolkit.pipeline.prepare.area.land import build_land_cells_for_config
+from viewshed_toolkit.pipeline.prepare.area.lookup import build_source_target_lookup
 from viewshed_toolkit.pipeline.prepare.area.universe import _physical_cell_type_frame
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -304,18 +310,24 @@ def test_positive_area_water_does_not_include_observed_zero(tmp_path):
     study = load_study_config(approved_study(tmp_path))
     raw = adapt_raw_config(load_app_config(ROOT / "configs/salish_sea.yaml").raw_config, study)
     cfg = SourceTargetLookupConfig(
-        min_water_fraction_for_target=raw["source_target_lookup"]["min_water_fraction_for_target"]
+        min_water_fraction_for_target=raw["source_target_lookup"]["min_water_fraction_for_target"],
+        min_land_fraction_for_source=raw["source_target_lookup"]["min_land_fraction_for_source"],
     )
     frame = gpd.GeoDataFrame(
         pd.DataFrame(
             {
-                "h3_cell": ["zero", "tiny"],
-                "land_fraction": [1.0, 1.0],
-                "water_fraction": [0.0, 1e-100],
+                "h3_cell": ["zero_water", "tiny_water", "tiny_land", "zero_both"],
+                "land_fraction": [1.0, 1.0, 1e-100, 0.0],
+                "water_fraction": [0.0, 1e-100, 0.0, 0.0],
             }
         )
     )
-    assert _physical_cell_type_frame(frame, cfg).cell_type.tolist() == ["land", "mixed"]
+    assert _physical_cell_type_frame(frame, cfg).cell_type.tolist() == [
+        "land",
+        "mixed",
+        "land",
+        "excluded",
+    ]
 
 
 def test_time_identity_does_not_claim_static_vintage_or_change_physics(tmp_path):
@@ -337,9 +349,8 @@ def test_shared_preparation_cannot_write_external_reusable_input(tmp_path):
 
 def test_nested_selection_inherits_explicit_path(tmp_path):
     path = write_study(tmp_path)
-    with study_selection(path):
-        with study_selection(None):
-            assert selected_study_path() == path
+    with study_selection(path), study_selection(None):
+        assert selected_study_path() == path
     assert selected_study_path() is None
 
 
@@ -387,3 +398,142 @@ def test_local_dataset_assets_resolve_from_study_data_root(tmp_path):
     raw["datasets"] = {"dem": {"provider": "local", "assets": ["data/raw/dem.tif"]}}
     adapted = adapt_raw_config(raw, study)
     assert adapted["datasets"]["dem"]["assets"] == [str(tmp_path / "Data/raw/dem.tif")]
+
+
+@pytest.fixture
+def coastal_study(tmp_path):
+    selected = approved_study(tmp_path)
+    config = json.loads(selected.read_text())
+    bbox = [-123.01, 47.98, -122.97, 48.03]
+    west, south, east, north = bbox
+    config["domain"]["bbox_wgs84"] = bbox
+    config["domain"]["geometry_sha256"] = hashlib.sha256(
+        canonical_bytes(
+            {
+                "crs": "EPSG:4326",
+                "boundary_semantics": "longitude_latitude_rectangle",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [[west, south], [east, south], [east, north], [west, north], [west, south]]
+                    ],
+                },
+            }
+        )
+    ).hexdigest()
+    land = tmp_path / "land.geojson"
+    water = tmp_path / "water.parquet"
+    # Reporting rectangle is wholly marine. The nearest mapped land lies west
+    # of it; inland observer -123.15 is over 6 km from water and within 30 km LOS.
+    gpd.GeoDataFrame(geometry=[box(-123.6, 47.6, -123.02, 48.4)], crs=4326).to_file(land)
+    gpd.GeoDataFrame(geometry=[box(-123.02, 47.6, -122.4, 48.4)], crs=4326).to_parquet(water)
+    config["grid_registry"]["mask_sha256"] = hashlib.sha256(water.read_bytes()).hexdigest()
+    selected.write_text(json.dumps(config))
+    raw = copy.deepcopy(load_app_config(ROOT / "configs/salish_sea.yaml").raw_config)
+    raw["paths"].update(
+        land_polygon_path=str(land),
+        water_polygon_path=str(water),
+        regional_dem_path=str(tmp_path / "dem.tif"),
+        canopy_height_path=str(tmp_path / "chm.tif"),
+    )
+    raw["source_target_lookup"]["parallel_workers"] = 1
+    path = tmp_path / "viewshed.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    app = load_app_config(path, study_config=selected)
+    app.paths.land_h3_path.parent.mkdir(parents=True, exist_ok=True)
+    return selected, path, app, land, water
+
+
+def test_shared_actual_land_and_pair_stages_retain_inland_observers(coastal_study):
+    import polars as pl
+
+    selected, path, app, _, _ = coastal_study
+    cell = h3.latlng_to_cell(48.005, -123.15, 7)
+    with study_selection(selected):
+        result = build_land_cells_for_config(path, overwrite=True)
+        land = gpd.read_parquet(result.land_h3_path)
+        assert cell in set(land.h3_cell)
+        assert land.loc[land.h3_cell == cell, "distance_to_water_m"].item() > 6000
+        # Same inputs plus valid provenance permit cache reuse.
+        assert build_land_cells_for_config(path).land_h3_path == result.land_h3_path
+        assert run_component_stage(app, "build-source-cells") == result.land_h3_path
+        lookup = build_source_target_lookup(path, overwrite=False)
+    pairs = pl.read_parquet(lookup.lookup_path)
+    outside_pairs = pairs.filter((pl.col("source_h3") == cell) & (pl.col("source_type") == "land"))
+    assert outside_pairs.height > 0
+    assert outside_pairs["distance_km"].max() <= 30
+    runtime = SimpleNamespace(
+        raw_config=app.raw_config,
+        projected_crs="EPSG:32610",
+        bbox_wgs84=tuple(app.raw_config["marinecast_study"]["reporting_bbox_wgs84"]),
+        config_dir=path.parent,
+    )
+    reporting = load_land_water_domains(runtime, extent="target")
+    assert reporting.land_domain.is_empty
+    assert reporting.water_domain.area > 0
+    sources = load_land_water_domains(runtime, extent="source")
+    assert sources.land_domain.covers(Point(-123.15, 48.005))
+
+
+@pytest.mark.parametrize("changed", ["mask", "land", "receipt"])
+def test_shared_land_cache_rejects_changed_inputs_before_reuse(coastal_study, changed):
+    selected, path, app, land, water = coastal_study
+    with study_selection(selected):
+        result = build_land_cells_for_config(path, overwrite=True)
+        if changed == "mask":
+            water.write_bytes(b"wrong-mask-bytes")
+            message = "mask_sha256"
+        elif changed == "land":
+            gpd.GeoDataFrame(geometry=[box(-123.6, 47.6, -123.03, 48.4)], crs=4326).to_file(land)
+            message = "Stale shared land-cell cache"
+        else:
+            result.land_h3_path.with_suffix(".parquet.json").write_text("{}")
+            message = "Stale shared land-cell cache"
+        with pytest.raises(ValueError, match=message):
+            build_land_cells_for_config(path, overwrite=False)
+        if changed == "mask":
+            with pytest.raises(ValueError, match="mask_sha256"):
+                run_component_stage(app, "build-source-cells")
+
+
+def test_standalone_land_stage_keeps_legacy_coastal_filter(coastal_study):
+    selected, path, _, _, _ = coastal_study
+    raw = yaml.safe_load(path.read_text())
+    source_bounds = support_polygons([-123.01, 48, -123, 48.01], "EPSG:32610", 30000, 1000)[
+        1
+    ].bounds
+    raw["region"]["bbox_wgs84"] = dict(
+        zip(("min_lon", "min_lat", "max_lon", "max_lat"), source_bounds, strict=True)
+    )
+    raw["paths"]["land_h3_path"] = str(path.parent / "standalone_land.parquet")
+    path.write_text(yaml.safe_dump(raw))
+    assert selected.exists()  # no selection is active for this standalone run
+    result = build_land_cells_for_config(path, overwrite=True)
+    assert h3.latlng_to_cell(48.005, -123.15, 7) not in set(
+        gpd.read_parquet(result.land_h3_path).h3_cell
+    )
+
+
+def test_current_coastal_policy_is_planning_only_until_geometry_and_mask_qualified(tmp_path):
+    path = tmp_path / "study.json"
+    config = json.loads((ROOT / "tests/fixtures/marinecast_coastal_policy_v1.json").read_bytes())
+    path.write_text(json.dumps(config))
+    study = load_study_config(path, planning=True)
+    assert study.config_sha256 == "bacf22ea2b0beb32d1ef5607f52b2f6104419dd329edf25657bca196acc8018c"
+    plan = planning_report(study)
+    assert plan["bbox_role"] == "acquisition_planning_envelope_only"
+    assert plan["reporting_target_bbox_wgs84"] is None
+    assert plan["acquisition_planning_envelope_bbox_wgs84"] == config["domain"]["bbox_wgs84"]
+    assert plan["reporting_selection_policy"]["offshore_distance_m"] == 22224
+    assert plan["reporting_selection_policy"]["status"] == "approved"
+    assert plan["reporting_geometry_status"] == "pending_qualified_coastline_validation"
+    with pytest.raises(ValueError, match="remains proposed"):
+        load_study_config(path)
+    # Approval and a nominal registry alone cannot bypass pending coastal geometry.
+    synthetic = json.loads(approved_study(tmp_path).read_bytes())
+    for key in ("status", "approval"):
+        config["domain"][key] = synthetic["domain"][key]
+    config["grid_registry"] = synthetic["grid_registry"]
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="validated coastal mask and geometry"):
+        load_study_config(path)

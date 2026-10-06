@@ -161,7 +161,28 @@ def build_land_cells_for_config(
     if not ne_path.exists():
         raise FileNotFoundError(f"Configured land polygon does not exist: {ne_path}")
 
+    water_path_value = paths_cfg.get("water_polygon_path")
+    water_path = (
+        resolve_existing_or_relative_path(water_path_value, config_dir)
+        if water_path_value
+        else seascape_water_polygon_path(config_path)
+    )
+    shared_contract = None
+    if shared is not None:
+        from ...config import load_app_config
+        from ...config.study import validate_shared_mask
+        from ...contracts.components import cache_matches, provenance, record_product
+
+        validate_shared_mask(raw, water_path)
+        shared_contract = provenance(
+            load_app_config(config_path),
+            "land_source_cells_shared_v2",
+            {"land": ne_path, "water": water_path},
+        )
+
     if land_h3_path.exists() and not overwrite:
+        if shared_contract is not None and not cache_matches(land_h3_path, shared_contract):
+            raise ValueError("Stale shared land-cell cache; rebuild explicitly with overwrite=True")
         h3_gdf = gpd.read_parquet(land_h3_path)
         validate_existing_land_h3_file(
             h3_gdf,
@@ -208,17 +229,7 @@ def build_land_cells_for_config(
         )
     else:
         water_union = None
-        water_path_value = paths_cfg.get("water_polygon_path")
-        water_path = (
-            resolve_existing_or_relative_path(water_path_value, config_dir)
-            if water_path_value
-            else seascape_water_polygon_path(config_path)
-        )
         if water_path.exists():
-            if shared is not None:
-                from ...config.study import validate_shared_mask
-
-                validate_shared_mask(raw, water_path)
             water = gpd.read_parquet(water_path)
             if water.crs is None:
                 raise ValueError(f"Water polygon has no CRS metadata: {water_path}")
@@ -322,7 +333,7 @@ def build_land_cells_for_config(
             n_removed_water = int((~water_mask).sum())
             h3_gdf = h3_gdf[water_mask].copy()
         n_removed_distance = 0
-        if "distance_to_water_m" in h3_gdf.columns:
+        if shared is None and "distance_to_water_m" in h3_gdf.columns:
             distance_mask = h3_gdf["distance_to_water_m"] <= coastal_buffer_m
             n_removed_distance = int((~distance_mask).sum())
             h3_gdf = h3_gdf[distance_mask].copy()
@@ -344,6 +355,8 @@ def build_land_cells_for_config(
     h3_gdf["run_version"] = get_run_version(raw)
     h3_gdf["config_hash"] = stable_config_hash(raw)
     h3_gdf.to_parquet(land_h3_path, index=False)
+    if shared_contract is not None:
+        record_product(land_h3_path, shared_contract)
     return LandCellsResult(
         land_polygon_path=land_polygon_path,
         land_h3_path=land_h3_path,

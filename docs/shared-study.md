@@ -1,6 +1,7 @@
 # MarineCast study v1 adapter
 
-The optional shared study file sets a reporting rectangle, requested calendar window,
+The optional shared study file sets reporting selection or rectangular compatibility
+support, a requested calendar window,
 R7 Viewshed grid, producer buffers, marine mask identity and portable Data root. The
 toolkit remains standalone: it imports no sibling checkout, guesses no study-file
 location and bundles its schema. Install the declared `jsonschema` dependency.
@@ -16,8 +17,12 @@ viewshed-toolkit validate-region --config /path/to/viewshed.yaml --study-config 
 The global flag before a command is also supported. `plan-study` is read-only and
 accepts proposed geometry. Every production CLI command, including map exports,
 requires an approved domain with approval provenance and a validated registry.
-Configuration loading creates no directories. The current pinned example is a
-superseded proposed rectangle; it authorizes no production run.
+Configuration loading creates no directories. The current coastal selection policy
+approves waters within 12 nautical miles of the intended coast plus requested
+inland waters; its rectangle is an acquisition/planning envelope. The materialized
+coastal mask, source-relative geometry and registry remain pending. Policy approval
+does not authorize production; these pending states fail the production gate even
+if domain approval and nominal registry metadata are supplied.
 
 Python callers can select the same file without mutating process environment:
 
@@ -40,7 +45,10 @@ qualification and a separately reviewed acquisition/runtime budget.
 
 ## Roles, geometry and paths
 
-Shared reporting targets are marine-water intersections within the rectangle. Eligible
+The rectangular compatibility contract uses marine-water intersections within its
+reporting rectangle. The coastal contract additionally requires a materialized
+qualified coastal-plus-inland selection mask; its enclosing rectangle is not a
+reporting-water selection. Eligible
 land and water observers extend outward by the LOS distance (30 km in the example).
 Native rasters cover source-to-target paths and the additional AOI margin (1 km).
 Constant latitude/longitude edges are densified at at most 0.02 degrees before
@@ -54,6 +62,17 @@ is allowed. Mixed cells may have both source roles; positive marine-water area i
 required for targets. Land remains the declared mapped land, including observers
 outside the reporting rectangle. Shared land filtering uses the explicit marine
 mask rather than interpreting all unmapped areas or freshwater as marine water.
+Shared source eligibility retains every positive mapped land intersection within
+the declared source extent. It overrides the legacy fractional eligibility
+thresholds and does not apply the standalone 6 km coastal-distance filter.
+An empty declared land intersection in an all-water reporting rectangle is valid;
+it does not prevent mapped land observers in the outside source halo.
+
+Both land-cell entrypoints validate current marine-mask bytes before cache reuse.
+Shared land-cell receipts additionally bind configuration, mapped land and water
+inputs and output checksums under `land_source_cells_shared_v2`. Missing or stale
+receipts fail and require an explicit rebuild. Standalone filtering and cache
+behavior retain the established legacy contract.
 
 Relative input paths and local-provider assets resolve from `storage.data_root`,
 itself relative to the selected study file. A leading `data/` is removed from legacy
@@ -80,6 +99,7 @@ The adapter validates registry metadata and binds the native mask bytes; it does
 yet read registry membership artifacts to verify row counts or enforce exact shared
 H3 membership equality. The shared contract does not specify their artifact format.
 That consumer integration, source/vertical-reference qualification, raster coverage,
+separation of reporting selection from native/source-water geometry,
 resource approval and regional independent validation remain release gates. Neither
 synthetic tests nor historical pair parity establish regional readiness. No immutable
 Data release is published by this adapter change.

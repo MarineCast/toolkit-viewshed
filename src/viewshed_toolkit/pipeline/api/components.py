@@ -86,9 +86,18 @@ def run_component_stage(
     if stage == "build-source-cells":
         from ..contracts.components import cache_matches, provenance, record_product
 
+        if "marinecast_study" in app.raw_config:
+            from ..config.study import validate_shared_mask
+
+            validate_shared_mask(app.raw_config, app.paths.water_polygon_path)
+
         contract = provenance(
             app,
-            "land_source_cells_v1",
+            (
+                "land_source_cells_shared_v2"
+                if "marinecast_study" in app.raw_config
+                else "land_source_cells_v1"
+            ),
             {"land": app.paths.land_polygon_path, "water": app.paths.water_polygon_path},
         )
         if not overwrite and cache_matches(app.paths.land_h3_path, contract):

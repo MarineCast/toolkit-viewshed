@@ -153,9 +153,18 @@ def _classify_bbox_cells(
         .to_crs(projected_crs)
         .area.to_numpy(dtype="float64")
     )
-    water_area = np.asarray(
-        [water_geometries_projected[cell].area for cell in active_cells], dtype="float64"
-    )
+    if "marinecast_study" in runtime.raw_config:
+        water_area = (
+            gpd.GeoSeries(
+                gdf.geometry.intersection(domain_geoms.water_domain), crs=domains.CRS_WGS84
+            )
+            .to_crs(projected_crs)
+            .area.to_numpy(dtype="float64")
+        )
+    else:
+        water_area = np.asarray(
+            [water_geometries_projected[cell].area for cell in active_cells], dtype="float64"
+        )
 
     with np.errstate(divide="ignore", invalid="ignore"):
         land_fraction = np.where(cell_area > 0, land_area / cell_area, 0.0)

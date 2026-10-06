@@ -13,6 +13,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
 from importlib.resources import files
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
 
@@ -95,6 +96,7 @@ class StudyConfig:
             "reporting_bbox_wgs84": list(self.config["domain"]["bbox_wgs84"]),
             "grid_registry": copy.deepcopy(self.config["grid_registry"]),
             "static_time_policy": "requested_window_is_not_source_vintage_or_daily_coverage",
+            "land_source_eligibility": "positive_mapped_land_area_in_source_extent; legacy_coastal_filter_not_applied",
         }
 
 
@@ -136,6 +138,12 @@ def load_study_config(path: str | Path | None = None, *, planning: bool = False)
         raise ValueError("Study geometry_sha256 mismatch")
     if config["domain"]["status"] == "approved" and not config["domain"].get("approval"):
         raise ValueError("Approved study requires explicit approval provenance")
+    policy = config["domain"].get("selection_policy")
+    if policy is not None:
+        if not config["domain"].get("bbox_role") or not config["domain"].get("geometry_status"):
+            raise ValueError("Selection policy requires explicit envelope role and geometry status")
+        if policy["status"] == "approved" and not policy["approval"]:
+            raise ValueError("Approved selection policy requires approval provenance")
     if date.fromisoformat(config["time"]["start"]) >= date.fromisoformat(
         config["time"]["end_exclusive"]
     ):
@@ -161,6 +169,16 @@ def load_study_config(path: str | Path | None = None, *, planning: bool = False)
         raise ValueError("Study domain remains proposed; production requires approved geometry")
     if not planning and registry["status"] != "validated":
         raise ValueError("Study production requires a validated marine mask and H3 registry")
+    if (
+        not planning
+        and policy is not None
+        and (
+            policy["status"] != "approved"
+            or policy["mask_status"] != "source_relative_validated"
+            or config["domain"]["geometry_status"] != "source_relative_validated"
+        )
+    ):
+        raise ValueError("Study production requires validated coastal mask and geometry")
     return StudyConfig(
         selected,
         config,
@@ -186,7 +204,7 @@ def support_polygons(
     west, south, east, north = bbox
     corners = [(west, south), (east, south), (east, north), (west, north), (west, south)]
     ring: list[tuple[float, float]] = []
-    for start, end in zip(corners[:-1], corners[1:], strict=True):
+    for start, end in pairwise(corners):
         steps = max(1, math.ceil(max(abs(end[0] - start[0]), abs(end[1] - start[1])) / 0.02))
         ring.extend(
             (start[0] + t * (end[0] - start[0]), start[1] + t * (end[1] - start[1]))
@@ -210,12 +228,25 @@ def planning_report(study: StudyConfig, *, crs: str = "EPSG:32610") -> dict[str,
     return {
         **study.provenance(),
         "resolved_data_root": str(study.data_root),
-        "reporting_target_bbox_wgs84": list(reporting.bounds),
+        "reporting_target_bbox_wgs84": (
+            None if study.config["domain"].get("selection_policy") else list(reporting.bounds)
+        ),
+        "acquisition_planning_envelope_bbox_wgs84": list(reporting.bounds),
+        "observer_source_envelope_kind": (
+            "conservative_planning_bbox_plus_los"
+            if study.config["domain"].get("selection_policy")
+            else "rectangular_reporting_support_plus_los"
+        ),
         "observer_source_envelope_wgs84": list(source.bounds),
         "native_path_envelope_wgs84": list(native.bounds),
         "producer_projected_crs": crs,
         "projected_boundary_max_step_degrees": 0.02,
         "planning_only": True,
+        "bbox_role": study.config["domain"].get("bbox_role", "reporting_rectangle"),
+        "reporting_selection_policy": copy.deepcopy(study.config["domain"].get("selection_policy")),
+        "reporting_geometry_status": study.config["domain"].get(
+            "geometry_status", "rectangle_only"
+        ),
         "source_coverage": "not_established_by_requested_time_or_geometry",
     }
 
@@ -251,6 +282,7 @@ def adapt_raw_config(raw: dict[str, Any], study: StudyConfig) -> dict[str, Any]:
             raise ValueError(f"Shared study requires {key}; land/water support cannot be discarded")
         lookup[key] = True
     lookup["min_water_fraction_for_target"] = math.nextafter(0.0, 1.0)
+    lookup["min_land_fraction_for_source"] = math.nextafter(0.0, 1.0)
     for key in ("max_distance_km_land", "max_distance_km_water"):
         if key in lookup and float(lookup[key]) != float(buffers["line_of_sight_m"]) / 1000:
             raise ValueError(f"Viewshed {key} conflicts with shared LOS buffer")
@@ -258,6 +290,8 @@ def adapt_raw_config(raw: dict[str, Any], study: StudyConfig) -> dict[str, Any]:
     adapted.pop("area", None)
     adapted["region"] = {
         **adapted.get("region", {}),
+        "min_source_cell_land_fraction": math.nextafter(0.0, 1.0),
+        "max_source_cell_water_fraction": None,
         "name": study.config["study_id"],
         "bbox_wgs84": dict(
             zip(

@@ -146,10 +146,10 @@ def _load_optional_clipped_union(
         return None, f"missing:{path}"
 
     gdf = _read_vector_any(path)
-    if gdf.empty:
-        return None, f"empty:{path}"
     if gdf.crs is None:
         raise ValueError(f"{label} polygon has no CRS metadata: {path}")
+    if gdf.empty:
+        return None, f"empty:{path}"
 
     source = gdf.to_crs(CRS_WGS84)
     try:
@@ -288,10 +288,15 @@ def load_land_water_domains(
     )
 
     shared_mode = "marinecast_study" in runtime.raw_config
-    if shared_mode and (water_union is None or land_union is None):
-        raise ValueError(
-            "Shared study requires explicit marine-water and land geometry; no fallback"
-        )
+    if shared_mode:
+        if not water_path.is_file() or land_source_path is None or not land_source_path.is_file():
+            raise ValueError(
+                "Shared study requires explicit marine-water and land geometry; no fallback"
+            )
+        # Readable, declared geometry can have an empty intersection in this
+        # extent. An all-water target rectangle may have land observers outside.
+        land_union = Polygon() if land_union is None else land_union
+        water_union = Polygon() if water_union is None else water_union
     if water_union is None and land_union is None:
         raise FileNotFoundError(
             "Could not build land/water domains. Provide paths.water_polygon_path, "
@@ -320,13 +325,17 @@ def load_land_water_domains(
         )
         land_source = "bbox_minus_water"
     elif shared_mode:
-        land_domain = safe_polygonal_intersection(
-            land_union, bbox_polygon, label="shared explicit land support"
+        land_domain = (
+            Polygon()
+            if land_union.is_empty
+            else safe_polygonal_intersection(
+                land_union, bbox_polygon, label="shared explicit land support"
+            )
         )
     else:
         land_domain = _land_domain_geometry(bbox_polygon, land_union, water_union)
 
-    if land_domain.is_empty:
+    if land_domain.is_empty and not shared_mode:
         raise ValueError("Land domain is empty after clipping/intersection.")
     if water_domain.is_empty:
         raise ValueError("Water domain is empty after clipping/intersection.")
