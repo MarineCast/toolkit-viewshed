@@ -1176,9 +1176,33 @@ def study_native_helper(tmp_path_factory):
     "surface,role", [("bare_earth", "land"), ("canopy", "land"), ("bare_earth", "water")]
 )
 def test_windowed_native_h3_kernel_matches_global_stack(
-    coastal_study, study_native_helper, surface, role, resolution
+    coastal_study, study_native_helper, surface, role, resolution, request
 ):
     from dataclasses import replace
+
+    if resolution == 500 and os.environ.get("VIEWSHED_ISOLATED_KERNEL_TEST") != "1":
+        import subprocess
+        import sys
+
+        # The planner caps parent + child RSS. GDAL/Numba allocations retained by
+        # unrelated suite tests must not consume this fixture's production budget.
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                request.node.nodeid,
+                f"--basetemp={coastal_study[0].parent.parent / 'isolated-kernel'}",
+            ],
+            cwd=ROOT,
+            env={**os.environ, "VIEWSHED_ISOLATED_KERNEL_TEST": "1"},
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        return
 
     import pandas as pd
 
