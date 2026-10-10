@@ -861,3 +861,34 @@ def isolate_observer_canopy_vrt(
             )
         ET.ElementTree(tree).write(output_path, encoding="utf-8", xml_declaration=True)
     return output_path
+
+
+def qualify_partial_canopy_grid(
+    canopy_height: np.ndarray,
+    native_unknown: np.ndarray,
+    modeled_water: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Preserve unknown land subpixels when applying modeled water endpoints.
+
+    Height NoData must be NaN, not a numeric sentinel. ``native_unknown`` is an
+    independently max-resampled boolean mask: only geometrically qualified native
+    water may have been exempted before resampling. An all-touched water endpoint
+    must never clear that mask, since a mixed shoreline cell can contain unknown
+    land obstruction. Water removes the modeled known canopy increment only.
+    """
+    if (
+        canopy_height.ndim != 2
+        or not canopy_height.size
+        or canopy_height.shape != native_unknown.shape
+        or canopy_height.shape != modeled_water.shape
+        or native_unknown.dtype != np.bool_
+        or modeled_water.dtype != np.bool_
+    ):
+        raise ValueError("Aligned nonempty heights and boolean masks required")
+    if np.any(np.isinf(canopy_height)) or np.any(canopy_height < 0):
+        raise ValueError("Canopy heights must be nonnegative or NaN")
+    valid = np.isfinite(canopy_height)
+    unknown = native_unknown | (~valid & ~modeled_water)
+    height = np.where(valid, canopy_height, 0.0).astype("float32")
+    height[modeled_water] = 0.0
+    return height, unknown

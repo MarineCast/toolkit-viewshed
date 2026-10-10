@@ -45,6 +45,8 @@ def _quadrant(ground, canopy, unknown, eye, pixel, curve, radius, target):
             uncertain[j, i] = u or unknown[j, i]
             if r2 > radius * radius:
                 out[j, i] = 0
+            elif unknown[j, i]:
+                out[j, i] = -1
             elif z + target < p:
                 out[j, i] = 0
             elif not u:
@@ -73,7 +75,7 @@ def partial_canopy_visibility(
     water and native-subpixel validity before resampling. Endpoint terrain must
     be complete. An explicit clearance mask applies only to this observer, and
     must include its cell; otherwise unknown observer canopy invalidates in-range
-    results. Known canopy is nonnegative. Curvature uses cell-centre distances.
+    results. Unknown target cells also remain unknown in range. Known canopy is nonnegative. Curvature uses cell-centre distances.
     """
     if (
         ground.ndim != 2

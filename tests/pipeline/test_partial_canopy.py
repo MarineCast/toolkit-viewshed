@@ -25,6 +25,7 @@ def test_unknown_propagation_and_blocked_certainty():
     u[5, 6] = True
     r = run(g, c, u)
     assert r[5, 8] == -1 and r[5, 2] == 1
+    assert r[5, 6] == -1  # Unknown target is not a supported ground endpoint.
     c[5, 7] = 100
     assert run(g, c, u)[5, 9] == 0
     assert run(g, c, u, max_distance_m=60)[5, 9] == 0
@@ -131,3 +132,17 @@ def test_rotation_determinism():
     u = rng.random(g.shape) < 0.15
     first = run(g, c, u)
     assert np.array_equal(first, np.rot90(run(np.rot90(g), np.rot90(c), np.rot90(u)), 3))
+
+
+def test_mixed_water_does_not_erase_native_unknown_land():
+    from viewshed_toolkit.pipeline.prepare.elevation.canopy import qualify_partial_canopy_grid
+
+    heights = np.array([[np.nan, np.nan, 7.0, 0.0]])
+    unknown = np.array([[False, True, True, False]])
+    water = np.array([[True, True, True, False]])
+    h, u = qualify_partial_canopy_grid(heights, unknown, water)
+    assert h.tolist() == [[0.0, 0.0, 0.0, 0.0]]
+    assert u.tolist() == [[False, True, True, False]]
+    assert np.isnan(heights[0, 0])  # No caller mutation.
+    with pytest.raises(ValueError):
+        qualify_partial_canopy_grid(heights, unknown[:, :2], water)

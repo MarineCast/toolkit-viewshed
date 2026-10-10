@@ -411,3 +411,8 @@ the bounds coincide. A zero bare kernel gives a provable combined zero and a
 not-applicable vegetation ratio, not a canopy observation. Unknown pair values remain
 null; aggregate available sums and valid-value means must name their denominators.
 Do not substitute a bound or a partial observed sum for a complete pair weight.
+
+`prepare.elevation.canopy.qualify_partial_canopy_grid` preserves native unknown
+land subpixels even when an all-touched modeled water endpoint overlaps the same
+30 m cell. Only the geometrically qualified native-water exemption removes those
+native missing values; the coarser water mask cannot erase uncertain shoreline land.
