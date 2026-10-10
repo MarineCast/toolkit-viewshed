@@ -60,6 +60,8 @@ nav:
   - Reference:
       - Scientific contracts: scientific-methodology.md
       - Configuration: configuration.md
+      - Shared study and R7 reporting: shared-study.md
+      - Bounded native raster windows: BOUNDED_WINDOWS.md
       - Pipeline stages: pipelines.md
       - Performance: performance.md
   - Development:
