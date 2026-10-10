@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import logging
+import os
 import re
+import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -63,6 +65,21 @@ def test_metadata_clone_chunks_and_pixels_match_original(
     tmp_path, caplog, native_helper, kind, nodata, dtype, source_crs, size
 ):
     import json
+
+    if size == 3200 and os.environ.get("VIEWSHED_ISOLATED_WARP_TEST") != "1":
+        # The expanded suite retains GDAL caches. Qualify this bounded large
+        # fixture in a fresh process without weakening the production RSS cap.
+        node = "tests/pipeline/test_native_warp_planner.py::test_metadata_clone_chunks_and_pixels_match_original[canopy-255-uint8-EPSG:4326-3200]"
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", node],
+            cwd=ROOT,
+            env={**os.environ, "VIEWSHED_ISOLATED_WARP_TEST": "1"},
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        return
 
     app = load_app_config(ROOT / "configs/salish_sea.yaml")
     source = tmp_path / "source.tif"

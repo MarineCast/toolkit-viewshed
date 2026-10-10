@@ -290,9 +290,35 @@ def validate_native_path_coverage(raw: dict[str, Any], crs: str, *, canopy: bool
                     f"uncovered area in raster CRS squared units={uncovered.area}"
                 )
             tags = raster.tags()
-            if not tags.get("source_date"):
+            source_date = tags.get("source_date")
+            source_year = tags.get("source_year")
+            source_time: dict[str, Any]
+            if source_date:
+                if tags.get("source_time_precision", "day") != "day":
+                    raise ValueError("Native raster source_date requires day time precision")
+                parsed_date = date.fromisoformat(source_date)
+                if source_year is not None and source_year != str(parsed_date.year):
+                    raise ValueError("Native raster source year/date disagree")
+                source_time = {"precision": "day", "date": source_date}
+            elif name == "chm" and source_year:
+                if (
+                    len(source_year) != 4
+                    or not source_year.isascii()
+                    or not source_year.isdecimal()
+                ):
+                    raise ValueError("Canopy source_year must be a canonical four-digit year")
+                year = int(source_year)
+                start, end = date(year, 1, 1), date(year + 1, 1, 1)
+                if tags.get("source_time_precision", "year") != "year":
+                    raise ValueError("Canopy source_year requires annual time precision")
+                source_time = {
+                    "precision": "year",
+                    "year": year,
+                    "start_inclusive": start.isoformat(),
+                    "end_exclusive": end.isoformat(),
+                }
+            else:
                 raise ValueError(f"Native {name} raster lacks explicit source_date qualification")
-            date.fromisoformat(tags["source_date"])
             reference = tags.get("vertical_reference" if name == "dem" else "height_reference")
             if not reference or reference.lower() in {"unknown", "unverified"}:
                 raise ValueError(f"Native {name} raster lacks qualified vertical/height reference")
@@ -343,7 +369,8 @@ def validate_native_path_coverage(raw: dict[str, Any], crs: str, *, canopy: bool
             result["native_rasters"][name] = {
                 "raw_sha256": file_sha256(path),
                 "crs": raster.crs.to_string(),
-                "source_date": tags["source_date"],
+                "source_date": source_date,
+                "source_time": source_time,
                 "reference": reference,
                 "valid_land_pixels": valid_land_pixels,
                 "missing_land_pixels": missing_land_pixels,

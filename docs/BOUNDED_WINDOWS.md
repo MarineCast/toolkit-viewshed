@@ -27,7 +27,7 @@ Pin the returned binary checksum using `batch.native_warp_helper_path` and `batc
 
 The helper child is monitored at 512 MiB RSS and 60 seconds; combined calling-process plus helper RSS is monitored at 768 MiB. Requests, logs and failures remain in the owned cache. These helper limits do not supervise a complete LOS run. A pinned canopy plan can alternatively be supplied using `batch.canopy_warp_chunk_plan_path` and `batch.canopy_warp_chunk_plan_sha256`. Canopy replay uses the unchanged maximum resampler on the DEM producer's full destination grid, Float32 output and NaN destination nodata; a missing source canopy pixel is not converted to zero. Already aligned canopy is read with its source mask and normalizes missing values to NaN. Co-registration of source DEM/CHM is no longer required when their individual original warp plans are qualified.
 
-Both cached regional grids produced 64 metadata-clone chunks on a 17,771 × 17,413 projected grid. The integrated helper runs took approximately 2.6 seconds for DEM and 6.4 seconds for canopy, with combined RSS below 455 MiB. Synthetic native trace comparisons include a multi-chunk canopy case and boundary-crossing crops. A retained 512 × 512 cached canopy subset has exact parity across three windows, including an all-nodata window. These are software checks only; no full regional reference or real LOS pilot ran. The cached rasters remain unqualified for source dates, vertical reference and expanded coastal coverage. ETH canopy represents annual 2020 conditions, not a reconstruction of 2009; no January 1 source date may be invented to satisfy the current exact-day metadata gate.
+Both cached regional grids produced 64 metadata-clone chunks on a 17,771 × 17,413 projected grid. The integrated helper runs took approximately 2.6 seconds for DEM and 6.4 seconds for canopy, with combined RSS below 455 MiB. Synthetic native trace comparisons include a multi-chunk canopy case and boundary-crossing crops. A retained 512 × 512 cached canopy subset has exact parity across three windows, including an all-nodata window. These are software checks only; no full regional reference or real LOS pilot ran. The cached rasters remain unqualified for source dates, vertical reference and expanded coastal coverage. ETH canopy represents annual 2020 conditions, not a reconstruction of 2009; canopy `source_year` metadata now retains its annual interval with null exact date. No January 1 observation date is invented.
 
 Set one source per batch, one worker and explicit pixel/memory guardrails. The guards reject oversized windows before output allocation. They are allocation estimates, not enforced process RSS, elapsed-time or total-staging ceilings. A monitored process supervisor must enforce the proposed pilot ceilings before any real run: 768 MiB RSS, 2 GiB total task staging, 45 minutes, one worker, at most 8 sources and 6,000 selected role pairs. A future capped pilot must fail on timeout, missing source completion, nulls, duplicate keys, or parity mismatch and preserve its checkpoint. Its subset outputs cannot pass as a complete regional release.
 
@@ -36,3 +36,40 @@ Current land policy requests 5–10 samples per R7 source cell; water policy use
 Synthetic integration tests compare observer frames and all scientific H3 kernel fields exactly for land bare-earth, land canopy and water, using both aligned and resolution-changing stacks. Additional tests compare native GDAL visibility and absolute pixel offsets, preserve stale/incomplete cache evidence, reject absent/changed producer receipts, invalid chunk partitions/method changes and oversized windows or original context chunks, and independently count every required rotated/sheared mapped-land pixel. The retained mismatch is frozen separately with input/output checksums. Neither test class qualifies real source provenance, historical vintages, coastal coverage or final null completeness.
 
 Cross-CRS synthetic tests use both geographic and projected inputs with absent, finite-sentinel and NaN nodata, and compare replayed windows exactly to the unchanged global producer. The retained Dungeness test records zero remaining pixel/nodata/transform differences and about 403 MiB peak RSS for its five-window cold qualification run. These fixture timings do not predict regional throughput.
+
+## Regional release planning and higher-resolution TODO
+
+Policy approval alone does not materialize the reporting mask or owner-pinned R7 registry. Run
+`plan-study` first, inspect domain/mask/registry status and exact membership identities, then
+qualify retained sources before acquisition. Do not substitute a planning rectangle, a different
+resolution's reporting grid, or a historical demo's pair universe. Source eligibility extends
+outside reporting water; preserve all selected land/water roles and full target-water denominators.
+The path-support contract buffers reporting water by 31 km. A source's complete observer LOS AOI
+also extends 31 km from its sampled points; outer observers can therefore require computation
+beyond the reporting path-support envelope. Estimate both extents before provision or execution.
+
+A first real pilot should select one land R7 source and retain normal 5-10 observer sampling,
+30 m raster resolution, 30 km LOS plus 1 km margin, and all its selected candidate pairs. Its
+matched bare-earth/canopy work needs at most 20 native calls before any retries. Use one worker,
+no more than 6,000 role pairs, and stop ceilings of 45 minutes, 768 MiB RSS and 2 GiB total task
+staging. A 62 km square contains approximately 4.27 million 30 m pixels, or 17 MiB per Float32
+plane; original context chunks, several aligned surfaces, indexing and checkpoints increase this.
+Budget 0.25-2 GiB of staging and measure real RSS/runtime before scaling. These are planning
+bounds, not measured throughput or proof that inputs qualify. The unfinished run-level supervisor
+is outside this release; the metadata-helper monitor alone cannot enforce a complete LOS pilot.
+
+Missing raster pixels over mapped land remain missing. Validate them against a qualified physical
+coastline rather than filling a coarse coastline disagreement with zero canopy or moving an
+observer to a convenient cell. Pin upstream source bytes, native masks, projection/warp settings,
+vertical references, source-date precision and licences. An unverified DEM datum blocks accuracy
+claims; any source-relative engineering experiment needs explicit recorded qualification and
+cannot be relabelled a regional scientific release. Annual 2020 CHM and current reference geometry
+are static references, not daily reconstructions over a requested historical window.
+
+Higher-resolution follow-up requires qualified island/shoreline detail, upstream DEM tile
+provenance and datum reconciliation, complete above-ground canopy support, native pixel/observer
+parity against the established producer, and a fresh resource estimate. Record coverage/status and
+unknown values in pair and per-target products. Sums express aggregate static support, never
+probability, observer activity or daily historical availability. Preserve earlier local releases;
+promote a new immutable generation under `Data/viewshed` only after independent completeness,
+null, denominator, checksum and provenance checks.

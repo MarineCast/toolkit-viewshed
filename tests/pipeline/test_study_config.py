@@ -1411,3 +1411,46 @@ def test_warp_chunk_receipt_contract_rejects_invalid_partitions_and_method(damag
         payload["extra"] = "silently ignored"
     with pytest.raises(ValueError):
         validate_global_warp_chunk_plan(payload, expected=expected)
+
+
+def test_native_canopy_annual_precision_does_not_invent_an_observation_day(coastal_study):
+    import rasterio
+
+    _selected, _, app, _, _ = coastal_study
+    synthetic_native_rasters(app)
+    with rasterio.open(app.paths.canopy_height_path) as source:
+        profile, pixels = source.profile, source.read(1)
+    with rasterio.open(app.paths.canopy_height_path, "w", **profile) as destination:
+        destination.write(pixels, 1)
+        destination.update_tags(
+            source_year="2020",
+            source_time_precision="year",
+            height_reference="above_ground",
+            height_units="m",
+        )
+    receipt = validate_native_path_coverage(app.raw_config, app.viewshed.crs_projected, canopy=True)
+    canopy = receipt["native_rasters"]["chm"]
+    assert canopy["source_date"] is None
+    assert canopy["source_time"] == {
+        "precision": "year",
+        "year": 2020,
+        "start_inclusive": "2020-01-01",
+        "end_exclusive": "2021-01-01",
+    }
+    with rasterio.open(app.paths.canopy_height_path, "r+") as destination:
+        destination.update_tags(source_date="2021-05-06", source_time_precision="day")
+    with pytest.raises(ValueError, match="year/date disagree"):
+        validate_native_path_coverage(app.raw_config, app.viewshed.crs_projected, canopy=True)
+
+
+@pytest.mark.parametrize("kind", ["dem", "chm"])
+def test_native_exact_date_rejects_conflicting_precision(coastal_study, kind):
+    import rasterio
+
+    _selected, _, app, _, _ = coastal_study
+    synthetic_native_rasters(app)
+    path = app.paths.regional_dem_path if kind == "dem" else app.paths.canopy_height_path
+    with rasterio.open(path, "r+") as destination:
+        destination.update_tags(source_time_precision="year")
+    with pytest.raises(ValueError, match="source_date requires day time precision"):
+        validate_native_path_coverage(app.raw_config, app.viewshed.crs_projected, canopy=True)

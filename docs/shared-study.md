@@ -117,8 +117,12 @@ read-only qualification requires native land/water union coverage through the
 31 km path extent, native water coverage of reporting water, declared raster CRS
 and complete actual affine raster footprints (including rotation/skew), with
 explicit uncovered-path accounting, finite non-null mapped-land DEM/CHM pixels,
-ISO `source_date`, DEM `vertical_reference` and metre units, and canopy
-`height_reference=above_ground` and metre units. ETH sentinel 255 remains missing.
+ISO `source_date` for DEM, DEM `vertical_reference` and metre units, and canopy
+`height_reference=above_ground` and metre units. Canopy may declare either an exact
+ISO `source_date` or an explicit four-digit `source_year` with annual precision.
+Annual metadata records a half-open calendar interval and leaves `source_date` null;
+its interval start is not an asserted acquisition day. Conflicting year/date metadata
+or a declared precision inconsistent with the selected date field fails qualification. ETH sentinel 255 remains missing.
 These conservative gates do not repair missing canopy or infer source provenance
 from requested dates. The raster tags are required qualification declarations,
 not independent proof that a vertical datum transformation or source date is correct;

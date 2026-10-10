@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -62,13 +63,19 @@ def _target_resolution(app: AppConfig) -> int:
 
 
 def _pair_content_identity(frame: pl.DataFrame) -> str:
-    """Hash canonical pair values without depending on input serialization order."""
-
-    row_hashes = frame.hash_rows(seed=0, seed_1=1, seed_2=2, seed_3=3).to_numpy()
+    """Hash canonical values independent of Polars row-hash API/version and row order."""
     digest = hashlib.sha256()
-    digest.update(str(frame.height).encode("ascii"))
-    digest.update(b"\0")
-    digest.update(row_hashes.tobytes())
+    digest.update(b"pair_values_jsonl_v2\n")
+    canonical = frame.select([*PAIR_PRODUCT_KEYS, "distance_m", "distance_km"]).sort(
+        PAIR_PRODUCT_KEYS
+    )
+    for row in canonical.iter_rows():
+        digest.update(
+            json.dumps(row, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode(
+                "ascii"
+            )
+        )
+        digest.update(b"\n")
     return digest.hexdigest()
 
 
