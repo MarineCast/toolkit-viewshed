@@ -400,3 +400,19 @@ def test_canonical_ground_two_source_elevations_one_coarse_void_is_batch_invaria
             baseline = result.visible
         else:
             np.testing.assert_array_equal(result.visible, baseline)
+
+
+def test_native_call_cap_never_retries_through_cli(tmp_path, monkeypatch):
+    context, app, x, y = _fixture_context(tmp_path)
+    monkeypatch.setattr(los, "_load_gdal_python", lambda: object())
+
+    def denied(**_kwargs):
+        raise los.PilotCallLimitError("budget exhausted")
+
+    def forbidden(**_kwargs):
+        pytest.fail("Admission failure must not trigger another native backend")
+
+    monkeypatch.setattr(los, "_run_gdal_viewshed_in_process_to_bool_array", denied)
+    monkeypatch.setattr(los, "_run_gdal_viewshed_cli_to_bool_array", forbidden)
+    with pytest.raises(los.PilotCallLimitError, match="budget exhausted"):
+        los._run_gdal_viewshed_dispatch(**_arguments(context, app, x, y))

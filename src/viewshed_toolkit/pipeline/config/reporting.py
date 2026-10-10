@@ -98,10 +98,14 @@ def file_sha256(path: Path) -> str:
 
 
 def reporting_cells_for_geometry(geometry: Any, resolution: int) -> tuple[str, ...]:
-    """Enumerate overlap, retaining strictly positive ellipsoidal polygon area."""
+    """Census a simple enclosing box, then test actual positive-area support.
+
+    Complex-water overlap fills can omit thin coastal slivers. A bbox census
+    supplies candidates only; the exact source polygon remains authoritative.
+    """
     geod = Geod(ellps="WGS84")
     candidates = h3.h3shape_to_cells_experimental(
-        h3.geo_to_h3shape(mapping(geometry)), resolution, contain="overlap"
+        h3.geo_to_h3shape(mapping(box(*geometry.bounds))), resolution, contain="overlap"
     )
     result = []
     for cell in candidates:
@@ -290,10 +294,30 @@ def validate_native_path_coverage(raw: dict[str, Any], crs: str, *, canopy: bool
                     f"uncovered area in raster CRS squared units={uncovered.area}"
                 )
             tags = raster.tags()
-            source_date = tags.get("source_date")
+            source_date = tags.get("source_date") or None
             source_year = tags.get("source_year")
             source_time: dict[str, Any]
-            if source_date:
+            interval_start = tags.get("source_start_date")
+            interval_end = tags.get("source_end_date")
+            if interval_start or interval_end:
+                if name != "dem" or not interval_start or not interval_end:
+                    raise ValueError("Only DEM source intervals with both endpoints are supported")
+                if source_date or source_year or tags.get("source_time_precision") != "interval":
+                    raise ValueError("DEM source interval conflicts with date/year or precision")
+                start, end = date.fromisoformat(interval_start), date.fromisoformat(interval_end)
+                if (
+                    start.isoformat() != interval_start
+                    or end.isoformat() != interval_end
+                    or start > end
+                ):
+                    raise ValueError("DEM source interval must be ordered canonical ISO dates")
+                source_time = {
+                    "precision": "interval",
+                    "start_inclusive": interval_start,
+                    "end_inclusive": interval_end,
+                    "interpretation": "source compilation interval; spatial epochs may differ",
+                }
+            elif source_date:
                 if tags.get("source_time_precision", "day") != "day":
                     raise ValueError("Native raster source_date requires day time precision")
                 parsed_date = date.fromisoformat(source_date)

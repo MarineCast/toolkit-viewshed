@@ -1478,3 +1478,69 @@ def test_native_exact_date_rejects_conflicting_precision(coastal_study, kind):
         destination.update_tags(source_time_precision="year")
     with pytest.raises(ValueError, match="source_date requires day time precision"):
         validate_native_path_coverage(app.raw_config, app.viewshed.crs_projected, canopy=True)
+
+
+def test_reporting_census_uses_enclosing_box_before_exact_sliver_selection(monkeypatch):
+    import shapely
+
+    cell = h3.latlng_to_cell(48.0, -123.0, 7)
+    from viewshed_toolkit._internal.geo.h3 import cell_to_polygon
+
+    geometry = cell_to_polygon(cell)
+    west, south, east, north = geometry.bounds
+    sliver = geometry.intersection(box(west, south, west + (east - west) * 0.01, north))
+    assert sliver.area > 0
+    original = h3.h3shape_to_cells_experimental
+    calls = []
+
+    def census(shape, resolution, **kwargs):
+        supplied = shapely.geometry.shape(h3.h3shape_to_geo(shape))
+        calls.append(supplied)
+        assert supplied.equals(box(*sliver.bounds))
+        return original(shape, resolution, **kwargs)
+
+    monkeypatch.setattr(h3, "h3shape_to_cells_experimental", census)
+    result = reporting_cells_for_geometry(sliver, 7)
+    expected = sorted(
+        c for c in h3.grid_disk(cell, 1) if cell_to_polygon(c).intersection(sliver).area > 0
+    )
+    assert list(result) == expected and cell in result and len(calls) == 1
+
+
+@pytest.mark.parametrize("damage", [None, "reversed", "incomplete", "exact_date", "precision"])
+def test_native_dem_compilation_interval_preserves_epoch_uncertainty(coastal_study, damage):
+    import rasterio
+
+    _selected, _, app, _, _ = coastal_study
+    synthetic_native_rasters(app)
+    tags = dict(
+        source_date="",
+        source_start_date="1943-01-01",
+        source_end_date="2021-04-03",
+        source_time_precision="interval",
+    )
+    if damage == "reversed":
+        tags["source_start_date"] = "2022-01-01"
+    elif damage == "incomplete":
+        tags["source_end_date"] = ""
+    elif damage == "exact_date":
+        tags["source_date"] = "2024-03-27"
+    elif damage == "precision":
+        tags["source_time_precision"] = "day"
+    with rasterio.open(app.paths.regional_dem_path, "r+") as destination:
+        destination.update_tags(**tags)
+    if damage:
+        with pytest.raises(ValueError, match="interval"):
+            validate_native_path_coverage(app.raw_config, app.viewshed.crs_projected, canopy=True)
+    else:
+        receipt = validate_native_path_coverage(
+            app.raw_config, app.viewshed.crs_projected, canopy=True
+        )
+        dem = receipt["native_rasters"]["dem"]
+        assert dem["source_date"] is None
+        assert dem["source_time"] == {
+            "precision": "interval",
+            "start_inclusive": "1943-01-01",
+            "end_inclusive": "2021-04-03",
+            "interpretation": "source compilation interval; spatial epochs may differ",
+        }

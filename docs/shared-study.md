@@ -117,7 +117,7 @@ read-only qualification requires native land/water union coverage through the
 31 km path extent, native water coverage of reporting water, declared raster CRS
 and complete actual affine raster footprints (including rotation/skew), with
 explicit uncovered-path accounting, finite non-null mapped-land DEM/CHM pixels,
-ISO `source_date` for DEM, DEM `vertical_reference` and metre units, and canopy
+ISO `source_date` or a source compilation interval for DEM, DEM `vertical_reference` and metre units, and canopy
 `height_reference=above_ground` and metre units. Canopy may declare either an exact
 ISO `source_date` or an explicit four-digit `source_year` with annual precision.
 Annual metadata records a half-open calendar interval and leaves `source_date` null;
@@ -139,3 +139,12 @@ Real coastal geometry, registry artifacts, source/vertical-reference qualificati
 resource approval and regional independent validation remain release gates. Neither
 synthetic tests nor historical pair parity establish regional readiness. No immutable
 Data release is published by this consumer change.
+
+DEM compilations may declare `source_time_precision: interval`, canonical ISO
+`source_start_date` and `source_end_date` (both inclusive), with no `source_date` or
+`source_year`. Both ordered endpoints are required. The receipt retains the interval and
+null exact date, explicitly qualifying that spatial source epochs may differ. Pin individual
+asset metadata and its temporal coverage in provenance; a compilation envelope does not
+establish a common observation day or current terrain everywhere. Publication/download dates
+are not source observation dates. This representation does not relax vertical-reference,
+metre-unit, native geometry or mapped-land pixel-coverage validation.

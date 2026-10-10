@@ -6,6 +6,8 @@ from pathlib import Path
 
 PATTERNS = (
     "src/viewshed_toolkit/_internal/performance.py",
+    "src/viewshed_toolkit/_internal/pilot.py",
+    "src/viewshed_toolkit/pipeline/api/pilot.py",
     "src/viewshed_toolkit/pipeline/*/components.py",
     "src/viewshed_toolkit/pipeline/api/acquisition.py",
     "src/viewshed_toolkit/pipeline/api/regional.py",
@@ -60,6 +62,9 @@ def main() -> None:
         "scripts/check_documentation_browser.py",
         "scripts/check_installed_wheel.py",
         "tests/pipeline/test_study_config.py",
+        "tests/pipeline/test_pilot_supervisor.py",
+        "tests/pipeline/test_pilot_api.py",
+        "tests/pipeline/pilot_supervisor_cases.py",
         "tests/pipeline/test_native_warp_planner.py",
         "scripts/build_native_warp_helper.py",
         __file__,

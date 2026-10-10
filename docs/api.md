@@ -241,3 +241,18 @@ native metadata planner. Canopy alignment has its own maximum-resampling receipt
 contexts and crops only requested LOS windows. See [bounded native windows](BOUNDED_WINDOWS.md)
 for qualification, receipt provenance, helper build instructions and resource-limit requirements.
 No acquisition or full reference warp runs implicitly, and default global behavior is unchanged.
+
+## Bounded one-source engineering pilot
+
+`viewshed_toolkit.pipeline.api.pilot.run_bounded_land_pilot` is an advanced POSIX-only API
+for prepared and qualified paired land configs. Supply `bare_config`, `canopy_config`, one
+`source_h3`, an existing owned `staging_root`, and a fresh child `checkpoint_dir`; optionally
+supply the shared `study_config` and stricter `PilotCaps`. It performs no acquisition or final
+promotion, retains checkpoints, and rejects output paths outside staging or preexisting manifests
+and partitions. Keep batch intermediates, disable overwrite/combine/maps, use one worker and
+windowed rasters. Candidate lookup validation is filtered and bounded to 6,001 keys.
+
+A completed subprocess is not a validated product. Input qualification is unchanged, and the
+caller must independently verify all paired outputs before publishing. See
+[bounded native windows](BOUNDED_WINDOWS.md) for ceilings, sampling limitations and scientific
+qualification. This advanced API is deliberately not exported from the package root.
