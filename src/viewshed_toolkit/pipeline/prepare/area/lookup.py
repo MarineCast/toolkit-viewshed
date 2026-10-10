@@ -375,6 +375,10 @@ def build_source_target_lookup(
         limit_per_source_type = limit
 
     runtime = load_distance_runtime(config_path)
+    if "marinecast_study" in runtime.raw_config:
+        from ...config.reporting import load_reporting_support
+
+        load_reporting_support(runtime.raw_config, runtime.projected_crs)
     cfg = load_distance_weight_config(runtime.raw_config)
     if overwrite:
         cfg = DistanceWeightConfig(**{**cfg.__dict__, "overwrite": True})

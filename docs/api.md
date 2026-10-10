@@ -29,6 +29,9 @@ from viewshed_toolkit.resources import default_config_path
 
 `load_app_config` reads and validates configuration without creating output directories:
 
+An optional `study_config=Path(...)` selects the portable MarineCast study v1 contract;
+`ViewshedRequest` accepts the same field. See [shared-study selection, roles and gates](shared-study.md).
+
 ```python
 from viewshed_toolkit import load_app_config
 from viewshed_toolkit.resources import default_config_path
@@ -229,3 +232,12 @@ historical manifests without that inventory before entering stage checks. It doe
 certify older cached outputs. Rebuild affected producers with their explicit overwrite controls
 or a fresh workspace, then create a new manifest. Remote source freshness is not certified by
 local checksum validation.
+
+## Bounded DEM preparation
+
+The existing source runner can select `batch.raster_stack_mode: windowed`; cross-CRS/resolution
+inputs additionally require a pinned producer chunk receipt or an explicitly built and pinned
+native metadata planner. Canopy alignment has its own maximum-resampling receipt. This opt-in preserves the established global warp processing
+contexts and crops only requested LOS windows. See [bounded native windows](BOUNDED_WINDOWS.md)
+for qualification, receipt provenance, helper build instructions and resource-limit requirements.
+No acquisition or full reference warp runs implicitly, and default global behavior is unchanged.

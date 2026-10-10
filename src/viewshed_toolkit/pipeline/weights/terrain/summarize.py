@@ -151,6 +151,10 @@ def domain_target_water_area_by_h3(app: AppConfig, h3_resolution: int) -> pl.Dat
     used for this denominator.
     """
 
+    if "marinecast_study" in app.raw_config:
+        from ...config.reporting import load_reporting_support
+
+        load_reporting_support(app.raw_config, app.viewshed.crs_projected)
     # Resolve experiment artifacts from the active AppConfig rather than
     # reloading app.config_path. Notebook-driven runs intentionally replace
     # output_dir and H3 settings in memory while retaining a stable base YAML.

@@ -27,6 +27,9 @@ def _stable_element_ids(element: Any, prefix: str) -> None:
 
 
 def export_component_map(app: AppConfig, *, source_type: str, factor: str = "static") -> Path:
+    from ..config.study import validate_study_app
+
+    validate_study_app(app)
     columns = {
         "static": "weight_static_viewability",
         "terrain": "weight_terrain",

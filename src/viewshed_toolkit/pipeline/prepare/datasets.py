@@ -11,9 +11,11 @@ from pyproj import Transformer
 from ..config import AppConfig
 from ..config.datasets import DatasetsConfig
 from ..config.paths import bbox_from_config
+from ..config.study import require_shared_owned_output, with_study_config
 from ..contracts.components import cache_matches, component_root, provenance, record_product
 
 
+@with_study_config
 def prepare_dataset(app: AppConfig, dataset: str, *, overwrite: bool = False) -> Path:
     if dataset not in {"dem", "chm"}:
         raise ValueError("dataset must be dem or chm")
@@ -36,6 +38,7 @@ def prepare_dataset(app: AppConfig, dataset: str, *, overwrite: bool = False) ->
         "inputs"
     ]
     output = app.paths.regional_dem_path if dataset == "dem" else app.paths.canopy_height_path
+    require_shared_owned_output(app.raw_config, output)
     if not overwrite and cache_matches(output, contract):
         return output
 
@@ -50,6 +53,18 @@ def prepare_dataset(app: AppConfig, dataset: str, *, overwrite: bool = False) ->
     # Buffer supports the full target domain and the edge observer windows.
     margin = app.viewshed.max_distance_m + app.viewshed.aoi_margin_m
     bounds = (bounds[0] - margin, bounds[1] - margin, bounds[2] + margin, bounds[3] + margin)
+    if "marinecast_study" in app.raw_config:
+        import geopandas as gpd
+
+        from ..config.reporting import load_reporting_support
+
+        support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+        bounds = (
+            gpd.GeoSeries([support.native_extent], crs=4326)
+            .to_crs(app.viewshed.crs_projected)
+            .iloc[0]
+            .bounds
+        )
     resolution = app.viewshed.dem_resolution_m
     try:
         import rasterio
