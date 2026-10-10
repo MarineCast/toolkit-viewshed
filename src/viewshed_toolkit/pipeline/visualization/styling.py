@@ -160,6 +160,6 @@ def _map_note(
               <div style="display:flex;justify-content:space-between;"><span>Low</span><span>High</span></div>
               <div style="margin-top:5px;color:#444;">Each factor is independently scaled
               from zero to its configured display quantile. Hover an original H3 layer
-              for its unscaled grid value.</div>
+              for its unscaled grid value. Gray dashed cells indicate missing or inapplicable values; inspect coverage/status. Transparent cells with value 0 are computed zeros.</div>
             </div>
             """))

@@ -56,6 +56,37 @@ class _MapGeometryAssets:
         return self.by_name.get(name)
 
 
+def _coverage_fields(frame: pd.DataFrame, metric: str) -> list[str]:
+    return [
+        f"{metric}_{suffix}"
+        for suffix in (
+            "status",
+            "valid_count",
+            "missing_count",
+            "applicable_count",
+            "not_applicable_count",
+            "coverage_fraction",
+            "available",
+            "mean_valid",
+        )
+        if f"{metric}_{suffix}" in frame.columns
+    ]
+
+
+def _coverage_labels(fields: list[str], metric: str) -> list[str]:
+    labels = {
+        "status": "Value status",
+        "valid_count": "Valid pairs",
+        "missing_count": "Missing pairs",
+        "applicable_count": "Applicable pairs",
+        "not_applicable_count": "Not applicable pairs",
+        "coverage_fraction": "Fraction with values",
+        "available": "Sum of available values",
+        "mean_valid": "Mean of valid values",
+    }
+    return [labels[field.removeprefix(f"{metric}_")] for field in fields]
+
+
 def _add_h3_value_hover(
     map_: folium.Map,
     frame: gpd.GeoDataFrame,
@@ -70,8 +101,9 @@ def _add_h3_value_hover(
 
     if metric not in frame.columns or "target_h3" not in frame.columns:
         raise KeyError(f"H3 hover layer requires target_h3 and {metric}.")
-    hover_frame = frame[["target_h3", metric, "geometry"]].copy()
-    hover_frame[metric] = pd.to_numeric(hover_frame[metric], errors="coerce").fillna(0.0)
+    fields = ["target_h3", metric] + _coverage_fields(frame, metric)
+    hover_frame = frame[[*fields, "geometry"]].copy()
+    hover_frame[metric] = pd.to_numeric(hover_frame[metric], errors="coerce")
     _geojson_layer(
         hover_frame,
         output_path=output_path,
@@ -86,8 +118,8 @@ def _add_h3_value_hover(
         },
         highlight_function=lambda _: {"color": "#111111", "weight": 1.5},
         tooltip=folium.GeoJsonTooltip(
-            fields=["target_h3", metric],
-            aliases=["Target H3", f"Grid value: {caption}"],
+            fields=fields,
+            aliases=["Target H3", f"Grid value: {caption}"] + _coverage_labels(fields[2:], metric),
             localize=True,
             sticky=True,
         ),
@@ -504,10 +536,19 @@ def write_target_h3_weight_map(
     values = pd.to_numeric(frame[metric], errors="coerce").fillna(0.0)
     vmax = _display_max(values, config.display_quantile)
     colors = bcm.LinearColormap(_map_colors(config), vmin=0.0, vmax=vmax, caption=caption)
-    properties = ["target_h3", metric]
+    properties = ["target_h3", metric] + _coverage_fields(frame, metric)
 
     def style(feature: dict) -> dict:
-        value = float(feature["properties"].get(metric) or 0.0)
+        raw = feature["properties"].get(metric)
+        if raw is None or pd.isna(raw):
+            return {
+                "fillColor": "#9ca3af",
+                "color": "#4b5563",
+                "weight": 1,
+                "dashArray": "4 3",
+                "fillOpacity": 0.35,
+            }
+        value = float(raw)
         return {
             "fillColor": colors(min(max(value, 0.0), vmax)),
             "color": "#4A4A4A",
@@ -530,7 +571,8 @@ def write_target_h3_weight_map(
         highlight_function=lambda _: {"color": "#111111", "weight": 2.0},
         tooltip=folium.GeoJsonTooltip(
             fields=properties,
-            aliases=["Target H3", f"Grid value: {caption}"],
+            aliases=["Target H3", f"Grid value: {caption}"]
+            + _coverage_labels(properties[2:], metric),
             localize=True,
         ),
     ).add_to(map_)
@@ -960,13 +1002,23 @@ def _add_h3_metric_layer(
     config: ViewshedMapConfig,
     show: bool,
 ) -> gpd.GeoDataFrame:
-    gdf = _h3_geodataframe(frame[[h3_column, metric]].copy(), h3_column)
-    gdf[metric] = pd.to_numeric(gdf[metric], errors="coerce").fillna(0.0)
+    fields = [h3_column, metric] + _coverage_fields(frame, metric)
+    gdf = _h3_geodataframe(frame[fields].copy(), h3_column)
+    gdf[metric] = pd.to_numeric(gdf[metric], errors="coerce")
     vmax = _display_max(gdf[metric], config.display_quantile)
     colors = bcm.LinearColormap(_map_colors(config), vmin=0.0, vmax=vmax)
 
     def style(feature: dict[str, Any]) -> dict[str, Any]:
-        value = float(feature["properties"].get(metric) or 0.0)
+        raw = feature["properties"].get(metric)
+        if raw is None or pd.isna(raw):
+            return {
+                "fillColor": "#9ca3af",
+                "color": "#4b5563",
+                "weight": 1,
+                "dashArray": "4 3",
+                "fillOpacity": 0.35,
+            }
+        value = float(raw)
         return {
             "fillColor": colors(min(max(value, 0.0), vmax)),
             "color": "#3f3f3f",
@@ -989,8 +1041,8 @@ def _add_h3_metric_layer(
         style_function=style,
         highlight_function=lambda _: {"color": "#111111", "weight": 1.8},
         tooltip=folium.GeoJsonTooltip(
-            fields=[h3_column, metric],
-            aliases=["H3 cell", "Grid value"],
+            fields=fields,
+            aliases=["H3 cell", "Grid value"] + _coverage_labels(fields[2:], metric),
             localize=True,
             sticky=True,
         ),

@@ -256,3 +256,25 @@ A completed subprocess is not a validated product. Input qualification is unchan
 caller must independently verify all paired outputs before publishing. See
 [bounded native windows](BOUNDED_WINDOWS.md) for ceilings, sampling limitations and scientific
 qualification. This advanced API is deliberately not exported from the package root.
+
+
+### Missing values in map summaries
+
+Map value contract `nullable_coverage_v1` preserves unknown factors as null in Parquet,
+GeoJSON and HTML. For each sum column, the main value requires complete applicable-pair
+coverage. A partial total remains null; separately named `*_available` and `*_mean_valid`
+columns describe only available contributions. Companion `*_valid_count`, `*_missing_count`,
+`*_applicable_count`, `*_not_applicable_count`, `*_coverage_fraction` and `*_status` fields expose the denominator.
+Valid computed zeros count in the mean. With no valid applicable values, sums and means are
+null. Neutral vegetation factors for water sources or zero bare-earth baseline are not
+vegetation observations and are excluded. Unknown baseline support leaves vegetation unknown.
+Source and target summaries use the same rules and keep source roles separate.
+
+Native H3 layers show missing or inapplicable values with gray dashed cells and expose their
+status and coverage on hover. Computed zero remains transparent with a numeric zero. Smoothed
+surfaces stay within positive known H3 support; they do not estimate missing cells. Older map
+manifests without this value contract require explicit regeneration with overwrite.
+
+These are presentation rules for the supplied candidate rows. They cannot detect omitted
+candidates, certify raster coverage, or enable partially available canopy LOS in the compact
+finalizer. Existing source policies, finalization requirements and scientific hashes are unchanged.
