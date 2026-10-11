@@ -182,5 +182,9 @@ def partial_kernel_summary(
             if bare_kernel == 0
             else "partial_unknown_paths" if combined is None else "computed_canopy_model"
         ),
-        "combined_status": "partial_unknown_paths" if combined is None else "computed_canopy_model",
+        "combined_status": (
+            "zero_baseline_support"
+            if bare_kernel == 0
+            else "partial_unknown_paths" if combined is None else "computed_canopy_model"
+        ),
     }

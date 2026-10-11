@@ -146,3 +146,41 @@ def test_mixed_water_does_not_erase_native_unknown_land():
     assert np.isnan(heights[0, 0])  # No caller mutation.
     with pytest.raises(ValueError):
         qualify_partial_canopy_grid(heights, unknown[:, :2], water)
+
+
+@pytest.mark.parametrize("known,unknown", [(0.0, 10.0), (0.0, 0.0), (2.0, 3.0)])
+def test_zero_baseline_is_not_canopy_evidence(known, unknown):
+    from viewshed_toolkit.pipeline.weights.vegetation.partial import partial_kernel_summary
+
+    r = partial_kernel_summary(
+        known_weight_sum=known,
+        unknown_weight_sum=unknown,
+        observer_count=1,
+        equivalent_water_pixels=10.0,
+        bare_kernel=0.0,
+    )
+    assert r["combined_lower"] == r["combined_upper"] == r["weight_combined"] == 0.0
+    assert r["weight_vegetation"] is None
+    assert r["combined_status"] == "zero_baseline_support"
+    assert r["vegetation_status"] == "no_baseline_support_neutral"
+
+
+@pytest.mark.parametrize(
+    "known,unknown,status",
+    [
+        (0.0, 0.0, "computed_canopy_model"),
+        (2.0, 0.0, "computed_canopy_model"),
+        (0.0, 2.0, "partial_unknown_paths"),
+    ],
+)
+def test_positive_baseline_retains_canopy_provenance(known, unknown, status):
+    from viewshed_toolkit.pipeline.weights.vegetation.partial import partial_kernel_summary
+
+    r = partial_kernel_summary(
+        known_weight_sum=known,
+        unknown_weight_sum=unknown,
+        observer_count=1,
+        equivalent_water_pixels=10.0,
+        bare_kernel=0.5,
+    )
+    assert r["combined_status"] == r["vegetation_status"] == status

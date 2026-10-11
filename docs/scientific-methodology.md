@@ -408,7 +408,13 @@ invalidate known canopy heights, and built-up NoData does not establish zero can
 `partial_kernel_summary` retains the full observer-count times equivalent-water-pixel
 denominator. It returns lower and upper combined bounds and a point value only when
 the bounds coincide. A zero bare kernel gives a provable combined zero and a
-not-applicable vegetation ratio, not a canopy observation. Unknown pair values remain
+not-applicable vegetation ratio, not a canopy observation. Its `combined_status` is
+`zero_baseline_support`, including when every canopy observation is unknown. Positive
+baselines retain `computed_canopy_model` when the bounds coincide and
+`partial_unknown_paths` otherwise. Combined known-pair coverage includes zero baselines;
+canopy coverage counts supported vegetation ratios over positive-baseline pairs only.
+These status labels refine provenance without changing weights or interval bounds.
+Unknown pair values remain
 null; aggregate available sums and valid-value means must name their denominators.
 Do not substitute a bound or a partial observed sum for a complete pair weight.
 
