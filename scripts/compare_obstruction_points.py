@@ -331,6 +331,53 @@ def run(config):
                 all_touched=False,
                 inventory_policy=inventory_policy,
             )
+            if config.get("benchmark_cache_dir"):
+                cache = Path(config["benchmark_cache_dir"])
+                cache.mkdir(parents=True, exist_ok=True)
+                # Retain only entire target-cell raster populations inside the
+                # bounded window. No clipped cell is labelled a whole-cell score.
+                full_counts = np.bincount(codes[codes >= 0], minlength=len(cells))
+                selected_counts = np.bincount(codes[rr, cc], minlength=len(cells))
+                complete_codes = np.flatnonzero(
+                    (full_counts == selected_counts) & (full_counts > 0)
+                )
+                complete = np.isin(codes[rr, cc], complete_codes)
+                source_polygon = project(
+                    forward.transform,
+                    Polygon([(lon, lat) for lat, lon in h3.cell_to_boundary(source)]),
+                )
+                np.savez(
+                    cache / (site["name"] + ".npz"),
+                    ground=ground,
+                    canopy=canopy,
+                    canopy_unknown=cu,
+                    building=fine_buildings.lower_height,
+                    building_unknown=fine_buildings.unknown,
+                    building_present=fine_buildings.present,
+                    qualified_water=pure,
+                    transform=np.asarray(gt)[:6],
+                    targets=targets[complete],
+                    target_h3=np.asarray(target_h3)[complete],
+                    target_rows=rr[complete],
+                    target_cols=cc[complete],
+                )
+                metadata = dict(
+                    cache_contract="bounded_cell_surface_cache_v1",
+                    cache_npz_sha256=checksum(cache / (site["name"] + ".npz")),
+                    site=site,
+                    source_land=mapping(source_polygon.intersection(land)),
+                    land=mapping(land.intersection(extent)),
+                    target_population="complete retained 30m water-pixel populations of H3 cells inside the exact-point 5km window",
+                    excluded_boundary_targets=int((~complete).sum()),
+                    building_inventory_policy=inventory_policy,
+                    building_raster_contract=BUILDING_RASTER_CONTRACT,
+                    terrain_support="retained 30m repeated onto fixed nested 10m grid",
+                    inputs=inputs,
+                    native_canopy_inputs=used,
+                )
+                (cache / (site["name"] + ".json")).write_text(
+                    json.dumps(metadata, indent=2, allow_nan=False)
+                )
             fyr, fxc = np.indices(fine_shape)
             fx = gt.c + (fxc + 0.5) * gt.a
             fy = gt.f + (fyr + 0.5) * gt.e

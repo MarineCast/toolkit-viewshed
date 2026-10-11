@@ -55,6 +55,52 @@ new production stages, or declare regional readiness. The application owns bound
 input acquisition, footprint inventory containment, fixed source/target sampling,
 resource supervision, checksummed manifests and product promotion.
 
+## Cell-score runtime experiment
+
+For a bounded runtime comparison, add `benchmark_cache_dir` to the exact-point config.
+The script saves aligned native 10 m surfaces **before** observer clearance and only complete
+retained target-cell water-pixel populations within the 5 km window. Boundary-clipped target
+cells are excluded rather than reported as whole-cell scores. These local NPZ/JSON caches carry
+input hashes and assumptions and are research intermediates, not production artifacts.
+
+Run `PYTHONPATH=src python scripts/benchmark_cell_scores.py CONFIG.json` with `input_dir`,
+`output_dir`, `sites` (retained cache names), and optional positive integer `repetitions` (default 3).
+Use a dedicated output directory. No acquisition, provider access, cleanup or production
+promotion runs. Outputs are `cell_scores.parquet`, `benchmark.json` and a self-contained
+`benchmark.html` with paired reference/candidate cell maps, scores, support bounds and timings.
+`view_scores.parquet` contains one row per source/target pair for the fastest candidate meeting
+the tolerance at both sites (or the reference if none passes). It keeps conditional
+`terrain_building_score` separate from `combined_score` and its canopy support bounds.
+The report also compares the historical exact viewpoint on the same target populations,
+so a shoreline point is not confused with an average across inland source-cell locations.
+
+The score is the unweighted mean visible target-water pixel fraction across deterministic
+ground-level observer locations in the source cell's land geometry, excluding rasterized roof
+cells. It is conditional on the declared 30 m canopy clearance. A 0.7 score means 70% visible
+on average across those locations; union-visible and best-observer support are different metrics.
+All blocked and out-of-range pairs remain in the denominator. Unknown support retains null
+complete scores and lower/upper bounds. The denominator is the complete **retained raster water
+population**, not the production equivalent-area denominator; this experiment does not relabel
+the canonical `physical_viewability` product or alter distance-integrated weights.
+
+The reference uses 15 nested maximin observer samples, 10 m direct grid rays and every retained
+target pixel. Candidates compare 5/10/15 observers, GDAL Edge versus compiled direct rays, and
+10/30 m obstacle grids. Direct-ray candidates choose one actual water point per target-cell
+2 × 2 pixel block and weight it by the represented population. Cells with fewer than 1,000
+target pixels receive a complete census to prevent sparse estimates of small water fragments.
+The 30 m candidate conservatively takes maximum obstacle height and any unknown support within
+each 3 × 3 native block; terrain retains its existing 30 m support in every case.
+
+Runtime medians include private surface construction, all three obstruction components and
+cell aggregation. Input loading/sampling and warmup are recorded separately. Acquisition,
+raw cache preparation, cold Python/Numba startup and regional execution are outside the timing.
+The GDAL candidate uses floor and finite high unknown ceilings; it is qualified only below
+10,000 m supported elevation. Height-monotonic conflicts become unknown and reject the candidate.
+The exploratory numerical tolerance is p95 absolute difference ≤0.05 and maximum ≤0.10 across
+cell clear bounds and unknown fractions, with no native consistency conflicts. This tests
+agreement with the model reference at the two sites; it does not establish source completeness,
+observer-sampling convergence everywhere, canopy transmission, or empirical viewshed accuracy.
+
 ## Required retained inputs
 
 Use the same north-up 30 m EPSG:32610 grid for bare terrain, ETH 2020 maximum canopy,
