@@ -69,6 +69,7 @@ def partial_canopy_visibility(
     max_distance_m: float = 30000.0,
     clearance_mask: np.ndarray | None = None,
     unknown_height_lower: np.ndarray | None = None,
+    observer_ground_elevation_m: float | None = None,
 ) -> np.ndarray:
     """Return -1 unknown, 0 blocked/out-of-range, 1 visible at ground targets.
 
@@ -107,6 +108,8 @@ def partial_canopy_visibility(
         or min(observer_height_m, target_height_m, curvature_coefficient) < 0
     ):
         raise ValueError("Invalid geometry parameters")
+    if observer_ground_elevation_m is not None and not np.isfinite(observer_ground_elevation_m):
+        raise ValueError("Observer ground elevation must be finite")
     oy, ox = observer_row, observer_col
     if not (0 <= oy < ground.shape[0] and 0 <= ox < ground.shape[1]):
         raise ValueError("Observer outside grid")
@@ -137,6 +140,9 @@ def partial_canopy_visibility(
         ).astype(np.int8)
     if canopy[oy, ox] != 0:
         raise ValueError("Grounded observer requires explicit clearance")
+    source_ground = float(ground[oy, ox])
+    if observer_ground_elevation_m is not None:
+        source_ground = float(observer_ground_elevation_m)
     result = np.empty(ground.shape, dtype=np.int8)
     for sy in (-1, 1):
         rows = np.arange(oy, -1 if sy < 0 else ground.shape[0], sy)
@@ -147,7 +153,7 @@ def partial_canopy_visibility(
                 ground[idx],
                 canopy[idx],
                 unknown[idx],
-                float(ground[oy, ox]) + observer_height_m,
+                source_ground + observer_height_m,
                 pixel_size_m,
                 curvature_coefficient / (2 * earth_radius_m),
                 max_distance_m,

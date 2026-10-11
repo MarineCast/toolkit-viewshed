@@ -96,6 +96,33 @@ def _arguments(
     }
 
 
+def test_shoreline_observer_uses_unflattened_ground_without_editing_targets(tmp_path):
+    from dataclasses import replace
+
+    pytest.importorskip("osgeo.gdal")
+    context, app, x, y = _fixture_context(tmp_path)
+    with rasterio.open(context.dem_clip_path) as ds:
+        original = ds.read(1)
+        profile = ds.profile
+        row, col = ds.index(x, y)
+    endpoint = tmp_path / "water_flattened.tif"
+    flattened = original.copy()
+    flattened[row, col] = 0
+    with rasterio.open(endpoint, "w", **profile) as ds:
+        ds.write(flattened, 1)
+    context = replace(context, analysis_dem_path=endpoint, endpoint_dem_path=endpoint)
+    arguments = _arguments(context, app, x, y)
+    expected = los._run_gdal_viewshed_in_process_to_bool_array(
+        **(arguments | {"observer_height_m": 1.7 + float(original[row, col])})
+    )
+    result = los.run_gdal_viewshed_to_bool_array(**arguments)
+    assert np.array_equal(result.visible, expected.visible)
+    assert result.metadata["observer_ground_elevation_m"] == float(original[row, col])
+    assert result.metadata["observer_height_m"] == 1.7
+    with rasterio.open(endpoint) as ds:
+        np.testing.assert_array_equal(ds.read(1), flattened)
+
+
 @pytest.mark.skipif(shutil.which("gdal_viewshed") is None, reason="GDAL CLI unavailable")
 def test_in_process_mem_viewshed_matches_cli_boolean_grid(tmp_path: Path) -> None:
     context, app, observer_x, observer_y = _fixture_context(tmp_path)
@@ -202,8 +229,9 @@ def test_prepared_water_grid_metadata_avoids_raster_reopen(
 
 def test_default_gdal_path_falls_back_to_cli_with_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    context = SimpleNamespace()
+    context, _fixture_app, x, y = _fixture_context(tmp_path)
     app = SimpleNamespace(run=SimpleNamespace(keep_intermediate_rasters=False))
     fallback = los.ViewshedWindowResult(
         visible=np.ones((1, 1), dtype=bool),
@@ -224,7 +252,7 @@ def test_default_gdal_path_falls_back_to_cli_with_diagnostic(
         lambda **_kwargs: fallback,
     )
 
-    result = los.run_gdal_viewshed_to_bool_array(**_arguments(context, app, 1.0, 2.0))
+    result = los.run_gdal_viewshed_to_bool_array(**_arguments(context, app, x, y))
 
     assert result.metadata["gdal_execution_mode"] == "cli_fallback"
     assert result.metadata["in_process_fallback_error"] == ("ImportError: binding unavailable")
@@ -233,8 +261,9 @@ def test_default_gdal_path_falls_back_to_cli_with_diagnostic(
 def test_cached_missing_gdal_python_api_routes_directly_to_cli_once(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
 ) -> None:
-    context = SimpleNamespace()
+    context, _fixture_app, x, y = _fixture_context(tmp_path)
     app = SimpleNamespace(run=SimpleNamespace(keep_intermediate_rasters=False))
     fallback = los.ViewshedWindowResult(
         visible=np.ones((1, 1), dtype=bool),
@@ -258,8 +287,8 @@ def test_cached_missing_gdal_python_api_routes_directly_to_cli_once(
     )
     caplog.set_level("INFO", logger=los.__name__)
 
-    first = los.run_gdal_viewshed_to_bool_array(**_arguments(context, app, 1.0, 2.0))
-    second = los.run_gdal_viewshed_to_bool_array(**_arguments(context, app, 1.0, 2.0))
+    first = los.run_gdal_viewshed_to_bool_array(**_arguments(context, app, x, y))
+    second = los.run_gdal_viewshed_to_bool_array(**_arguments(context, app, x, y))
 
     assert first.metadata["gdal_execution_mode"] == "cli_fallback"
     assert second.metadata["gdal_execution_mode"] == "cli_fallback"
@@ -273,8 +302,9 @@ def test_cached_missing_gdal_python_api_routes_directly_to_cli_once(
 
 def test_retained_debug_raster_routes_directly_to_cli(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    context = SimpleNamespace()
+    context, _fixture_app, x, y = _fixture_context(tmp_path)
     app = SimpleNamespace(run=SimpleNamespace(keep_intermediate_rasters=True))
     retained = los.ViewshedWindowResult(
         visible=np.ones((1, 1), dtype=bool),
@@ -294,9 +324,10 @@ def test_retained_debug_raster_routes_directly_to_cli(
         lambda **_kwargs: retained,
     )
 
-    result = los.run_gdal_viewshed_to_bool_array(**_arguments(context, app, 1.0, 2.0))
+    result = los.run_gdal_viewshed_to_bool_array(**_arguments(context, app, x, y))
 
-    assert result is retained
+    assert np.array_equal(result.visible, retained.visible)
+    assert result.metadata["gdal_execution_mode"] == "cli_retained_debug"
 
 
 def test_canopy_fixed_observer_is_independent_of_other_observers(tmp_path: Path) -> None:

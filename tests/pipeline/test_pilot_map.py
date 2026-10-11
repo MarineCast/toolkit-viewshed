@@ -117,7 +117,8 @@ def test_single_entrypoint_preserves_population_and_has_no_dropdowns(tmp_path):
     assert data == before
     assert not re.search(r"<select|<nav|<header", html)
     assert "height:100dvh" in html and "overflow:hidden" in html
-    assert exported["map_contract"] == "single_pilot_layer_map_v1"
+    assert exported["map_contract"] == "single_pilot_layer_map_v2"
+    assert exported["default_obstruction_metric"] == "ui_obstruction_mean"
     assert len(list(tmp_path.glob("*.html"))) == 1
 
 

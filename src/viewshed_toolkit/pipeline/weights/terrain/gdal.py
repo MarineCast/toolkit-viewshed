@@ -265,10 +265,11 @@ def expected_partition_metadata(app: AppConfig, *, refresh: bool = False) -> dic
         "target_water_area_equal_area_crs": str(
             water_viewing.get("target_area_equal_area_crs", "EPSG:6933")
         ),
-        "terrain_partition_schema_version": "direct_unweighted_los_v9",
+        "terrain_partition_schema_version": "direct_unweighted_los_v10",
         "source_type": _source_type_for_app(app),
     }
     if _source_type_for_app(app) == "land":
+        metadata["observer_ground_contract"] = "unflattened_land_observer_ground_v1"
         from ...prepare.area.raster_stack import _canonical_dataset_signature
 
         signatures = {}

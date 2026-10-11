@@ -24,6 +24,7 @@ def above_ground_visibility(
     curvature_coefficient: float = 0.85714,
     earth_radius_m: float = 6378137.0,
     max_distance_m: float = 30000.0,
+    observer_ground_elevation_m: float | None = None,
 ) -> NDArray[np.generic]:
     """Return -1 unknown, 0 blocked/out of range, 1 visible at ground targets.
 
@@ -84,4 +85,5 @@ def above_ground_visibility(
         curvature_coefficient=curvature_coefficient,
         earth_radius_m=earth_radius_m,
         max_distance_m=max_distance_m,
+        observer_ground_elevation_m=observer_ground_elevation_m,
     )

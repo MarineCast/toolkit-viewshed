@@ -27,6 +27,15 @@ from viewshed_toolkit import (
 from viewshed_toolkit.resources import default_config_path
 ```
 
+The opt-in research helpers `direct_ray_visibility` and `direct_ray_envelope_visibility` are
+also exported at the package root. Both consume aligned caller-qualified north-up square
+projected metre arrays, an exact `observer_xy`, explicit `targets_xy`, and independent
+`observer_ground_elevation_m`. They return per-target states `1` clear, `0` modeled blocked,
+`-1` unknown and `-2` outside range. They do not acquire inputs, attenuate distance or promote
+production products. The envelope requires an explicit `height_floor <= height_ceiling`; clear
+requires a clear ceiling ray and blocked requires a blocked floor ray. See the
+[bounded caller workflow and scientific limits](building-obstruction-pilot.md#exact-point-resolution-and-canopy-uncertainty).
+
 `load_app_config` reads and validates configuration without creating output directories:
 
 An optional `study_config=Path(...)` selects the portable MarineCast study v1 contract;

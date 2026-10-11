@@ -28,6 +28,7 @@ class BuildingSurface:
     footprint_count: int
     missing_height_footprint_count: int
     projected_geometry_repair_count: int
+    rasterization_policy: str = "all_touched_max_agl"
 
 
 def rasterize_building_footprints(
@@ -36,10 +37,12 @@ def rasterize_building_footprints(
     shape: tuple[int, int],
     transform: Affine,
     crs: CRS | str,
+    all_touched: bool = True,
 ) -> BuildingSurface:
     """Project EPSG:3857 WKB polygons onto one caller-owned projected metre grid.
 
-    Burn all touched pixels at maximum overlapping valid predicted AGL height,
+    Burn all touched pixels (default), or cell centers with all_touched=False,
+    at maximum overlapping valid predicted AGL height,
     represented in the retained float32 raster model (not empirical confidence limits),
     independently of feature order. A missing-height footprint retains unknown
     upper support even under a valid overlapping roof. No footprint is unknown,
@@ -48,6 +51,8 @@ def rasterize_building_footprints(
     Caller must qualify source subset containment and retain acquisition provenance.
     No acquisition, source geometry clipping, observer clearance or LOS is performed.
     """
+    if not isinstance(all_touched, bool):
+        raise ValueError("all_touched must be boolean")
     target_crs = CRS.from_user_input(crs)
     if (
         len(shape) != 2
@@ -108,7 +113,7 @@ def rasterize_building_footprints(
             [(geometry, 1)],
             out_shape=(r1 - r0, c1 - c0),
             transform=window_transform(Window(c0, r0, c1 - c0, r1 - r0), transform),
-            all_touched=True,
+            all_touched=all_touched,
             dtype="uint8",
         ).astype(np.bool_)
         present[r0:r1, c0:c1] |= burn
@@ -120,5 +125,12 @@ def rasterize_building_footprints(
             np.maximum(view, np.where(burn, height, 0), out=view)
         count += 1
     return BuildingSurface(
-        lower, present, missing, ~present | missing, count, missing_count, repairs
+        lower,
+        present,
+        missing,
+        ~present | missing,
+        count,
+        missing_count,
+        repairs,
+        "all_touched_max_agl" if all_touched else "cell_center_max_agl",
     )

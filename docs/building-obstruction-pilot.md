@@ -1,5 +1,48 @@
 # Reproduce the opt-in building obstruction pilot
 
+## Exact-point resolution and canopy uncertainty
+
+`scripts/compare_obstruction_points.py CONFIG.json` creates a bounded offline comparison from a
+retained pilot ZIP, native canopy inventory, checksummed GBA subset/acquisition manifest,
+land/water polygons and explicitly named exact viewpoints. Config keys are `pilot_zip`,
+`canopy_inventory`, `gba_subset`, `gba_manifest`, `land`, `water`, `output_dir` and `sites`.
+Each site supplies `name`, `source_h3`, `lat`, `lon`, and its retained **unflattened**
+`projected_ground` path. Use a new local output directory. No provider access or promotion runs.
+
+The four comparison steps preserve the same retained 30 m water-target centres inside the
+exact 5 km radius: legacy 30 m GDAL Edge; independently grounded 30 m GDAL Edge; direct rays
+on the 30 m surface; and direct rays on a nested 10 m surface. The last surface uses nearest
+native ETH canopy instead of maximum aggregation and `rasterize_building_footprints(...,
+all_touched=False)`. The default footprint rasterizer remains all-touched. `BuildingSurface`
+records the selected rasterization policy. A footprint missed by cell-centre sampling is
+unverified absence, hence unknown; it never becomes confirmed empty land. Terrain retains
+30 m support even on the finer grid.
+
+The direct model traverses cell interiors along the exact source-target segment. Terrain plus
+height is a constant prism within each cell. It evaluates curvature over the intersected
+interval and excludes zero-length corner touches; it does not reproduce GDAL Edge or claim
+subcell geometry. The source cell is explicitly grounded; a private 30 m canopy-clearance
+radius is retained, while neighboring buildings remain intact. Source and target sampling,
+clearance, grid/CRS, resampling, ray model and input hashes are part of the comparison provenance.
+
+The additional **canopy envelope** uses zero canopy floor and predicted CHM ceiling, retaining
+predicted roofs at the same height in both surfaces. CHM does not supply trunks, crown bases or
+gap geometry; a canopy-only crossing cannot establish solid obstruction below a crown.
+Clear requires a clear ceiling ray; blocked requires a blocked floor ray; other targets remain
+unknown. Missing heights and unverified building absence retain unknown upper support. These
+are model support bounds, not calibrated empirical confidence limits or a porosity estimate.
+No arbitrary transmission fraction or midpoint replaces unknown support.
+
+The script writes complete per-target Parquet tables, `comparison.json` provenance and a
+self-contained `comparison.html`. All counts shown in HTML are checked against the tables.
+The single-point unweighted result is distinct from the original five-sample H3 product and
+its distance-integrated kernel. Fine resolution alone may retain zero confirmed-clear targets;
+that is not evidence of complete physical obstruction. Field observations remain necessary.
+
+The existing pilot map now defaults to `ui_obstruction_mean` (complete support), with missing
+values hatched. Its known-only mean remains a diagnostic in the popup. A zero known-only mean
+with unknown support must not be displayed as complete obstruction; the map contract is v2.
+
 This research workflow is supported through the public
 `rasterize_building_footprints`, `compose_above_ground_surface` and
 `above_ground_visibility` helpers. It is deliberately separate from production

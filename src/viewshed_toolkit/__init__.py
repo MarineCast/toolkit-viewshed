@@ -25,10 +25,13 @@ from .pipeline.prepare.elevation.obstruction import compose_above_ground_surface
 from .pipeline.visualization.comparison_maps import export_comparison_maps, export_pilot_map
 from .pipeline.visualization.raster_overlays import export_raster_overlay_asset
 from .pipeline.weights.obstruction import above_ground_visibility
+from .pipeline.weights.rays import direct_ray_envelope_visibility, direct_ray_visibility
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "direct_ray_visibility",
+    "direct_ray_envelope_visibility",
     "above_ground_visibility",
     "compose_above_ground_surface",
     "rasterize_building_footprints",

@@ -332,7 +332,8 @@ def export_pilot_map(payload, output_path):
     This presentation export never runs LOS or modifies scientific artifacts.
     """
     data = prepare_comparison_payload(payload)
-    data["map_contract"] = "single_pilot_layer_map_v1"
+    data["map_contract"] = "single_pilot_layer_map_v2"
+    data["default_obstruction_metric"] = "ui_obstruction_mean"
     data["kind"] = "pilot"
     template = files("viewshed_toolkit.resources").joinpath("pilot_map.html").read_text()
     script = files("viewshed_toolkit.resources").joinpath("pilot_map.js").read_text()

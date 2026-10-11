@@ -11,6 +11,19 @@ from viewshed_toolkit.pipeline.prepare.elevation.buildings import BuildingSurfac
 GRID = Affine(30, 0, 500000, 0, -30, 5400000)
 
 
+def test_center_sampling_does_not_expand_small_off_center_roof():
+    geometry = footprint(box(500001, 5399991, 500004, 5399994))
+    touched = rasterize_building_footprints(
+        [(geometry, 7)], shape=(2, 2), transform=GRID, crs="EPSG:32610"
+    )
+    center = rasterize_building_footprints(
+        [(geometry, 7)], shape=(2, 2), transform=GRID, crs="EPSG:32610", all_touched=False
+    )
+    assert touched.lower_height[0, 0] == 7 and center.lower_height[0, 0] == 0
+    assert center.unknown[0, 0]  # Unsupported centre remains unknown, never open-ground evidence.
+    assert center.rasterization_policy == "cell_center_max_agl"
+
+
 def footprint(geometry):
     projector = Transformer.from_crs(32610, 3857, always_xy=True)
     return project(projector.transform, geometry).wkb

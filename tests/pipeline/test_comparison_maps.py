@@ -5,6 +5,7 @@ import pytest
 
 from viewshed_toolkit import export_comparison_maps
 from viewshed_toolkit.pipeline.visualization.comparison_maps import prepare_comparison_payload
+from viewshed_toolkit.pipeline.visualization.comparison_maps import export_pilot_map
 from viewshed_toolkit.pipeline.weights.comparison_mean import comparison_mean
 
 
@@ -294,3 +295,22 @@ def test_joint_counts_preserve_canopy_and_building_diagnostics():
     data["viewpoints"]["s"]["rows"][0]["building_clear_observations"] += 1
     with pytest.raises(ValueError, match="Diagnostic comparison population"):
         prepare_comparison_payload(data)
+
+
+def test_pilot_default_obstruction_display_requires_complete_support(tmp_path):
+    data = payload()
+    data["primary_visibility"] = "above_ground_obstruction"
+    for row in data["viewpoints"]["s"]["rows"]:
+        for state in ("clear", "zero", "unknown"):
+            row["obstruction_" + state + "_observations"] = row["canopy_" + state + "_observations"]
+    path = export_pilot_map(data, tmp_path / "map.html")
+    text = path.read_text()
+    data = json.loads(
+        re.search(r'<script id="payload" type="application/json">(.*?)</script>', text, re.S)[1]
+    )
+    assert data["map_contract"] == "single_pilot_layer_map_v2"
+    assert data["default_obstruction_metric"] == "ui_obstruction_mean"
+    assert "obstruction:'ui_obstruction_mean'" in text
+    assert "obstruction:'ui_obstruction_known_only_mean'" not in text
+    partial = next(r for r in data["viewpoints"]["s"]["rows"] if r["canopy_unknown_observations"])
+    assert partial["ui_obstruction_mean"] is None

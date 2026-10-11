@@ -33,7 +33,7 @@ factor is compact by design and stores only `weight_terrain` plus the H3 keys.
 
 Core assumptions
 ----------------
-- The endpoint DEM supplies observer ground and water-target elevations.
+- The unflattened projected DEM supplies land observer ground; the endpoint DEM supplies water-target elevations.
 - When ``viewshed.surface_model=canopy``, intervening land obstruction uses
   ``DTM + CHM`` while sampled observer pixels remain at DTM elevation.
 - Land cover is not part of this hard line-of-sight calculation.
@@ -263,7 +263,7 @@ class ViewshedWindowResult:
     metadata: dict[str, Any]
 
 
-GDAL_VIEWSHED_CACHE_VERSION = "gdal_viewshed_observer_v2"
+GDAL_VIEWSHED_CACHE_VERSION = "gdal_viewshed_observer_v3"
 
 
 def _gdal_viewshed_fingerprint(
@@ -1142,24 +1142,57 @@ def run_gdal_viewshed_to_bool_array(**arguments: Any) -> ViewshedWindowResult:
     """Ground one observer on a private raster; preserve the shared canopy."""
     context = arguments["context"]
     app = arguments["app"]
-    if str(getattr(getattr(app, "viewshed", None), "surface_model", "bare_earth")) != "canopy":
-        return _run_gdal_viewshed_dispatch(**arguments)
-    from ...prepare.elevation.canopy import isolate_observer_canopy_vrt
+    from ...prepare.elevation.terrain import sample_observer_ground_elevation
 
-    with tempfile.TemporaryDirectory(
-        prefix="observer_canopy_", dir=context.analysis_dem_path.parent
-    ) as directory:
-        surface = isolate_observer_canopy_vrt(
-            base_surface_path=context.analysis_dem_path,
-            endpoint_dem_path=context.endpoint_dem_path,
-            output_path=Path(directory) / "surface.vrt",
-            observer_x=arguments["observer_x"],
-            observer_y=arguments["observer_y"],
-            clearance_radius_m=app.viewshed.observer_canopy_clearance_radius_m,
-        )
-        return _run_gdal_viewshed_dispatch(
-            **{**arguments, "context": replace(context, analysis_dem_path=surface)}
-        )
+    eye_height = arguments["observer_height_m"]
+    source_ground = sample_observer_ground_elevation(
+        context.dem_clip_path,
+        context.raw_dem_path,
+        arguments["observer_x"],
+        arguments["observer_y"],
+    )
+    with rasterio.open(context.endpoint_dem_path) as endpoint:
+        value = next(
+            endpoint.sample([(arguments["observer_x"], arguments["observer_y"])], masked=True)
+        )[0]
+        if np.ma.is_masked(value) or not np.isfinite(value):
+            raise ValueError("Observer endpoint elevation is unavailable")
+    # GDAL adds observer height to its input surface. Express the actual ground
+    # + eye elevation relative to the unchanged water-target endpoint cell.
+    arguments = {
+        **arguments,
+        "observer_height_m": arguments["observer_height_m"] + source_ground - float(value),
+    }
+    if str(getattr(getattr(app, "viewshed", None), "surface_model", "bare_earth")) != "canopy":
+        result = _run_gdal_viewshed_dispatch(**arguments)
+    else:
+        from ...prepare.elevation.canopy import isolate_observer_canopy_vrt
+
+        with tempfile.TemporaryDirectory(
+            prefix="observer_canopy_", dir=context.analysis_dem_path.parent
+        ) as directory:
+            surface = isolate_observer_canopy_vrt(
+                base_surface_path=context.analysis_dem_path,
+                endpoint_dem_path=context.endpoint_dem_path,
+                output_path=Path(directory) / "surface.vrt",
+                observer_x=arguments["observer_x"],
+                observer_y=arguments["observer_y"],
+                clearance_radius_m=app.viewshed.observer_canopy_clearance_radius_m,
+            )
+            result = _run_gdal_viewshed_dispatch(
+                **{**arguments, "context": replace(context, analysis_dem_path=surface)}
+            )
+    return replace(
+        result,
+        metadata={
+            **result.metadata,
+            "observer_ground_contract": "unflattened_land_observer_ground_v1",
+            "observer_base_surface": "unflattened_projected_ground",
+            "observer_ground_elevation_m": source_ground,
+            "observer_height_m": eye_height,
+            "observer_height_above_input_surface_m": arguments["observer_height_m"],
+        },
+    )
 
 
 def _run_gdal_viewshed_dispatch(
@@ -1279,6 +1312,16 @@ def run_xrspatial_viewshed_to_bool_array(
             "nodata_pixel_count": int(dem_window.attrs.get("xrspatial_nodata_pixel_count", 0) or 0),
             "nodata_fill_value_m": dem_window.attrs.get("xrspatial_nodata_fill_value_m"),
         }
+        from ...prepare.elevation.terrain import sample_observer_ground_elevation
+
+        source_ground = sample_observer_ground_elevation(
+            context.dem_clip_path, context.raw_dem_path, observer_x, observer_y
+        )
+        with rasterio.open(context.analysis_dem_path) as surface:
+            base = next(surface.sample([(observer_x, observer_y)], masked=True))[0]
+            if np.ma.is_masked(base) or not np.isfinite(base):
+                raise ValueError("Observer analysis surface elevation is unavailable")
+        grounded_height = observer_height_m + source_ground - float(base)
         corrected_dem_window = apply_curvature_correction_to_dem_da(
             dem_window,
             observer_x=observer_x,
@@ -1293,7 +1336,7 @@ def run_xrspatial_viewshed_to_bool_array(
             corrected_dem_window,
             observer_x=observer_x,
             observer_y=observer_y,
-            observer_height_m=observer_height_m,
+            observer_height_m=grounded_height,
             target_height_m=target_height_m,
             max_distance_m=max_distance_m,
         )
@@ -1339,7 +1382,10 @@ def run_xrspatial_viewshed_to_bool_array(
                 if context.aligned_canopy_height_path is not None
                 else None
             ),
-            "observer_base_surface": "endpoint_dtm",
+            "observer_base_surface": "unflattened_projected_ground",
+            "observer_ground_contract": "unflattened_land_observer_ground_v1",
+            "observer_ground_elevation_m": source_ground,
+            "observer_height_above_input_surface_m": grounded_height,
             "target_base_surface": "water_flattened_endpoint_dem",
             "landcover_used": False,
             "curvature_applied": float(curvature_coefficient) != 0.0,

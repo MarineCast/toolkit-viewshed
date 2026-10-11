@@ -166,7 +166,14 @@ where `c` is `curvature_coefficient` and `R` is `earth_radius_m`. A coefficient 
 configured flat-Earth case. GDAL receives the coefficient directly; the alternate raster backend
 applies the equation explicitly.
 
-Observer height is added above repaired bare-earth ground at the source sample. Target height is
+Observer height is added above the **unflattened projected bare-earth ground** at the land source
+sample, independently of the water-target surface. A shoreline water-mask pixel must not lower
+a mapped land observer to sea level. A projected ground void uses the authoritative DEM at the
+fixed projected cell centre, then the immediate-neighbour repair below; unresolved source ground
+fails. GDAL receives the corresponding eye-height offset relative to its endpoint input pixel.
+The shared endpoint and canopy arrays are not edited for this elevation correction. Land lineage
+records `unflattened_land_observer_ground_v1`; terrain partition schema v10 rejects prior results.
+Target height is
 added above the endpoint surface. Canonical water-mask pixels in that endpoint surface are set to
 the configured sea level even when the projected input DEM has nodata there.
 
@@ -183,6 +190,10 @@ and [`prepare/elevation/terrain.py`](../src/viewshed_toolkit/pipeline/prepare/el
 Regression coverage: [`test_gdal_inprocess_viewshed.py`](../tests/pipeline/test_gdal_inprocess_viewshed.py),
 [`test_open_water_kernel.py`](../tests/pipeline/test_open_water_kernel.py), and
 [`test_raster_cache_fingerprints.py`](../tests/pipeline/test_raster_cache_fingerprints.py).
+
+The bounded opt-in [exact-point obstruction comparison](building-obstruction-pilot.md#exact-point-resolution-and-canopy-uncertainty)
+uses a separate direct grid-ray and height-envelope contract. It does not replace the production
+GDAL model, H3 sample design or distance-integrated kernel.
 
 ## Canopy surface and observer clearance
 
