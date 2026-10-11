@@ -74,6 +74,8 @@ def pilot_payload(tmp_path):
             weight_terrain=0.6,
             weight_distance=0.3,
             weight_obstruction_combined=None,
+            obstruction_combined_lower=0.1,
+            obstruction_combined_upper=0.3,
         )
         data["viewpoints"][source] = dict(rows=[row])
         asset = tmp_path / "raster_inputs" / (source + ".js")
