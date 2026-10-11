@@ -335,7 +335,8 @@ Do not alter clearance, weights or unknown support to reproduce an expected view
 `scripts/extend_viewability_demo.py CONFIG.json` rebuilds the two saved source-cell demos
 from retained regional terrain, native ETH canopy tiles, WorldCover clips and the validated
 GlobalBuildingAtlas subset. Configuration has exactly `trial_report`, `terrain_raster`,
-`output_dir` and `radius_miles`; the bounded helper accepts up to 15 statute miles
+`output_dir` and `radius_miles`, with optional `sites` selecting unique retained site names;
+the bounded helper accepts up to 15 statute miles
 (24,140.16 m). Use a new empty output directory. No download, production promotion or cleanup
 of prior artifacts occurs.
 
@@ -359,3 +360,20 @@ and 5 percentage-point p95 error gates. Actual errors and runtimes are recorded.
 is active, so targets inside the requested radius can still be below the modeled horizon.
 This trial measures geometric/canopy transmission without an additional distance-decay factor;
 it does not change the production distance-integrated kernel or establish field calibration.
+
+### Parallel source processing
+
+`scripts/parallel_viewability_demo.py CONFIG.json` accepts the same four required demo fields
+plus `workers` (1–4) and `memory_budget_gb` (GiB, using 1024³ bytes). Each retained source is a separate Python process
+with one native thread per library, its own output directory and a captured log. Start with
+two workers on a 16 GB machine. The sampled memory guard counts this parent and the workers
+it launched; these audited workers use native threads and do not launch descendant processes.
+Live unreadable memory, an exceeded budget, or a failed worker stops the remaining workers.
+Partial per-source files remain diagnostic evidence; no combined pair table is written until
+all sources finish and their scientific inputs, bounds, missingness and pair identities validate.
+The combined rows sort by source role, source H3 and target H3 independently of completion order.
+
+Only the declared retained sources are processed. This does not launch a full-region run or
+change production scheduling. The runner still prepares each source window independently;
+shared regional raster preparation and reusable spatial tiles are separate future improvements.
+Memory measurements sample every 0.1 s and are safeguards, not operating-system reservations.

@@ -42,6 +42,26 @@ def demo(monkeypatch):
     return module
 
 
+@pytest.mark.parametrize("sites", [[], ["missing"], ["Dungeness", "Dungeness"], "Dungeness"])
+def test_invalid_site_selection_fails_before_output_creation(demo, tmp_path, sites):
+    trial = tmp_path / "trial.json"
+    trial.write_text(
+        '{"contract":"bounded_worldcover_canopy_trial_v1","sites":[{"name":"Dungeness"}]}'
+    )
+    output = tmp_path / "output"
+    with pytest.raises(ValueError, match="unique known retained sites"):
+        demo.run(
+            dict(
+                trial_report=str(trial),
+                terrain_raster="unused",
+                output_dir=str(output),
+                radius_miles=15,
+                sites=sites,
+            )
+        )
+    assert not output.exists()
+
+
 def test_fifteen_mile_grid_covers_all_observers_and_preserves_lattice(demo):
     old = Affine(10, 0, 485850, 0, -10, 5338200)
     observers = np.array([[490000.0, 5333000.0, 5.0], [491000.0, 5334000.0, 10.0]])

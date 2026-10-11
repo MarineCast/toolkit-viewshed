@@ -255,8 +255,11 @@ def calculate(data, classes, observers, targets, codes, weights, cells, radius):
 
 
 def run(config):
-    if set(config) != {"trial_report", "terrain_raster", "output_dir", "radius_miles"}:
-        raise ValueError("Exactly trial_report, terrain_raster, output_dir, radius_miles required")
+    required = {"trial_report", "terrain_raster", "output_dir", "radius_miles"}
+    if not required <= set(config) or set(config) - required - {"sites"}:
+        raise ValueError(
+            "Required trial_report, terrain_raster, output_dir, radius_miles; optional sites"
+        )
     miles = config["radius_miles"]
     if isinstance(miles, bool) or not isinstance(miles, (int, float)) or not 0 < miles <= 15:
         raise ValueError("Bounded demo radius must be in (0,15] miles")
@@ -266,6 +269,16 @@ def run(config):
     trial = json.loads(trial_path.read_text())
     if trial["contract"] != "bounded_worldcover_canopy_trial_v1":
         raise ValueError("Retained classified canopy trial required")
+    available = {site["name"] for site in trial["sites"]}
+    selected_sites = config.get("sites", [site["name"] for site in trial["sites"]])
+    if (
+        not isinstance(selected_sites, list)
+        or not selected_sites
+        or not all(isinstance(name, str) for name in selected_sites)
+        or len(set(selected_sites)) != len(selected_sites)
+        or not set(selected_sites) <= available
+    ):
+        raise ValueError("sites must select unique known retained sites")
     out = Path(config["output_dir"])
     if out.exists() and any(out.iterdir()):
         raise ValueError("Use a new empty demo output directory")
@@ -294,6 +307,8 @@ def run(config):
     old_dir = Path(benchmark["config"]["input_dir"])
     all_rows, sites, svgs = [], [], {}
     for site in trial["sites"]:
+        if site["name"] not in selected_sites:
+            continue
         name = site["name"]
         old_path = old_dir / f"{name}.npz"
         if digest(old_path) != trial["prepared_checksums"][name]["npz"]:
