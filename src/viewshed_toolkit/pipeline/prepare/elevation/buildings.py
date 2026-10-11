@@ -3,6 +3,7 @@
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 from affine import Affine
@@ -16,7 +17,8 @@ from shapely import from_wkb, get_coordinates, make_valid
 from shapely.geometry import box
 from shapely.ops import transform as project_geometry
 
-BUILDING_RASTER_CONTRACT = "gba_all_touched_max_agl_v1"
+BUILDING_RASTER_CONTRACT = "gba_max_agl_inventory_policy_v2"
+BuildingInventoryPolicy = Literal["assume_complete", "unverified"]
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,7 @@ class BuildingSurface:
     missing_height_footprint_count: int
     projected_geometry_repair_count: int
     rasterization_policy: str = "all_touched_max_agl"
+    inventory_policy: BuildingInventoryPolicy = "assume_complete"
 
 
 def rasterize_building_footprints(
@@ -38,6 +41,7 @@ def rasterize_building_footprints(
     transform: Affine,
     crs: CRS | str,
     all_touched: bool = True,
+    inventory_policy: BuildingInventoryPolicy = "assume_complete",
 ) -> BuildingSurface:
     """Project EPSG:3857 WKB polygons onto one caller-owned projected metre grid.
 
@@ -45,14 +49,19 @@ def rasterize_building_footprints(
     at maximum overlapping valid predicted AGL height,
     represented in the retained float32 raster model (not empirical confidence limits),
     independently of feature order. A missing-height footprint retains unknown
-    upper support even under a valid overlapping roof. No footprint is unknown,
-    never verified absence. Water qualification belongs to later composition.
+    upper support even under a valid overlapping roof. By default the inventory is
+    assumed complete: no rasterized footprint means zero building height. Select
+    inventory_policy="unverified" to retain unknown absence instead. Completeness
+    is a model assumption, not a survey certificate. Water qualification belongs
+    to later composition.
     Features stream one at a time; rasterization allocates only each clipped window.
     Caller must qualify source subset containment and retain acquisition provenance.
     No acquisition, source geometry clipping, observer clearance or LOS is performed.
     """
     if not isinstance(all_touched, bool):
         raise ValueError("all_touched must be boolean")
+    if inventory_policy not in ("assume_complete", "unverified"):
+        raise ValueError("inventory_policy must be assume_complete or unverified")
     target_crs = CRS.from_user_input(crs)
     if (
         len(shape) != 2
@@ -128,9 +137,10 @@ def rasterize_building_footprints(
         lower,
         present,
         missing,
-        ~present | missing,
+        missing.copy() if inventory_policy == "assume_complete" else ~present | missing,
         count,
         missing_count,
         repairs,
         "all_touched_max_agl" if all_touched else "cell_center_max_agl",
+        inventory_policy,
     )

@@ -30,6 +30,7 @@ from shapely.ops import transform as project
 
 from viewshed_toolkit import direct_ray_envelope_visibility, direct_ray_visibility
 from viewshed_toolkit.pipeline.prepare.elevation.buildings import (
+    BUILDING_RASTER_CONTRACT,
     BuildingSurface,
     rasterize_building_footprints,
 )
@@ -98,6 +99,9 @@ def export_comparison(report, out):
 
 
 def run(config):
+    inventory_policy = config.get("building_inventory_policy", "assume_complete")
+    if inventory_policy not in ("assume_complete", "unverified"):
+        raise ValueError("building_inventory_policy must be assume_complete or unverified")
     out = Path(config["output_dir"])
     out.mkdir(parents=True, exist_ok=True)
     acquisition = json.loads(Path(config["gba_manifest"]).read_text())
@@ -167,7 +171,14 @@ def run(config):
             }
             flags = arrays["flags"]
             buildings = BuildingSurface(
-                arrays["building"], (flags & 8) != 0, (flags & 16) != 0, (flags & 2) != 0, 0, 0, 0
+                arrays["building"],
+                (flags & 8) != 0,
+                (flags & 16) != 0,
+                (flags & 2) != 0,
+                0,
+                0,
+                0,
+                inventory_policy="unverified",
             )
             grid_r, grid_c = np.indices(shape)
             # Same retained coarse clearance convention, including the central cell.
@@ -318,6 +329,7 @@ def run(config):
                 transform=gt,
                 crs=32610,
                 all_touched=False,
+                inventory_policy=inventory_policy,
             )
             fyr, fxc = np.indices(fine_shape)
             fx = gt.c + (fxc + 0.5) * gt.a
@@ -430,6 +442,8 @@ def run(config):
                 observer_building_height_m=float(fine_buildings.lower_height[row, col]),
                 native_source_canopy_m=None if native[row, col] == 255 else int(native[row, col]),
                 building_footprint_count=fine_buildings.footprint_count,
+                missing_height_footprint_count=fine_buildings.missing_height_footprint_count,
+                building_inventory_policy=fine_buildings.inventory_policy,
                 results={k: counts(v) for k, v in states.items()},
                 water=mapping(project(back.transform, clip_water)),
                 land=mapping(project(back.transform, clip_land)),
@@ -437,7 +451,7 @@ def run(config):
             results.append(result)
             print(json.dumps({"site": site["name"], "results": result["results"]}), flush=True)
     report = dict(
-        contract="exact_point_obstruction_sensitivity_v1",
+        contract="exact_point_obstruction_sensitivity_v2",
         crs="EPSG:32610",
         radius_m=5000,
         native_ray_contract=DIRECT_RAY_CONTRACT,
@@ -449,7 +463,10 @@ def run(config):
         canopy_envelope="zero floor / predicted CHM ceiling; no porosity estimate; modeled bounds, not empirical confidence",
         canopy_resampling="nearest; nominal native 10m ETH2020; no max aggregation",
         terrain_support="retained 30m; repeated onto nested 10m grid; no new precision",
-        building_rasterization="10m cell centers, max overlapping heights; absence unknown",
+        building_rasterization="10m cell centers, max overlapping heights",
+        building_raster_contract=BUILDING_RASTER_CONTRACT,
+        building_inventory_policy=inventory_policy,
+        reference_building_inventory_policy="unverified; retained 30m inputs unchanged",
         origin="exact coordinates; grounded source cell; 30m canopy clearance only",
         target_population="same retained 30m water centers inside exact 5km radius",
         scope="unweighted diagnostic; no production promotion or regional rebuild; no field validation",

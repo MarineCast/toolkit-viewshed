@@ -6,6 +6,7 @@
 retained pilot ZIP, native canopy inventory, checksummed GBA subset/acquisition manifest,
 land/water polygons and explicitly named exact viewpoints. Config keys are `pilot_zip`,
 `canopy_inventory`, `gba_subset`, `gba_manifest`, `land`, `water`, `output_dir` and `sites`.
+Optional `building_inventory_policy` accepts `"assume_complete"` (default) or `"unverified"`.
 Each site supplies `name`, `source_h3`, `lat`, `lon`, and its retained **unflattened**
 `projected_ground` path. Use a new local output directory. No provider access or promotion runs.
 
@@ -14,8 +15,11 @@ exact 5 km radius: legacy 30 m GDAL Edge; independently grounded 30 m GDAL Edge;
 on the 30 m surface; and direct rays on a nested 10 m surface. The last surface uses nearest
 native ETH canopy instead of maximum aggregation and `rasterize_building_footprints(...,
 all_touched=False)`. The default footprint rasterizer remains all-touched. `BuildingSurface`
-records the selected rasterization policy. A footprint missed by cell-centre sampling is
-unverified absence, hence unknown; it never becomes confirmed empty land. Terrain retains
+records rasterization and inventory policies. Under `"assume_complete"`, no rasterized footprint
+means zero building height. Cell-centre sampling can miss small roofs; the assumption applies
+to the rasterized inventory. Under `"unverified"`, absence remains unknown. The retained 30 m
+reference models keep their original support masks; revised 10 m models use the selected policy.
+The v2 comparison manifest records both policies and the v2 building raster contract. Terrain retains
 30 m support even on the finer grid.
 
 The direct model traverses cell interiors along the exact source-target segment. Terrain plus
@@ -29,8 +33,8 @@ The additional **canopy envelope** uses zero canopy floor and predicted CHM ceil
 predicted roofs at the same height in both surfaces. CHM does not supply trunks, crown bases or
 gap geometry; a canopy-only crossing cannot establish solid obstruction below a crown.
 Clear requires a clear ceiling ray; blocked requires a blocked floor ray; other targets remain
-unknown. Missing heights and unverified building absence retain unknown upper support. These
-are model support bounds, not calibrated empirical confidence limits or a porosity estimate.
+unknown. Missing heights retain unknown upper support; building absence follows the selected
+inventory policy. These are model support bounds, not calibrated empirical confidence limits or a porosity estimate.
 No arbitrary transmission fraction or midpoint replaces unknown support.
 
 The script writes complete per-target Parquet tables, `comparison.json` provenance and a
@@ -98,6 +102,7 @@ records = iter_gba_subset(Path(subset_path), bounds_3857)
 buildings = rasterize_building_footprints(
     ((record.geometry_wkb, record.height_m) for record in records),
     shape=stack.shape, transform=stack.transform, crs=stack.crs,
+    inventory_policy="assume_complete",  # Explicit complete-inventory model assumption.
 )
 def clearance_mask_for(observer, stack, radius_m):
     row, col = stack.index(observer.x, observer.y)
@@ -187,9 +192,10 @@ always decodes exact native float32/uint8 values. No browser fetch or server is 
 Inspect model DEM elevation and original projected DEM separately: the sparse
 original-minus-model delta exposes water flattening without copying a second
 terrain replay. CHM/building/joint heights are metres **above ground**, unlike DEM
-terrain elevations. Raw CHM255 is no data. A zero building lower floor on land is
-not verified absence; missing-height overlap and building/water conflict masks
-remain explicit. The qualified joint lower surface can differ from raw footprint
+terrain elevations. Raw CHM255 is no data. The historical pilot used unverified building
+absence; new caller-created surfaces default to assumed-complete inventory. A zero building
+lower floor is conditional on that policy; missing-height overlap and building/water conflict
+masks remain explicit. The qualified joint lower surface can differ from raw footprint
 predictions at contradictory water cells. The unknown-upper overlay is distinct
 from the supported lower surface and from the full-water qualification mask.
 

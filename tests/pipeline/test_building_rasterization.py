@@ -5,8 +5,15 @@ from pyproj import Transformer
 from shapely.geometry import Polygon, box
 from shapely.ops import transform as project
 
-from viewshed_toolkit import above_ground_visibility, rasterize_building_footprints
-from viewshed_toolkit.pipeline.prepare.elevation.buildings import BuildingSurface
+from viewshed_toolkit import (
+    above_ground_visibility,
+    direct_ray_visibility,
+    rasterize_building_footprints,
+)
+from viewshed_toolkit.pipeline.prepare.elevation.buildings import (
+    BUILDING_RASTER_CONTRACT,
+    BuildingSurface,
+)
 
 GRID = Affine(30, 0, 500000, 0, -30, 5400000)
 
@@ -20,7 +27,8 @@ def test_center_sampling_does_not_expand_small_off_center_roof():
         [(geometry, 7)], shape=(2, 2), transform=GRID, crs="EPSG:32610", all_touched=False
     )
     assert touched.lower_height[0, 0] == 7 and center.lower_height[0, 0] == 0
-    assert center.unknown[0, 0]  # Unsupported centre remains unknown, never open-ground evidence.
+    assert not center.unknown[0, 0]  # Known zero at the centre under inventory completeness.
+    assert center.inventory_policy == "assume_complete"
     assert center.rasterization_policy == "cell_center_max_agl"
 
 
@@ -41,13 +49,14 @@ def test_reprojection_max_and_missing_overlap_are_order_independent():
         assert np.array_equal(getattr(surface, field), getattr(reordered, field))
     assert surface.lower_height[1, 1] == 12  # Maximum, not 19 or final feature.
     assert surface.present[1, 1] and surface.missing_height[1, 1] and surface.unknown[1, 1]
-    assert surface.unknown[3, 3] and not surface.present[3, 3]  # No inferred absence.
+    assert not surface.unknown[3, 3] and not surface.present[3, 3]
     assert surface.footprint_count == 3 and surface.missing_height_footprint_count == 1
 
 
 def test_empty_and_zero_predictions_preserve_support():
     empty = rasterize_building_footprints([], shape=(2, 2), transform=GRID, crs="EPSG:32610")
-    assert empty.unknown.all() and not empty.present.any()
+    assert not empty.unknown.any() and not empty.present.any()
+    assert not empty.lower_height.any()
     zero = rasterize_building_footprints(
         [(footprint(box(500001, 5399971, 500029, 5399999)), 0)],
         shape=(2, 2),
@@ -55,6 +64,52 @@ def test_empty_and_zero_predictions_preserve_support():
         crs="EPSG:32610",
     )
     assert zero.present[0, 0] and zero.lower_height[0, 0] == 0 and not zero.unknown[0, 0]
+
+
+def test_unverified_policy_preserves_legacy_absence_and_missing_roofs():
+    items = [(footprint(box(500001, 5399971, 500029, 5399999)), None)]
+    complete = rasterize_building_footprints(items, shape=(2, 2), transform=GRID, crs=32610)
+    legacy = rasterize_building_footprints(
+        items, shape=(2, 2), transform=GRID, crs=32610, inventory_policy="unverified"
+    )
+    assert complete.unknown[0, 0] and complete.missing_height[0, 0]
+    assert not complete.unknown[1, 1]
+    assert legacy.unknown.all() and legacy.inventory_policy == "unverified"
+    assert np.array_equal(complete.lower_height, legacy.lower_height)
+    assert "v2" in BUILDING_RASTER_CONTRACT
+
+
+def test_complete_inventory_resolves_open_land_but_preserves_roof_blockage():
+    ground = np.zeros((9, 9), dtype="float32")
+    kwargs = dict(shape=ground.shape, transform=GRID, crs=32610)
+    empty = rasterize_building_footprints([], **kwargs)
+    legacy = rasterize_building_footprints([], inventory_policy="unverified", **kwargs)
+    roof = rasterize_building_footprints(
+        [(footprint(box(500121, 5399851, 500149, 5399879)), 10)], **kwargs
+    )
+    states = []
+    for surface in (empty, legacy, roof):
+        states.append(
+            direct_ray_visibility(
+                ground,
+                surface.lower_height,
+                surface.unknown,
+                transform=GRID,
+                observer_xy=(500045, 5399865),
+                targets_xy=np.array([[500225, 5399865]]),
+                observer_ground_elevation_m=0,
+                curvature_coefficient=0,
+            )[0]
+        )
+    assert states == [1, -1, 0]
+
+
+@pytest.mark.parametrize("policy", ["complete", None, True])
+def test_invalid_inventory_policy_rejected(policy):
+    with pytest.raises(ValueError, match="inventory_policy"):
+        rasterize_building_footprints(
+            [], shape=(2, 2), transform=GRID, crs=32610, inventory_policy=policy
+        )
 
 
 @pytest.mark.parametrize("height", [-1, np.nan, np.inf, True])

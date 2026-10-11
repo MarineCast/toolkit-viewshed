@@ -30,7 +30,8 @@ def compose_above_ground_surface(
 
     Lower arrays contain finite nonnegative supported component lower bounds.
     Unknown components have unbounded upper height, even if the other is known.
-    No footprint must stay building-unknown unless separately qualified absence.
+    The caller's building inventory policy determines absence support; under
+    assume_complete, cells without footprints have known zero building height.
     A building footprint contradicting qualified water keeps the cell uncertain;
     the conflicting building prediction is not treated as a proven lower height.
     Input arrays must already share one projected grid and are never mutated.

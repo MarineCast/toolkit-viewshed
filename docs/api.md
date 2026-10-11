@@ -337,15 +337,19 @@ surface = compose_above_ground_surface(
 ```
 
 All arrays must share a projected grid. The result exposes `lower_height`, `unknown`,
-`qualified_water` and `water_conflicts`. Inputs are not mutated. Missing footprint support must
-remain unknown unless separately qualified. For LOS, pass `surface.lower_height` as both the
+`qualified_water` and `water_conflicts`. Inputs are not mutated. Building absence support follows
+the caller's declared inventory policy. For LOS, pass `surface.lower_height` as both the
 height input and `unknown_height_lower`, and `surface.unknown` as the unknown mask. Apply canopy
 clearance to the canopy input before composition; a clearance mask on the combined surface would
 also erase buildings and is inappropriate. See the [research contract](scientific-methodology.md#opt-in-building-obstruction-research-contract).
 
 `rasterize_building_footprints` streams original EPSG:3857 footprint WKB/AGL-height
 pairs onto a caller-owned projected metre grid. It returns maximum lower heights,
-footprint presence, missing-height and unknown masks plus processing counts.
+footprint presence, missing-height and unknown masks plus processing counts and the inventory
+policy. The default `inventory_policy="assume_complete"` treats no rasterized footprint as
+zero building height; `"unverified"` preserves unknown absence. Missing roof heights remain
+unknown under either policy. This changes the raster contract to v2; persist the policy and
+contract in derived result/cache identity and regenerate old results.
 `above_ground_visibility` applies private clearance only to canopy before joint
 composition, preserving adjacent roofs. `grounded_observer=True` is an explicit
 central source-cell grounding assumption. These helpers perform no acquisition,

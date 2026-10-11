@@ -26,6 +26,12 @@ def test_empty_support_and_invalid_states_are_not_reported_as_zero():
         m.counts(np.array([2]))
 
 
+def test_invalid_building_policy_fails_before_creating_output(tmp_path):
+    with pytest.raises(ValueError, match="building_inventory_policy"):
+        module().run(dict(output_dir=str(tmp_path / "unused"), building_inventory_policy="typo"))
+    assert not (tmp_path / "unused").exists()
+
+
 def test_html_embeds_the_entire_population_and_rejects_count_drift(tmp_path):
     m = module()
     x, y = Transformer.from_crs(4326, 32610, always_xy=True).transform(-123.12, 48.15)
@@ -51,13 +57,25 @@ def test_html_embeds_the_entire_population_and_rejects_count_drift(tmp_path):
         },
         results={"test:joint": m.counts(values)},
     )
-    report = dict(sites=[site])
+    report = dict(
+        sites=[site],
+        building_inventory_policy="assume_complete",
+        building_raster_contract="gba_max_agl_inventory_policy_v2",
+        reference_building_inventory_policy="unverified; retained 30m inputs unchanged",
+    )
     m.export_comparison(report, tmp_path)
     text = (tmp_path / "comparison.html").read_text()
     embedded = json.loads(
         re.search(r'<script id="payload" type="application/json">(.*?)</script>', text, re.S)[1]
     )
     targets = embedded["sites"][0]["targets"]
+    assert embedded["building_inventory_policy"] == "assume_complete"
+    assert embedded["building_raster_contract"] == report["building_raster_contract"]
+    assert (
+        embedded["reference_building_inventory_policy"]
+        == report["reference_building_inventory_policy"]
+    )
+    assert 'id="inventory-note"' in text
     assert targets["states"]["test:joint"] == [0, -1, 1]
     assert targets["dx"] == [30, 60, 90]
     assert targets["h3"] == ["a", "a", "b"]

@@ -512,8 +512,11 @@ bbox-filtered SQLite subset of [GlobalBuildingAtlas](https://github.com/zhu-xlab
 It requires original EPSG:3857 footprint geometry and the official source + id + region height
 join key. LoD1 `height` is a predicted AGL footprint height; `var` is an uncertainty diagnostic,
 not a calibrated interval. Negative, absent and nonfinite heights stay missing. A predicted zero
-is not building absence. No published footprint is not verified absence: callers must retain an
-unknown building upper surface unless a separate absence qualification exists. Full-footprint
+is not building absence. The rasterizer defaults to `inventory_policy="assume_complete"`:
+no rasterized footprint means zero building height under an explicit inventory-completeness
+assumption. Select `"unverified"` to retain the prior unknown-absence model. Neither policy
+resolves a footprint with missing height. Record the policy and v2 building raster contract
+in result/cache identity; rebuild rather than relabel old results. Full-footprint
 qualified water may resolve zero obstruction; a building/water contradiction stays unknown.
 A 30 m all-touched opaque footprint raster is a coarse model, not surveyed roof geometry.
 
