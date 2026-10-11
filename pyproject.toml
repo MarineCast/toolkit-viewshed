@@ -18,7 +18,8 @@ dependencies = [
     "branca>=0.8",
     "folium>=0.20",
     "geopandas>=1.0",
-    "h3>=4.0",
+    "h3>=4.4",
+    "jsonschema>=4.18",
     "matplotlib>=3.8",
     "numba>=0.60",
     "numpy>=1.26",
@@ -63,7 +64,7 @@ viewshed-toolkit = "viewshed_toolkit.pipeline.cli.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"viewshed_toolkit.resources" = ["*.yaml"]
+"viewshed_toolkit.resources" = ["*.yaml", "*.json", "*.cpp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

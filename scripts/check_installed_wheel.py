@@ -51,6 +51,7 @@ def main() -> None:
         )
         probe = """
 import json, sys
+from importlib import resources as package_resources
 from pathlib import Path
 import viewshed_toolkit
 from viewshed_toolkit.resources import common_areas_path, default_config_path
@@ -58,6 +59,11 @@ package = Path(viewshed_toolkit.__file__).resolve()
 assert package.is_relative_to(Path(sys.prefix).resolve()), package
 resources = [common_areas_path(), default_config_path()]
 assert all(p.is_file() and p.resolve().is_relative_to(Path(sys.prefix).resolve()) for p in resources), resources
+bundled = package_resources.files('viewshed_toolkit.resources')
+for name in ['study.schema.json', 'registry-artifact-interface.v1.json', 'native_warp_plan.cpp']:
+    assert bundled.joinpath(name).is_file(), name
+from viewshed_toolkit.pipeline.prepare.elevation.warp_planner import planner_source_sha256
+assert len(planner_source_sha256()) == 64
 print(json.dumps({'package': str(package), 'resources': [p.name for p in resources]}))
 """
         result = subprocess.run(

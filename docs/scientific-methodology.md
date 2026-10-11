@@ -380,3 +380,45 @@ Canopy source years come from normalized acquisition records. The global-canopy 
 its known 2020 product; local assets require an explicit `datasets.chm.source_year`. Unspecified
 local years remain null. Metadata refresh may change presentation settings only; changed scientific
 settings or disagreement between embedded metadata and sidecars requires rebuilding.
+
+## Partial canopy research calculations
+
+`weights.vegetation.partial` implements `canopy_edge_interval_v1` for bounded,
+explicit partial-coverage calculations. Its arrays must be aligned on a projected
+square grid with complete endpoint terrain. It preserves the GDAL edge recurrence,
+curvature, cell-centre range, grounded observer, and ground-referenced water targets.
+It is an internal research calculation surface, not a new production config policy
+or permission to promote incomplete tables through the compact finalizer.
+
+Unknown nonnegative canopy heights have a lower bound of zero and an unbounded
+upper bound. Positive-coefficient edge interpolation and horizon maxima propagate
+these bounds monotonically. A target blocked even under the lower bound is a
+supported zero; a target visible with no unknown horizon dependency is supported
+clear; otherwise its LOS is unknown. This is interval reasoning, not zero-filling.
+The explicit observer clearance mask applies only to that observer. Without a
+qualified grounded observer, in-range visibility remains unknown.
+
+Callers must max-resample a separate native missingness indicator as well as the
+height raster; max height alone can conceal masked 10 m subpixels. They must qualify
+water geometrically, retain masked built-up and land/water conflicts as unknown,
+and record clearance, grid, source fingerprints, mask classification, and contract
+version. Buildings are outside this canopy-only model. Their absence does not
+invalidate known canopy heights, and built-up NoData does not establish zero canopy.
+
+`partial_kernel_summary` retains the full observer-count times equivalent-water-pixel
+denominator. It returns lower and upper combined bounds and a point value only when
+the bounds coincide. A zero bare kernel gives a provable combined zero and a
+not-applicable vegetation ratio, not a canopy observation. Its `combined_status` is
+`zero_baseline_support`, including when every canopy observation is unknown. Positive
+baselines retain `computed_canopy_model` when the bounds coincide and
+`partial_unknown_paths` otherwise. Combined known-pair coverage includes zero baselines;
+canopy coverage counts supported vegetation ratios over positive-baseline pairs only.
+These status labels refine provenance without changing weights or interval bounds.
+Unknown pair values remain
+null; aggregate available sums and valid-value means must name their denominators.
+Do not substitute a bound or a partial observed sum for a complete pair weight.
+
+`prepare.elevation.canopy.qualify_partial_canopy_grid` preserves native unknown
+land subpixels even when an all-touched modeled water endpoint overlaps the same
+30 m cell. Only the geometrically qualified native-water exemption removes those
+native missing values; the coarser water mask cannot erase uncertain shoreline land.

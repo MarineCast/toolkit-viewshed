@@ -29,6 +29,9 @@ from viewshed_toolkit.resources import default_config_path
 
 `load_app_config` reads and validates configuration without creating output directories:
 
+An optional `study_config=Path(...)` selects the portable MarineCast study v1 contract;
+`ViewshedRequest` accepts the same field. See [shared-study selection, roles and gates](shared-study.md).
+
 ```python
 from viewshed_toolkit import load_app_config
 from viewshed_toolkit.resources import default_config_path
@@ -229,3 +232,49 @@ historical manifests without that inventory before entering stage checks. It doe
 certify older cached outputs. Rebuild affected producers with their explicit overwrite controls
 or a fresh workspace, then create a new manifest. Remote source freshness is not certified by
 local checksum validation.
+
+## Bounded DEM preparation
+
+The existing source runner can select `batch.raster_stack_mode: windowed`; cross-CRS/resolution
+inputs additionally require a pinned producer chunk receipt or an explicitly built and pinned
+native metadata planner. Canopy alignment has its own maximum-resampling receipt. This opt-in preserves the established global warp processing
+contexts and crops only requested LOS windows. See [bounded native windows](BOUNDED_WINDOWS.md)
+for qualification, receipt provenance, helper build instructions and resource-limit requirements.
+No acquisition or full reference warp runs implicitly, and default global behavior is unchanged.
+
+## Bounded one-source engineering pilot
+
+`viewshed_toolkit.pipeline.api.pilot.run_bounded_land_pilot` is an advanced POSIX-only API
+for prepared and qualified paired land configs. Supply `bare_config`, `canopy_config`, one
+`source_h3`, an existing owned `staging_root`, and a fresh child `checkpoint_dir`; optionally
+supply the shared `study_config` and stricter `PilotCaps`. It performs no acquisition or final
+promotion, retains checkpoints, and rejects output paths outside staging or preexisting manifests
+and partitions. Keep batch intermediates, disable overwrite/combine/maps, use one worker and
+windowed rasters. Candidate lookup validation is filtered and bounded to 6,001 keys.
+
+A completed subprocess is not a validated product. Input qualification is unchanged, and the
+caller must independently verify all paired outputs before publishing. See
+[bounded native windows](BOUNDED_WINDOWS.md) for ceilings, sampling limitations and scientific
+qualification. This advanced API is deliberately not exported from the package root.
+
+
+### Missing values in map summaries
+
+Map value contract `nullable_coverage_v1` preserves unknown factors as null in Parquet,
+GeoJSON and HTML. For each sum column, the main value requires complete applicable-pair
+coverage. A partial total remains null; separately named `*_available` and `*_mean_valid`
+columns describe only available contributions. Companion `*_valid_count`, `*_missing_count`,
+`*_applicable_count`, `*_not_applicable_count`, `*_coverage_fraction` and `*_status` fields expose the denominator.
+Valid computed zeros count in the mean. With no valid applicable values, sums and means are
+null. Neutral vegetation factors for water sources or zero bare-earth baseline are not
+vegetation observations and are excluded. Unknown baseline support leaves vegetation unknown.
+Source and target summaries use the same rules and keep source roles separate.
+
+Native H3 layers show missing or inapplicable values with gray dashed cells and expose their
+status and coverage on hover. Computed zero remains transparent with a numeric zero. Smoothed
+surfaces stay within positive known H3 support; they do not estimate missing cells. Older map
+manifests without this value contract require explicit regeneration with overwrite.
+
+These are presentation rules for the supplied candidate rows. They cannot detect omitted
+candidates, certify raster coverage, or enable partially available canopy LOS in the compact
+finalizer. Existing source policies, finalization requirements and scientific hashes are unchanged.

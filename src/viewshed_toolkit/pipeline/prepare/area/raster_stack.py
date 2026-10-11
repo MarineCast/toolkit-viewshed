@@ -59,6 +59,7 @@ class CanonicalRasterStack:
     canopy_metadata_path: Path | None
     core_fingerprint: str
     canopy_fingerprint: str | None
+    reporting_water_mask_path: Path | None = None
 
 
 @lru_cache(maxsize=4)
@@ -170,7 +171,10 @@ def load_and_clip_water(
     aoi_wgs84: gpd.GeoDataFrame,
 ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     water = _load_water_layer_cached(str(config.water_polygon_path))
-    clipped = _filled_water_domain(water, aoi_wgs84, config.land_polygon_path)
+    if config.reporting_water_polygon_path is not None:
+        clipped = water.clip(aoi_wgs84)
+    else:
+        clipped = _filled_water_domain(water, aoi_wgs84, config.land_polygon_path)
     return clipped, clipped.to_crs(config.crs_projected)
 
 
@@ -279,24 +283,80 @@ def _write_canonical_metadata(
 
 
 def _canonical_water_source_contract(app: AppConfig) -> dict[str, Any]:
-    return {
+    result = {
         "water_polygon": _canonical_dataset_signature(app.paths.water_polygon_path),
         "natural_earth_land": _canonical_dataset_signature(app.paths.land_polygon_path),
         "water_fill_algorithm": "high_res_water_plus_edge_open_water_v1",
         "water_mask_algorithm": "viewshed_water_mask_v2",
         "water_mask_all_touched": True,
     }
+    if "marinecast_study" in app.raw_config:
+        from ...config.reporting import load_reporting_support
+
+        support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+        result.update(
+            reporting=support.identity,
+            water_fill_algorithm="explicit_native_water_no_complement_v1",
+        )
+    return result
 
 
 def ensure_canonical_raster_stack(
     app: AppConfig,
     *,
     include_canopy: bool,
+    window_bounds: tuple[float, float, float, float] | None = None,
 ) -> CanonicalRasterStack:
     """Create or reuse the immutable domain-aligned terrain raster stack."""
 
     config = viewshed_config_from_app_config(app)
-    projected_dem = ensure_projected_regional_dem(app)
+    shared_support = None
+    if "marinecast_study" in app.raw_config:
+        from ...config.reporting import load_reporting_support, validate_native_path_coverage
+
+        shared_support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+        validate_native_path_coverage(
+            app.raw_config, app.viewshed.crs_projected, canopy=include_canopy
+        )
+    if app.batch.raster_stack_mode == "windowed" and window_bounds is None:
+        raise ValueError("Windowed raster stack requires complete observer LOS bounds")
+    if window_bounds is not None:
+        from ..elevation.windows import ensure_projected_dem_window
+
+        if (
+            include_canopy
+            and app.batch.native_warp_helper_path is None
+            and app.batch.canopy_warp_chunk_plan_path is None
+        ):
+            # A differently warped CHM can change maximum canopy heights at
+            # tile edges even when the DEM is already aligned. Until native
+            # warp parity is qualified, require the original shared grid.
+            validate_raster_grid_alignment(
+                app.paths.canopy_height_path,
+                app.paths.regional_dem_path,
+                label_a="windowed_source_canopy",
+                label_b="windowed_source_dem",
+            )
+            with rasterio.open(app.paths.regional_dem_path) as native:
+                if (
+                    native.crs != rasterio.crs.CRS.from_user_input(config.crs_projected)
+                    or native.transform.b != 0
+                    or native.transform.d != 0
+                    or native.transform.a != config.dem_resolution_m
+                    or native.transform.e != -config.dem_resolution_m
+                ):
+                    raise ValueError(
+                        "Windowed canopy requires an already aligned native grid; "
+                        "canopy maximum-resampling chunk parity is unqualified"
+                    )
+        projected_dem = ensure_projected_dem_window(app, window_bounds)
+    else:
+        projected_dem = ensure_projected_regional_dem(app)
+    canopy_window = None
+    if include_canopy and window_bounds is not None:
+        from ..elevation.windows import ensure_canopy_window
+
+        canopy_window = ensure_canopy_window(app, projected_dem)
     core_contract = {
         "algorithm_version": CANONICAL_RASTER_STACK_ALGORITHM_VERSION,
         "projected_dem": _canonical_raster_signature(projected_dem),
@@ -315,6 +375,11 @@ def ensure_canonical_raster_stack(
         "water_mask": water_mask_path,
         "endpoint_dem": endpoint_dem_path,
     }
+    reporting_mask_path = (
+        cache_root / "reporting_water_mask.tif" if shared_support is not None else None
+    )
+    if reporting_mask_path is not None:
+        core_outputs["reporting_water_mask"] = reporting_mask_path
 
     canopy_contract: dict[str, Any] | None = None
     canopy_fingerprint: str | None = None
@@ -335,6 +400,9 @@ def ensure_canonical_raster_stack(
             ),
             "missing_canopy_base_value_m": 0.0,
             "nodata_policy_validation": "deferred_to_batch",
+            "windowed_alignment": (
+                _canonical_raster_signature(canopy_window) if canopy_window is not None else None
+            ),
         }
         canopy_fingerprint = _canonical_contract_fingerprint(canopy_contract)
         canopy_root = cache_root / "canopy" / canopy_fingerprint[:20]
@@ -363,7 +431,14 @@ def ensure_canonical_raster_stack(
                 crs=projected_source.crs,
             )
         domain_wgs84 = domain_projected.to_crs(CRS_WGS84)
-        _, water_projected = load_and_clip_water(config, domain_wgs84)
+        if shared_support is not None:
+            # Use unchanged native geometry so a geographic clip cannot create
+            # a new projected edge along a tile seam.
+            water_projected = _load_water_layer_cached(str(config.water_polygon_path)).to_crs(
+                config.crs_projected
+            )
+        else:
+            _, water_projected = load_and_clip_water(config, domain_wgs84)
         cache_root.mkdir(parents=True, exist_ok=True)
         rasterize_water_to_match_dem(
             water_projected,
@@ -373,6 +448,18 @@ def ensure_canonical_raster_stack(
             compress=app.raster.intermediate_compress,
             block_size=app.raster.block_size,
         )
+        if reporting_mask_path is not None and shared_support is not None:
+            reporting_frame = gpd.GeoDataFrame(
+                geometry=[shared_support.reporting_water], crs=4326
+            ).to_crs(config.crs_projected)
+            rasterize_water_to_match_dem(
+                reporting_frame,
+                projected_dem,
+                reporting_mask_path,
+                overwrite=True,
+                compress=app.raster.intermediate_compress,
+                block_size=app.raster.block_size,
+            )
         flatten_water_pixels_to_sea_level(
             projected_dem,
             water_mask_path,
@@ -420,14 +507,26 @@ def ensure_canonical_raster_stack(
             reference_path=endpoint_dem_path,
         )
         if not canopy_valid:
-            align_canopy_height_to_endpoint_dem(
-                config.canopy_height_path,
-                endpoint_dem_path,
-                aligned_canopy_path,
-                resampling=config.canopy_resampling,
-                overwrite=True,
-                compress=app.raster.intermediate_compress,
-            )
+            if canopy_window is not None:
+                with rasterio.open(endpoint_dem_path) as endpoint:
+                    endpoint_bounds = tuple(endpoint.bounds)
+                core_raster.clip_raster_to_bounds(
+                    canopy_window,
+                    aligned_canopy_path,
+                    endpoint_bounds,
+                    overwrite=True,
+                    compress=app.raster.intermediate_compress,
+                    block_size=app.raster.block_size,
+                )
+            else:
+                align_canopy_height_to_endpoint_dem(
+                    config.canopy_height_path,
+                    endpoint_dem_path,
+                    aligned_canopy_path,
+                    resampling=config.canopy_resampling,
+                    overwrite=True,
+                    compress=app.raster.intermediate_compress,
+                )
             build_canonical_canopy_base_surface(
                 endpoint_dem_path=endpoint_dem_path,
                 water_mask_path=water_mask_path,
@@ -465,6 +564,7 @@ def ensure_canonical_raster_stack(
         canopy_metadata_path=canopy_metadata_path,
         core_fingerprint=core_fingerprint,
         canopy_fingerprint=canopy_fingerprint,
+        reporting_water_mask_path=reporting_mask_path,
     )
     _CANONICAL_RASTER_STACK_READY_THIS_PROCESS[ready_key] = stack
     return stack

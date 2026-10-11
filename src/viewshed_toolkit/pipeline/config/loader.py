@@ -193,6 +193,32 @@ class BatchConfig:
     max_batch_aoi_pixels: int | None = None
     max_estimated_batch_memory_mb: float | None = None
     strategy: str = "sequential"
+    raster_stack_mode: str = "global"
+    warp_chunk_plan_path: str | None = None
+    warp_chunk_plan_sha256: str | None = None
+    canopy_warp_chunk_plan_path: str | None = None
+    canopy_warp_chunk_plan_sha256: str | None = None
+    native_warp_helper_path: str | None = None
+    native_warp_helper_sha256: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.raster_stack_mode not in {"global", "windowed"}:
+            raise ValueError("batch.raster_stack_mode must be global or windowed")
+        for name, path, checksum in (
+            ("DEM chunk plan", self.warp_chunk_plan_path, self.warp_chunk_plan_sha256),
+            (
+                "canopy chunk plan",
+                self.canopy_warp_chunk_plan_path,
+                self.canopy_warp_chunk_plan_sha256,
+            ),
+            ("native warp helper", self.native_warp_helper_path, self.native_warp_helper_sha256),
+        ):
+            if (path is None) != (checksum is None):
+                raise ValueError(f"{name} path and SHA256 must be supplied together")
+            if checksum is not None and (
+                len(checksum) != 64 or any(c not in "0123456789abcdef" for c in checksum)
+            ):
+                raise ValueError(f"{name} SHA256 must be canonical lowercase hexadecimal")
 
 
 @dataclass(frozen=True)
@@ -228,6 +254,7 @@ class AppConfig:
     source_type: str = "land"
     observer_height_class: str | None = None
     partition_metadata_snapshot: dict[str, Any] | None = None
+    study_config_path: Path | None = None
 
 
 def apply_source_type_policy(app: AppConfig, source_type: str) -> AppConfig:
@@ -319,6 +346,7 @@ class ViewshedConfig:
     map_dir: Path
     run_name: str
     viewshed_version: str
+    reporting_water_polygon_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -435,7 +463,9 @@ def _infer_water_polygon_path(paths: dict[str, Any], config_dir: Path) -> Path:
     )
 
 
-def load_app_config(config_path: str | Path) -> AppConfig:
+def load_app_config(
+    config_path: str | Path, *, study_config: str | Path | None = None
+) -> AppConfig:
     """Load and validate viewshed configuration without mutating the filesystem.
 
     Runtime commands that need output directories or partition metadata must
@@ -445,7 +475,13 @@ def load_app_config(config_path: str | Path) -> AppConfig:
 
     config_path = resolve_existing_or_relative_path(config_path, Path.cwd())
     config_dir = config_path.parent
-    raw = load_yaml_config(config_path)
+    from .study import selected_study_path, study_selection
+
+    if study_config is None:
+        raw = load_yaml_config(config_path)
+    else:
+        with study_selection(study_config):
+            raw = load_yaml_config(config_path)
     h3_raw = dict(raw.get("h3", {}) or {})
     h3_raw["source_sampling_mode"] = (
         str(h3_raw.get("source_sampling_mode", "fixed")).strip().lower()
@@ -591,6 +627,7 @@ def load_app_config(config_path: str | Path) -> AppConfig:
         batch=BatchConfig(**batch_raw),
         region=RegionConfig(**raw.get("region", {})),
         raster=RasterConfig(**raw.get("raster", {})),
+        study_config_path=selected_study_path(study_config),
     )
 
     if cfg.h3.aggregation_mode not in {"sampled", "full"}:
@@ -687,6 +724,12 @@ def viewshed_config_from_app_config(app: AppConfig) -> ViewshedConfig:
         map_dir=app.paths.map_dir,
         run_name=app.run.name,
         viewshed_version=app.run.version,
+        reporting_water_polygon_path=(
+            Path(app.raw_config["paths"]["reporting_water_polygon_path"])
+            if "marinecast_study" in app.raw_config
+            and app.raw_config["paths"].get("reporting_water_polygon_path")
+            else None
+        ),
     )
 
 

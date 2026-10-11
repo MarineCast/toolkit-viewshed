@@ -177,6 +177,12 @@ The established `distance_weights.parquet` component remains as a compatibility 
 from the raw product plus the integrated model's existing default profile. Existing terrain,
 canopy, static formulas, cleanup, and paired promotion are unchanged.
 
+Pair algorithm v2 uses SHA256 of canonical JSON lines with fixed field order and sorted
+source-role keys. It avoids Polars row hashes, whose API and outputs can change between
+versions. Distance values and attenuation equations are unchanged. V1 cache identities
+are intentionally invalidated; rebuild affected pair/profile products explicitly in a
+fresh workspace and retain prior artifacts.
+
 ## Interpretation and future work
 
 An H3-centroid curve is not generally interchangeable with a joint observer/target-sample mean:

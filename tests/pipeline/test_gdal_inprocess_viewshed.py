@@ -113,6 +113,54 @@ def test_in_process_mem_viewshed_matches_cli_boolean_grid(tmp_path: Path) -> Non
     assert in_process.metadata["uses_temp_raster"] is False
 
 
+@pytest.mark.parametrize("surface", ["bare_earth", "canopy"])
+@pytest.mark.parametrize("observer_height", [1.7, 5.0])
+def test_complete_los_window_matches_untiled_native_gdal(
+    tmp_path: Path, surface: str, observer_height: float
+) -> None:
+    """A complete ray halo preserves native visibility and absolute pixel ownership."""
+    from dataclasses import replace
+
+    from rasterio.windows import Window
+
+    pytest.importorskip("osgeo.gdal")
+    context, app, x, y = _fixture_context(tmp_path)
+    if surface == "canopy":
+        # A fixed canopy obstacle, independent of observer batch membership.
+        with rasterio.open(context.analysis_dem_path, "r+") as source:
+            values = source.read(1)
+            values[25:55, 48:51] += 35
+            source.write(values, 1)
+    app.viewshed.surface_model = surface
+    arguments = _arguments(context, app, x, y)
+    arguments["observer_height_m"] = observer_height
+    baseline = los._run_gdal_viewshed_in_process_to_bool_array(**arguments)
+    window = Window(5, 7, 71, 67)
+    tile_path = tmp_path / "bounded_analysis.tif"
+    with rasterio.open(context.analysis_dem_path) as source:
+        profile = source.profile.copy()
+        profile.update(width=71, height=67, transform=source.window_transform(window))
+        values = source.read(1, window=window)
+    with rasterio.open(tile_path, "w", **profile) as tile:
+        tile.write(values, 1)
+    tiled_context = replace(
+        context,
+        analysis_dem_path=tile_path,
+        endpoint_dem_path=tile_path,
+        water_mask_path=tile_path,
+        water_mask_arr=np.ones(values.shape, dtype=bool),
+        water_transform=profile["transform"],
+        water_shape=values.shape,
+    )
+    arguments["context"] = tiled_context
+    tiled = los._run_gdal_viewshed_in_process_to_bool_array(**arguments)
+    assert baseline.visible.any()
+    assert not baseline.visible.all()
+    np.testing.assert_array_equal(tiled.visible, baseline.visible)
+    assert tiled.x_start + int(window.col_off) == baseline.x_start
+    assert tiled.y_start + int(window.row_off) == baseline.y_start
+
+
 def test_gdal_dataset_handles_are_reused_only_within_each_worker(
     tmp_path: Path,
 ) -> None:
@@ -352,3 +400,19 @@ def test_canonical_ground_two_source_elevations_one_coarse_void_is_batch_invaria
             baseline = result.visible
         else:
             np.testing.assert_array_equal(result.visible, baseline)
+
+
+def test_native_call_cap_never_retries_through_cli(tmp_path, monkeypatch):
+    context, app, x, y = _fixture_context(tmp_path)
+    monkeypatch.setattr(los, "_load_gdal_python", lambda: object())
+
+    def denied(**_kwargs):
+        raise los.PilotCallLimitError("budget exhausted")
+
+    def forbidden(**_kwargs):
+        pytest.fail("Admission failure must not trigger another native backend")
+
+    monkeypatch.setattr(los, "_run_gdal_viewshed_in_process_to_bool_array", denied)
+    monkeypatch.setattr(los, "_run_gdal_viewshed_cli_to_bool_array", forbidden)
+    with pytest.raises(los.PilotCallLimitError, match="budget exhausted"):
+        los._run_gdal_viewshed_dispatch(**_arguments(context, app, x, y))
