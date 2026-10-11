@@ -140,7 +140,7 @@ def test_scenario_to_composite_caption_transitions(tmp_path, joint):
         terrain_reference="Retained pilot terrain",
         points={},
     )
-    for product in ("s", "t"):
+    for product in ("s", "t", "u"):
         data["viewpoints"][product] = deepcopy(data["viewpoints"]["s"])
         for row in data["viewpoints"][product]["rows"]:
             row.update(
@@ -195,9 +195,11 @@ def test_scenario_to_composite_caption_transitions(tmp_path, joint):
                     weight_obstruction_combined=None,
                     obstruction_combined_lower=0.2,
                     obstruction_combined_upper=0.4,
+                    obstruction_status="computed_above_ground_obstruction_model",
+                    combined_status="partial_unknown_paths",
                 )
     prepared = prepare_comparison_payload(data)
-    for product in ("s", "t"):
+    for product in ("s", "t", "u"):
         assert all(
             row["observer_latitude"] is None and row["observer_longitude"] is None
             for row in prepared["viewpoints"][product]["rows"]
@@ -214,7 +216,7 @@ def test_scenario_to_composite_caption_transitions(tmp_path, joint):
         [node, str(script), str(tmp_path)], capture_output=True, text=True, check=True
     )
     checks = json.loads(result.stdout)
-    assert checks["results"][2]["scenario_to_composite_transitions"] == 12
+    assert checks["results"][2]["scenario_to_composite_transitions"] == 18
     assert all(r["footer_links_preserved"] >= 3 for r in checks["results"])
     assert all(r["joint_mode"] == joint for r in checks["results"])
 

@@ -50,6 +50,10 @@ if(kind==='point')for(const exact of Object.keys(D.viewpoints).filter(p=>!D.comp
 
 if(kind==='point')for(const source of Object.keys(D.viewpoints)){
  els.point.value=source;els.surface.value='retained';els.metric.value='canopy_mean';els.point.listeners.change();finite();assert.equal(cells().length,D.viewpoints[source].rows.length);
+
+ if(!D.composite_sources[source]&&D.primary_visibility==='above_ground_obstruction'){
+  D.viewpoints[source].rows.forEach((r,i)=>{cells()[i].listeners.pointermove({clientX:50,clientY:50});assert(els.tip.textContent.includes('Joint obstruction provenance: '+(r.obstruction_status??'unavailable comparison')));assert(els.tip.textContent.includes('Canopy-only combined provenance: '+(r.combined_status??'unavailable comparison')));});
+ }
  if(D.composite_sources[source])assert.equal(els.scene.children.filter(c=>c.attrs.r===4).length,D.composite_sources[source].samples.length);
  else for(const surface of ['-1','0','1'])for(const metric of ['terrain','distance','vegetation','combined','lower','upper','canopy_mean']){els.surface.value=surface;els.metric.value=metric;els.surface.listeners.change();finite();if(metric==='terrain'){assert(els['coverage-headline'].textContent.includes('distance-integrated'));assert(els['coverage-detail'].textContent.includes('not an arithmetic'));}fabdem++;}
 }

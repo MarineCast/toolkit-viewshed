@@ -276,7 +276,14 @@ def export_comparison_maps(payload, output_directory):
     for name, kind, title in (
         ("target_cells.html", "target", "Target cells: sources per target"),
         ("source_cells.html", "source", "Source cells: targets per source"),
-        ("viewpoints.html", "point", "Selected source cell: Victoria / Dungeness"),
+        (
+            "viewpoints.html",
+            "point",
+            "Selected source cell: "
+            + " / ".join(
+                item.get("name", source) for source, item in data["composite_sources"].items()
+            ),
+        ),
     ):
         current = dict(data, kind=kind, title=title, rows=data.get(kind + "_rows", []))
         current.pop("target_rows", None)
