@@ -146,22 +146,23 @@ def test_raster_selection_reversed_completion_and_off(tmp_path):
     runner = tmp_path / "race.cjs"
     runner.write_text("""
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const els={},ctx=vm.createContext({document:{getElementById:id=>els[id]||(els[id]={textContent:''})},
+const els={},waits={},ctx=vm.createContext({document:{getElementById:id=>els[id]||(els[id]={textContent:''}),createElement:()=>({}),body:{appendChild(s){waits[s.src]=s.onload}}},
+ D:{raster_overlays:{sites:{A:{path:'A'},B:{path:'B'}}}},
  render(){ctx.rendered=vm.runInContext('activeRaster?.source??null',ctx)}});
 vm.runInContext(fs.readFileSync(process.argv[2],'utf8'),ctx);
-vm.runInContext(`const waits={};loadRaster=source=>new Promise(resolve=>waits[source]=resolve);
- rasterLayer.value='dem';rasterSite.value='A';`,ctx);
+vm.runInContext(`rasterLayer.value='dem';rasterSite.value='A';`,ctx);
+function finish(source){ctx.VIEWSHED_RASTERS[source]={source,provenance:{site:source},crs:'EPSG:32610',contract:'native_30m_inspection_display_preview_v1',arrays:{}};waits[source]();}
 (async()=>{
  const first=vm.runInContext('changeRaster()',ctx);
  vm.runInContext("rasterSite.value='B'",ctx);const second=vm.runInContext('changeRaster()',ctx);
- vm.runInContext("waits.B({source:'B',provenance:{site:'B'}})",ctx);await second;
- vm.runInContext("waits.A({source:'A',provenance:{site:'A'}})",ctx);await first;
+ finish('B');await second;
+ finish('A');await first;
  assert.equal(ctx.rendered,'B');assert.equal(vm.runInContext('activeRaster.source',ctx),'B');
  assert(els['raster-provenance'].textContent.includes('B'));
- vm.runInContext("rasterSite.value='A'",ctx);const pending=vm.runInContext('changeRaster()',ctx);
+ vm.runInContext("delete VIEWSHED_RASTERS.A;rasterSite.value='A'",ctx);const pending=vm.runInContext('changeRaster()',ctx);
  assert.equal(vm.runInContext('activeRaster',ctx),null);
  vm.runInContext("rasterLayer.value='none'",ctx);await vm.runInContext('changeRaster()',ctx);
- vm.runInContext("waits.A({source:'A',provenance:{site:'A'}})",ctx);await pending;
+ finish('A');await pending;
  assert.equal(ctx.rendered,null);assert.equal(vm.runInContext('activeRaster',ctx),null);
  assert(els['raster-legend'].textContent.includes('off'));
 })().catch(e=>{console.error(e);process.exit(1)});
