@@ -60,7 +60,7 @@ function summary(rows,values){
  if(D.kind!=='point'){guide.textContent+=' Selected statistic: '+stat.value+'. Count pooling applies to arithmetic visibility and bare LOS; weighted metrics use the complete equal-pair mean in that mode. Sum adds pair metrics; mean averages known nonempty H3 pairs equally. Bounds use the same statistic.';}
 }
 function render(){
- 
+
  document.getElementById('reference').textContent=D.kind==='point'&&!retained()?`FABDEM V1-2 comparison. Heights: EGM2008. Declared water level: ${surface.value} m. No canopy or building obstruction; this scenario has not replaced the retained pilot.`:D.terrain_reference;
  scene.replaceChildren();tip.style.display='none';for(const p of polygons(D.land))node('path',{d:path(p),class:'land','fill-rule':'evenodd'});
  if(D.kind!=='point'||D.composite_sources[point.value])surface.value='retained';
