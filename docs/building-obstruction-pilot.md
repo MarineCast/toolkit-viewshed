@@ -129,3 +129,29 @@ reprojection, missing overlaps, empty inventories, zero predictions, grid reject
 explicit grounding and preservation of adjacent roofs under canopy clearance.
 The published pilot is a conditional model, not field verification of buildings,
 canopy porosity, open ground, tidal heights, or urban completeness.
+
+## Inspect the actual pilot input grids
+
+The comparison exporter can include `raster_overlays` metadata for shared offline
+`raster_inputs/<source>.js` assets created by `export_raster_overlay_asset`. Extract
+those assets beside all three HTML files. Select a raster site and layer, then use
+**Zoom to source samples**. Red pins identify the actual land samples; amber pins
+identify the separate exact diagnostics. All overlays share the retained native
+EPSG:32610 30 m grid. The WGS84 overview PNG is a nearest-neighbor display preview;
+it never enters LOS. Close views draw native cell footprints, and pixel inspection
+always decodes exact native float32/uint8 values. No browser fetch or server is needed.
+
+Inspect model DEM elevation and original projected DEM separately: the sparse
+original-minus-model delta exposes water flattening without copying a second
+terrain replay. CHM/building/joint heights are metres **above ground**, unlike DEM
+terrain elevations. Raw CHM255 is no data. A zero building lower floor on land is
+not verified absence; missing-height overlap and building/water conflict masks
+remain explicit. The qualified joint lower surface can differ from raw footprint
+predictions at contradictory water cells. The unknown-upper overlay is distinct
+from the supported lower surface and from the full-water qualification mask.
+
+The base grids precede each observer's private30m canopy clearance and central-cell
+grounding. Neighboring building heights are never cleared. Native values, grid
+metadata, source hashes, immutable pins and attribution travel with each asset.
+This inspection makes modeling assumptions visible; it is not field validation.
+Do not alter clearance, weights or unknown support to reproduce an expected view.

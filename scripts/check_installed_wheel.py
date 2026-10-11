@@ -60,9 +60,11 @@ assert package.is_relative_to(Path(sys.prefix).resolve()), package
 resources = [common_areas_path(), default_config_path()]
 assert all(p.is_file() and p.resolve().is_relative_to(Path(sys.prefix).resolve()) for p in resources), resources
 bundled = package_resources.files('viewshed_toolkit.resources')
-for name in ['study.schema.json', 'registry-artifact-interface.v1.json', 'native_warp_plan.cpp', 'comparison_map.html']:
+for name in ['study.schema.json', 'registry-artifact-interface.v1.json', 'native_warp_plan.cpp', 'comparison_map.html', 'raster_overlay.js']:
     assert bundled.joinpath(name).is_file(), name
 assert callable(viewshed_toolkit.export_comparison_maps)
+assert callable(viewshed_toolkit.export_raster_overlay_asset)
+assert "rasterPixel" in bundled.joinpath("raster_overlay.js").read_text()
 from viewshed_toolkit.pipeline.prepare.elevation.warp_planner import planner_source_sha256
 assert len(planner_source_sha256()) == 64
 print(json.dumps({'package': str(package), 'resources': [p.name for p in resources]}))

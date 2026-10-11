@@ -342,3 +342,10 @@ composition, preserving adjacent roofs. `grounded_observer=True` is an explicit
 central source-cell grounding assumption. These helpers perform no acquisition,
 sampling, distance weighting or production promotion. See the
 [portable research caller recipe](building-obstruction-pilot.md).
+
+For offline comparison input inspection, `export_raster_overlay_asset` writes a
+shared local classic-script asset from caller-qualified aligned float32 terrain
+and lower-height arrays plus raw uint8 CHM and support flags. It preserves native
+values, adds a display-only WGS84 preview, and rejects unqualified grids. See
+[the building pilot recipe](building-obstruction-pilot.md#inspect-the-actual-pilot-input-grids)
+for units, missingness, observer assumptions and packaging requirements.

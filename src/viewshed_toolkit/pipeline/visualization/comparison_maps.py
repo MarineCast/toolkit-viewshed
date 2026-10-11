@@ -272,6 +272,8 @@ def export_comparison_maps(payload, output_directory):
     directory = Path(output_directory)
     directory.mkdir(parents=True, exist_ok=True)
     template = files("viewshed_toolkit.resources").joinpath("comparison_map.html").read_text()
+    raster_script = files("viewshed_toolkit.resources").joinpath("raster_overlay.js").read_text()
+    template = template.replace("__RASTER_SCRIPT__", raster_script)
     paths = []
     for name, kind, title in (
         ("target_cells.html", "target", "Target cells: sources per target"),
