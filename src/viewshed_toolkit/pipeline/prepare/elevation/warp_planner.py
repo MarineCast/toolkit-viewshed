@@ -149,7 +149,12 @@ def generate_native_warp_chunk_plan(
                 ):
                     process.terminate()
                     raise RuntimeError(
-                        "Native metadata planner stopped at RSS/time/log cap; evidence preserved"
+                        "Native metadata planner stopped at RSS/time/log cap; "
+                        f"child_peak_bytes={peak} (limit={512 * 1024**2}), "
+                        f"parent_child_peak_bytes={peak_total} (limit={768 * 1024**2}), "
+                        f"elapsed_seconds={time.monotonic() - start:.3f} (limit=60), "
+                        f"log_bytes={log_path.stat().st_size} (limit={8 * 1024**2}); "
+                        f"evidence preserved: {log_path}"
                     )
                 time.sleep(0.02)
             if process.returncode != 0:

@@ -3,7 +3,7 @@ const root=process.argv[2],out=[];
 for(const [name,kind,size] of [['target_cells.html','target',null],['source_cells.html','source',null],['viewpoints.html','point',null]]){
 const html=fs.readFileSync(root+'/'+name,'utf8'),D=JSON.parse(html.match(/<script id="payload" type="application\/json">([\s\S]*?)<\/script>/)[1]),script=html.match(/<\/script><script>([\s\S]*?)<\/script>/)[1];
 class TextNode{constructor(text){this.nodeType=3;this.textContent=text;}get childNodes(){return[]}}
-class Element{constructor(){this.nodeType=1;this.attrs={};this.children=[];this.style={};this.listeners={};this.value='';this.options=[];this.selectedIndex=0;this.hidden=false;}get childNodes(){return this.children}get textContent(){return this.children.map(c=>c.textContent).join('')}set textContent(text){this.children=[new TextNode(text)]}setAttribute(k,v){this.attrs[k]=v}appendChild(c){this.children.push(c)}prepend(c){this.children.unshift(c)}replaceChildren(){this.children=[]}addEventListener(k,v){this.listeners[k]=v}getBoundingClientRect(){return{left:0,top:0,width:1000,height:700}}setPointerCapture(){}}
+class Element{constructor(){this.nodeType=1;this.attrs={};this.children=[];this.style={};this.listeners={};this.listenerLists={};this.value='';this.options=[];this.selectedIndex=0;this.hidden=false;}get childNodes(){return this.children}get textContent(){return this.children.map(c=>c.textContent).join('')}set textContent(text){this.children=[new TextNode(text)]}setAttribute(k,v){this.attrs[k]=v}appendChild(c){this.children.push(c)}prepend(c){this.children.unshift(c)}replaceChildren(){this.children=[]}addEventListener(k,v){const list=this.listenerLists[k]||(this.listenerLists[k]=[]);if(!list.includes(v))list.push(v);this.listeners[k]=e=>{for(const callback of [...list])callback(e)}}getBoundingClientRect(){return{left:0,top:0,width:1000,height:700}}setPointerCapture(){}}
 // Parse the real packaged footer into text/anchor nodes. Like DOM textContent,
 // setting Element.textContent removes descendants, so lost links are observable.
 const footer=new Element(),badge=new Element();
@@ -21,6 +21,17 @@ const ctx=vm.createContext({document:{getElementById:id=>els[id],createElementNS
 assert.deepEqual(anchors().map(a=>a.attrs.href),originalHrefs);assert.deepEqual(anchors(),originalAnchors);assert(originalHrefs.includes('PILOT_MAP_MANIFEST.json'));assert(originalHrefs.some(h=>h.includes('doi.org')));assert(originalHrefs.some(h=>h.includes('creativecommons.org')));
 const cells=()=>els.scene.children.filter(c=>c.attrs.class==='cell');
 const finite=()=>{for(const id of ['status','coverage-headline','coverage-detail','totals','guide','scope','sampling'])assert(!/NaN|undefined/.test(els[id].textContent),id+' '+els[id].textContent);};
+if(D.raster_overlays){assert.equal(els['raster-site'].children.length,Object.keys(D.raster_overlays.sites).length);assert(!els['raster-controls'].hidden);if(kind==='point')assert(els.point.listenerLists.change.length>=2);}
+// Non-10:7 viewport: xMidYMid meet leaves 250px horizontal letterboxes.
+els.map.getBoundingClientRect=()=>({left:10,top:20,width:1500,height:700});
+let xy=vm.runInContext('screenToView(1010,370)',ctx);assert.equal(xy[0],750);assert.equal(xy[1],350);
+assert.equal(vm.runInContext('screenToView(110,370)',ctx),null);
+els.map.getBoundingClientRect=()=>({left:0,top:0,width:1000,height:1000});
+xy=vm.runInContext('screenToView(500,325)',ctx);assert.equal(xy[0],500);assert.equal(xy[1],175);
+assert.equal(vm.runInContext('screenToView(500,50)',ctx),null);
+els.map.getBoundingClientRect=()=>({left:0,top:0,width:1000,height:700});
+if(D.raster_overlays){els['raster-focus'].onclick();const before=vm.runInContext('view[2]',ctx);els.map.listeners.wheel({clientX:500,clientY:350,deltaY:-1,preventDefault(){}});assert(vm.runInContext('view[2]',ctx)<before);}
+vm.runInContext('view=[0,0,1000,700];applyView()',ctx);
 assert.equal(D.kind,kind);const composites=Object.keys(D.composite_sources);const expected=kind==='point'?D.viewpoints[composites[0]].rows.length:kind==='source'?composites.length:new Set(composites.flatMap(p=>D.viewpoints[p].rows.map(r=>r.target_h3))).size;assert.equal(cells().length,expected);finite();
 for(const metric of ['canopy_mean','terrain','distance','vegetation','combined','lower','upper'])for(const mode of ['known','coverage','resolved','lower','upper'])for(const stat of ['pooled','sum','mean','available']){
  els.metric.value=metric;els['view-mode'].value=mode;els.stat.value=stat;els.metric.listeners.change();finite();const c=cells()[0];c.listeners.pointermove({clientX:50,clientY:50});assert(!/NaN|undefined/.test(els.tip.textContent),els.tip.textContent);

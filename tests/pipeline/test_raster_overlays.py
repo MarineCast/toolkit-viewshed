@@ -63,7 +63,7 @@ def test_native_values_and_display_georeference(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "bad", ["shape", "crs", "transform", "precision", "nan", "flag", "negative"]
+    "bad", ["shape", "crs", "transform", "precision", "nan", "flag", "negative", "pixel_size"]
 )
 def test_rejects_unqualified_alignment_and_values(tmp_path, bad):
     arrays = inputs()
@@ -74,6 +74,8 @@ def test_rejects_unqualified_alignment_and_values(tmp_path, bad):
         crs = "EPSG:4326"
     elif bad == "transform":
         gt = Affine(30, 1, 490000, 0, -30, 5333000)
+    elif bad == "pixel_size":
+        gt = Affine(60, 0, 490000, 0, -60, 5333000)
     elif bad == "precision":
         arrays["dem"] = arrays["dem"].astype("float64")
     elif bad == "nan":
@@ -109,7 +111,7 @@ const els={},ctx=vm.createContext({document:{getElementById:id=>els[id]||(els[id
  D:{raster_overlays:{sites:{s:{path:'s.js'}}}},fmt:x=>String(x),atob,Blob,Response,DecompressionStream});
 vm.runInContext(fs.readFileSync(process.argv[2],'utf8'),ctx);
 vm.runInContext(fs.readFileSync(process.argv[3],'utf8'),ctx);
-(async()=>{await vm.runInContext("loadRaster('s')",ctx);
+(async()=>{await vm.runInContext("loadRaster('s').then(a=>activeRaster=a)",ctx);
  const pixel=vm.runInContext(`inspectRaster(${process.argv[4]},${process.argv[5]})`,ctx);
  assert.equal(pixel.row,1);assert.equal(pixel.col,2);assert(Math.abs(pixel.x-490075)<.002);assert(Math.abs(pixel.y-5332955)<.002);assert.equal(pixel.chm_raw,255);
  assert.equal(pixel.building,7);assert.equal(pixel.joint,14);assert.equal(pixel.flags,23);
@@ -132,3 +134,36 @@ vm.runInContext(fs.readFileSync(process.argv[3],'utf8'),ctx);
         capture_output=True,
         text=True,
     )
+
+
+def test_raster_selection_reversed_completion_and_off(tmp_path):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node required for raster selection races")
+    helper = (
+        Path(__file__).resolve().parents[2] / "src/viewshed_toolkit/resources/raster_overlay.js"
+    )
+    runner = tmp_path / "race.cjs"
+    runner.write_text("""
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const els={},ctx=vm.createContext({document:{getElementById:id=>els[id]||(els[id]={textContent:''})},
+ render(){ctx.rendered=vm.runInContext('activeRaster?.source??null',ctx)}});
+vm.runInContext(fs.readFileSync(process.argv[2],'utf8'),ctx);
+vm.runInContext(`const waits={};loadRaster=source=>new Promise(resolve=>waits[source]=resolve);
+ rasterLayer.value='dem';rasterSite.value='A';`,ctx);
+(async()=>{
+ const first=vm.runInContext('changeRaster()',ctx);
+ vm.runInContext("rasterSite.value='B'",ctx);const second=vm.runInContext('changeRaster()',ctx);
+ vm.runInContext("waits.B({source:'B',provenance:{site:'B'}})",ctx);await second;
+ vm.runInContext("waits.A({source:'A',provenance:{site:'A'}})",ctx);await first;
+ assert.equal(ctx.rendered,'B');assert.equal(vm.runInContext('activeRaster.source',ctx),'B');
+ assert(els['raster-provenance'].textContent.includes('B'));
+ vm.runInContext("rasterSite.value='A'",ctx);const pending=vm.runInContext('changeRaster()',ctx);
+ assert.equal(vm.runInContext('activeRaster',ctx),null);
+ vm.runInContext("rasterLayer.value='none'",ctx);await vm.runInContext('changeRaster()',ctx);
+ vm.runInContext("waits.A({source:'A',provenance:{site:'A'}})",ctx);await pending;
+ assert.equal(ctx.rendered,null);assert.equal(vm.runInContext('activeRaster',ctx),null);
+ assert(els['raster-legend'].textContent.includes('off'));
+})().catch(e=>{console.error(e);process.exit(1)});
+""")
+    subprocess.run([node, str(runner), str(helper)], check=True, capture_output=True, text=True)

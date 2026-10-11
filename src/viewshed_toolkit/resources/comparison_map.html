@@ -137,7 +137,9 @@ Building-only known mean ${fmt(r.ui_building_known_only_mean)}; bounds ${fmt(r.u
  for(const[k,p]of Object.entries(D.points)){if(D.kind==='point'&&k!==point.value)continue;const[x,y]=project([p.lon,p.lat]);node('circle',{cx:x,cy:y,r:6,class:'pin'});node('text',{x:x+10,y:y-8}).textContent=p.name;}
 }
 function applyView(){svg.setAttribute('viewBox',view.join(' '));drawRaster()}
-svg.addEventListener('wheel',e=>{e.preventDefault();const b=svg.getBoundingClientRect(),rx=(e.clientX-b.left)/b.width,ry=(e.clientY-b.top)/b.height,scale=e.deltaY>0?1.15:1/1.15,w=Math.max(100,Math.min(1800,view[2]*scale)),h=w*.7;view=[view[0]+rx*(view[2]-w),view[1]+ry*(view[3]-h),w,h];applyView()},{passive:false});
+// SVG defaults to xMidYMid meet: account for letterboxing in every viewport.
+function screenToView(clientX,clientY){const b=svg.getBoundingClientRect(),scale=Math.min(b.width/view[2],b.height/view[3]),left=b.left+(b.width-view[2]*scale)/2,top=b.top+(b.height-view[3]*scale)/2,x=(clientX-left)/scale,y=(clientY-top)/scale;if(x<0||y<0||x>view[2]||y>view[3])return null;return[view[0]+x,view[1]+y]}
+svg.addEventListener('wheel',e=>{e.preventDefault();const xy=screenToView(e.clientX,e.clientY);if(!xy)return;const rx=(xy[0]-view[0])/view[2],ry=(xy[1]-view[1])/view[3],scale=e.deltaY>0?1.15:1/1.15,w=Math.max(.1,Math.min(1800,view[2]*scale)),h=w*.7;view=[view[0]+rx*(view[2]-w),view[1]+ry*(view[3]-h),w,h];applyView()},{passive:false});
 svg.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,v:[...view]};svg.setPointerCapture(e.pointerId);tip.style.display='none'});
 svg.addEventListener('pointermove',e=>{if(!drag)return;const b=svg.getBoundingClientRect();view=[drag.v[0]-(e.clientX-drag.x)/b.width*drag.v[2],drag.v[1]-(e.clientY-drag.y)/b.height*drag.v[3],view[2],view[3]];applyView()});
 svg.addEventListener('pointerup',()=>drag=null);svg.addEventListener('pointercancel',()=>drag=null);document.getElementById('reset').onclick=()=>{view=[0,0,1000,700];applyView()};

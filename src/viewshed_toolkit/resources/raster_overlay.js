@@ -1,7 +1,7 @@
 // Display-only raster diagnostics. Native values never enter scientific table calculations.
 globalThis.VIEWSHED_RASTERS=globalThis.VIEWSHED_RASTERS||{};
 const rasterSite=document.getElementById('raster-site'),rasterLayer=document.getElementById('raster-layer'),rasterOpacity=document.getElementById('raster-opacity'),rasterCells=document.getElementById('raster-cells');
-let activeRaster=null,rasterGroup=null,rasterLoading=null;
+let activeRaster=null,rasterGroup=null,rasterLoading=0;
 function toUTM(lon,lat){
  const a=6378137,f=1/298.257223563,e=f*(2-f),ep=e/(1-e),k=.9996,p=lat*Math.PI/180,l=(lon+123)*Math.PI/180;
  const s=Math.sin(p),c=Math.cos(p),t=Math.tan(p),N=a/Math.sqrt(1-e*s*s),T=t*t,C=ep*c*c,A=c*l;
@@ -31,13 +31,12 @@ async function loadRaster(source){
  if(activeRaster?.source===source)return activeRaster;
  const config=D.raster_overlays?.sites[source];if(!config)throw Error('No qualified raster asset for this source');
  if(!globalThis.VIEWSHED_RASTERS[source])await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=config.path;s.onload=resolve;s.onerror=()=>reject(Error('Local raster asset missing. Extract the whole ZIP with raster_inputs/ beside the HTMLs.'));document.body.appendChild(s)});
- const a=globalThis.VIEWSHED_RASTERS[source];if(a.crs!=='EPSG:32610'||a.contract!=='native_30m_inspection_display_preview_v1')throw Error('Unsupported or stale raster grid');
+ const raw=globalThis.VIEWSHED_RASTERS[source],a={...raw,arrays:Object.fromEntries(Object.entries(raw.arrays).map(([key,layer])=>[key,{...layer}]))};if(a.crs!=='EPSG:32610'||a.contract!=='native_30m_inspection_display_preview_v1')throw Error('Unsupported or stale raster grid');
  for(const layer of Object.values(a.arrays))if(!layer.bytes&&!layer.values){
   if(typeof DecompressionStream==='undefined')throw Error('This browser cannot decode native pixel values. Use a current browser with DecompressionStream support.');
   const packed=Uint8Array.from(atob(layer.zlib_base64),c=>c.charCodeAt(0));layer.bytes=new Uint8Array(await new Response(new Blob([packed]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());if(layer.bytes.length!==layer.native_bytes)throw Error('Native raster byte length mismatch');
  }
- if(activeRaster&&activeRaster.source!==source)for(const layer of Object.values(activeRaster.arrays))delete layer.bytes;
- activeRaster=a;return a;
+ return a;
 }
 function rawRaster(value){return value===null?'No data':String(value)}
 function inspectRaster(lon,lat){
@@ -71,15 +70,18 @@ function focusRaster(){
  const coords=D.composite_sources[rasterSite.value].samples.map(p=>project([p.lon,p.lat])),xs=coords.map(p=>p[0]),ys=coords.map(p=>p[1]),left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...ys),bottom=Math.max(...ys),width=Math.max(right-left,(bottom-top)/.7,5)*1.4;view=[(left+right-width)/2,(top+bottom-width*.7)/2,width,width*.7];applyView();
 }
 async function changeRaster(){
- if(rasterLayer.value==='none'){activeRaster=null;render();document.getElementById('raster-legend').textContent='Raster layers off.';return}
+ const request=++rasterLoading;
+ if(rasterLayer.value==='none'){activeRaster=null;render();document.getElementById('raster-pixel').textContent='Raster layers off; no active inspector.';document.getElementById('raster-legend').textContent='Raster layers off.';return}
+ activeRaster=null;
+ document.getElementById('raster-pixel').textContent='Loading selected raster; no active inspector.';
  document.getElementById('raster-legend').textContent='Loading shared local raster input values…';
- try{const source=rasterSite.value;rasterLoading=source;const a=await loadRaster(source);if(rasterLoading!==source)return;activeRaster=a;render();document.getElementById('raster-provenance').textContent=JSON.stringify(a.provenance,null,2);}catch(e){document.getElementById('raster-legend').textContent=String(e.message)}
+ try{const a=await loadRaster(rasterSite.value);if(request!==rasterLoading)return;activeRaster=a;render();document.getElementById('raster-provenance').textContent=JSON.stringify(a.provenance,null,2);}catch(e){if(request===rasterLoading)document.getElementById('raster-legend').textContent=String(e.message)}
 }
 function setupRasterControls(){
  document.getElementById('raster-controls').hidden=!D.raster_overlays;if(!D.raster_overlays)return;
  rasterSite.replaceChildren();for(const[source,site]of Object.entries(D.raster_overlays.sites)){node('option',{value:source},rasterSite).textContent=site.name;}
  rasterSite.value=Object.keys(D.raster_overlays.sites)[0];rasterLayer.value='none';rasterOpacity.value='75';rasterCells.checked=true;
  rasterSite.addEventListener('change',()=>{if(D.kind==='point'){point.value=rasterSite.value;surface.value='retained'}changeRaster()});rasterLayer.addEventListener('change',changeRaster);rasterOpacity.addEventListener('input',drawRaster);rasterCells.addEventListener('change',render);document.getElementById('raster-focus').onclick=focusRaster;
- svg.addEventListener('pointermove',e=>{if(drag||rasterLayer.value==='none')return;const b=svg.getBoundingClientRect(),x=view[0]+(e.clientX-b.left)/b.width*view[2],y=view[1]+(e.clientY-b.top)/b.height*view[3];inspectRaster(...unproject(x,y))});
+ svg.addEventListener('pointermove',e=>{if(drag||rasterLayer.value==='none')return;const xy=screenToView(e.clientX,e.clientY);if(!xy){document.getElementById('raster-pixel').textContent='Outside the map image; no values.';return}inspectRaster(...unproject(...xy))});
  point.addEventListener('change',()=>{const source=D.raster_overlays.product_sites[point.value]??point.value;if(D.raster_overlays.sites[source]){rasterSite.value=source;if(rasterLayer.value!=='none')changeRaster()}});
 }

@@ -66,12 +66,12 @@ def export_raster_overlay_asset(
         not source
         or not 16 <= preview_pixels <= 1024
         or not np.isfinite(tuple(transform)).all()
-        or transform.a <= 0
+        or transform.a != 30
         or transform.e != -transform.a
         or transform.b != 0
         or transform.d != 0
     ):
-        raise ValueError("Finite north-up square grid and bounded display size required")
+        raise ValueError("Finite north-up 30 m square grid and bounded display size required")
     shape = arrays["dem"].shape
     if len(shape) != 2 or not all(shape) or any(a.shape != shape for a in arrays.values()):
         raise ValueError("Nonempty aligned two-dimensional arrays required")

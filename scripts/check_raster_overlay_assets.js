@@ -7,7 +7,7 @@ vm.runInContext(`const latScale=Math.cos((D.bounds[1]+D.bounds[3])*.5*Math.PI/18
 vm.runInContext(fs.readFileSync(__dirname+'/../src/viewshed_toolkit/resources/raster_overlay.js','utf8'),ctx);
 (async()=>{const out=[];let prior=null;for(const[source,site]of Object.entries(D.raster_overlays.sites)){
  if(prior)vm.runInContext(`delete globalThis.VIEWSHED_RASTERS[${JSON.stringify(prior)}]`,ctx);
- vm.runInContext(fs.readFileSync(root+'/'+site.path,'utf8'),ctx);await vm.runInContext(`loadRaster(${JSON.stringify(source)})`,ctx);
+ vm.runInContext(fs.readFileSync(root+'/'+site.path,'utf8'),ctx);await vm.runInContext(`loadRaster(${JSON.stringify(source)}).then(a=>activeRaster=a)`,ctx);
  els['raster-site'].value=source;els['raster-opacity'].value='75';els['raster-layer'].value='chm_raw';vm.runInContext('rasterGroup=groupMock;focusRaster()',ctx);
  assert(group.children.length>0);assert(els['raster-legend'].textContent.includes('native30m values'));
  for(const layer of ['dem','dem_original','chm_raw','building','joint','unknown','water','targets']){

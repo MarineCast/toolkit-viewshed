@@ -198,6 +198,13 @@ def test_scenario_to_composite_caption_transitions(tmp_path, joint):
                     obstruction_status="computed_above_ground_obstruction_model",
                     combined_status="partial_unknown_paths",
                 )
+    # Raster synchronization adds a second source-selector listener. Exercise
+    # those real branches while assets remain off; the native asset checks load
+    # the actual compressed grids separately.
+    data["raster_overlays"] = dict(
+        sites={p: dict(name=p, path=p + ".js") for p in ("s", "t", "u")},
+        product_sites={"p1": "s", "p2": "t"},
+    )
     prepared = prepare_comparison_payload(data)
     for product in ("s", "t", "u"):
         assert all(
