@@ -5,32 +5,43 @@ from pathlib import Path
 
 from ...config import AppConfig
 from ...config.distance import load_distance_runtime, load_distance_weight_config
+from ...config.study import with_study_config
 from ...contracts.components import cache_matches, component_root, provenance, record_product
 from . import domains
 from .config import _lookup_config
 from .universe import _classify_bbox_cells, _physical_cell_type_frame
 
 
+@with_study_config
 def build_target_cells(app: AppConfig, *, overwrite: bool = False) -> Path:
     output = component_root(app) / "geometry" / "target_cells.parquet"
+    inputs = {"land": app.paths.land_polygon_path, "water": app.paths.water_polygon_path}
+    if "marinecast_study" in app.raw_config:
+        from ...config.reporting import load_reporting_support
+
+        support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+        inputs.update(
+            reporting_mask=support.mask_path, reporting_membership=support.membership_path
+        )
     contract = provenance(
         app,
         "target_cells_existing_policy_v1",
-        {
-            "land": app.paths.land_polygon_path,
-            "water": app.paths.water_polygon_path,
-        },
+        inputs,
     )
     if not overwrite and cache_matches(output, contract):
         return output
     runtime = load_distance_runtime(app.config_path)
     settings = _lookup_config(app.raw_config, runtime, load_distance_weight_config(app.raw_config))
     polygon = domains.target_domain_polygon(runtime)
-    candidates = domains.bbox_h3_cells(
-        tuple(polygon.bounds),
-        runtime.source_resolution,
-        buffer_rings=settings.bbox_buffer_rings,
-        strict_intersection=False,
+    candidates = (
+        list(support.cells)
+        if "marinecast_study" in app.raw_config
+        else domains.bbox_h3_cells(
+            tuple(polygon.bounds),
+            runtime.source_resolution,
+            buffer_rings=settings.bbox_buffer_rings,
+            strict_intersection=False,
+        )
     )
     classified = _classify_bbox_cells(runtime, settings, cells=candidates, extent="target")
     roles = _physical_cell_type_frame(classified, settings)

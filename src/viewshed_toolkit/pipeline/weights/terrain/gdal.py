@@ -492,9 +492,14 @@ def _load_terrain_source_cells(app: AppConfig) -> gpd.GeoDataFrame:
         raise ValueError(f"No water source cells found in lookup: {lookup_path}")
 
     runtime = distance.load_distance_runtime(app.config_path)
-    domain_geometries = domains.load_land_water_domains(runtime, extent="target")
+    shared = "marinecast_study" in app.raw_config
+    domain_geometries = domains.load_land_water_domains(
+        runtime, extent="source" if shared else "target"
+    )
     full_geometry_lookup = _cached_h3_geometry_for_app(app, "geometry_wgs84")
-    water_projected_lookup = _cached_h3_geometry_for_app(app, "water_geometry_projected")
+    water_projected_lookup = (
+        None if shared else _cached_h3_geometry_for_app(app, "water_geometry_projected")
+    )
     to_wgs84 = Transformer.from_crs(app.viewshed.crs_projected, CRS_WGS84, always_xy=True)
     rows: list[dict[str, Any]] = []
     geoms = []
@@ -557,12 +562,27 @@ def _load_terrain_source_cells(app: AppConfig) -> gpd.GeoDataFrame:
 
 
 def _water_terrain_domains_for_app(app: AppConfig) -> domains.DomainGeometries:
+    support = None
+    if "marinecast_study" in app.raw_config:
+        from ...config.reporting import load_reporting_support
+
+        support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
     cache_key = f"{app.config_path}:{app.config_hash}:{_water_input_identity(app)}"
     cached = _WATER_TERRAIN_DOMAIN_CACHE.get(cache_key)
     if cached is not None:
         return cached
     runtime = distance.load_distance_runtime(app.config_path)
     domain_geometries = domains.load_land_water_domains(runtime, extent="target")
+    if support is not None:
+        from dataclasses import replace
+        from ...config.reporting import read_polygon
+
+        domain_geometries = replace(
+            domain_geometries,
+            land_domain=read_polygon(app.paths.land_polygon_path).intersection(
+                support.native_extent
+            ),
+        )
     _WATER_TERRAIN_DOMAIN_CACHE[cache_key] = domain_geometries
     return domain_geometries
 

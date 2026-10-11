@@ -141,6 +141,11 @@ def build_land_cells_for_config(
         or region_cfg.get("crs_projected")
         or DEFAULT_PROJECTED_CRS
     )
+    from ...config.study import domain_polygons_from_raw
+
+    shared = domain_polygons_from_raw(raw, projected_crs)
+    source_polygon = shared[1] if shared is not None else box(*bbox_wgs84)
+    bbox_wgs84 = source_polygon.bounds
     coastal_buffer_m = float(region_cfg.get("coastal_buffer_m", 6_000))
     min_land_fraction = float(region_cfg.get("min_source_cell_land_fraction", 0.01))
     max_water_fraction_raw = region_cfg.get("max_source_cell_water_fraction", 0.95)
@@ -156,7 +161,33 @@ def build_land_cells_for_config(
     if not ne_path.exists():
         raise FileNotFoundError(f"Configured land polygon does not exist: {ne_path}")
 
+    water_path_value = paths_cfg.get("water_polygon_path")
+    water_path = (
+        resolve_existing_or_relative_path(water_path_value, config_dir)
+        if water_path_value
+        else seascape_water_polygon_path(config_path)
+    )
+    shared_contract = None
+    if shared is not None:
+        from ...config import load_app_config
+        from ...config.reporting import load_reporting_support
+        from ...contracts.components import cache_matches, provenance, record_product
+
+        support = load_reporting_support(raw, projected_crs)
+        shared_contract = provenance(
+            load_app_config(config_path),
+            "land_source_cells_shared_v2",
+            {
+                "land": ne_path,
+                "water": water_path,
+                "reporting_mask": support.mask_path,
+                "reporting_membership": support.membership_path,
+            },
+        )
+
     if land_h3_path.exists() and not overwrite:
+        if shared_contract is not None and not cache_matches(land_h3_path, shared_contract):
+            raise ValueError("Stale shared land-cell cache; rebuild explicitly with overwrite=True")
         h3_gdf = gpd.read_parquet(land_h3_path)
         validate_existing_land_h3_file(
             h3_gdf,
@@ -173,9 +204,7 @@ def build_land_cells_for_config(
         )
 
     land = gpd.read_file(ne_path).to_crs(CRS_WGS84)
-    bbox_gdf = gpd.GeoDataFrame(
-        {"name": ["config_bbox"]}, geometry=[box(*bbox_wgs84)], crs=CRS_WGS84
-    )
+    bbox_gdf = gpd.GeoDataFrame({"name": ["config_bbox"]}, geometry=[source_polygon], crs=CRS_WGS84)
     bbox_polygon = bbox_gdf.geometry.iloc[0]
     try:
         land_union = safe_polygonal_union(land, clip_geometry=bbox_polygon)
@@ -205,12 +234,6 @@ def build_land_cells_for_config(
         )
     else:
         water_union = None
-        water_path_value = paths_cfg.get("water_polygon_path")
-        water_path = (
-            resolve_existing_or_relative_path(water_path_value, config_dir)
-            if water_path_value
-            else seascape_water_polygon_path(config_path)
-        )
         if water_path.exists():
             water = gpd.read_parquet(water_path)
             if water.crs is None:
@@ -224,14 +247,27 @@ def build_land_cells_for_config(
                 if "No polygonal geometry remains" not in str(exc):
                     raise
 
-        # Land is all available land with the high-resolution water polygon
-        # carved out; water is everything else inside the bbox.
-        land_domain = _land_domain_geometry(bbox_polygon, land_union, water_union)
-        water_domain = safe_polygonal_difference(
-            bbox_polygon,
-            land_domain,
-            label="land-cell water domain as bbox minus land",
+        # Shared mode retains declared land and uses the explicit marine mask;
+        # it must not reinterpret unmapped areas or freshwater as marine water.
+        land_domain = (
+            safe_polygonal_intersection(
+                land_union, bbox_polygon, label="shared land source support"
+            )
+            if shared is not None
+            else _land_domain_geometry(bbox_polygon, land_union, water_union)
         )
+        if shared is not None:
+            if water_union is None:
+                raise ValueError(
+                    "Shared study requires explicit marine-water geometry; no fallback"
+                )
+            water_domain = water_union
+        else:
+            water_domain = safe_polygonal_difference(
+                bbox_polygon,
+                land_domain,
+                label="land-cell water domain as bbox minus land",
+            )
 
         candidate_cells = sorted(bbox_candidate_h3_cells(bbox_wgs84, resolution))
         LOGGER.info("Candidate H3 source cells before land clipping: %d", len(candidate_cells))
@@ -302,7 +338,7 @@ def build_land_cells_for_config(
             n_removed_water = int((~water_mask).sum())
             h3_gdf = h3_gdf[water_mask].copy()
         n_removed_distance = 0
-        if "distance_to_water_m" in h3_gdf.columns:
+        if shared is None and "distance_to_water_m" in h3_gdf.columns:
             distance_mask = h3_gdf["distance_to_water_m"] <= coastal_buffer_m
             n_removed_distance = int((~distance_mask).sum())
             h3_gdf = h3_gdf[distance_mask].copy()
@@ -324,6 +360,8 @@ def build_land_cells_for_config(
     h3_gdf["run_version"] = get_run_version(raw)
     h3_gdf["config_hash"] = stable_config_hash(raw)
     h3_gdf.to_parquet(land_h3_path, index=False)
+    if shared_contract is not None:
+        record_product(land_h3_path, shared_contract)
     return LandCellsResult(
         land_polygon_path=land_polygon_path,
         land_h3_path=land_h3_path,

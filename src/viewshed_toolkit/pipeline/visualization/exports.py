@@ -370,7 +370,10 @@ def _existing_result(
     if not all(path.is_file() for path in required):
         return None
     payload = json.loads(paths.manifest.read_text(encoding="utf-8"))
-    if payload.get("config_hash") != app.config_hash:
+    if (
+        payload.get("config_hash") != app.config_hash
+        or payload.get("map_value_contract") != "nullable_coverage_v1"
+    ):
         return None
     return StaticMapExportResult(
         selected_source_h3=str(payload["selected_source_h3"]),
@@ -421,6 +424,7 @@ def export_source_type_static_weight_map(
         if (
             payload.get("config_hash") == app.config_hash
             and payload.get("source_type") == source_type
+            and payload.get("map_value_contract") == "nullable_coverage_v1"
         ):
             return SourceTypeStaticMapExportResult(
                 source_type=source_type,
@@ -461,6 +465,7 @@ def export_source_type_static_weight_map(
     )
     manifest = {
         "schema_version": "1",
+        "map_value_contract": "nullable_coverage_v1",
         "config_path": str(app.config_path),
         "config_hash": app.config_hash,
         "scientific_config_hash": static_scientific_config_hash(app.raw_config),
@@ -602,6 +607,7 @@ def export_static_weight_maps(
     )
     manifest = {
         "schema_version": "2",
+        "map_value_contract": "nullable_coverage_v1",
         "config_path": str(app.config_path),
         "config_hash": app.config_hash,
         "scientific_config_hash": static_scientific_config_hash(app.raw_config),
@@ -673,6 +679,7 @@ def export_static_weight_maps(
     ):
         alias = {
             "schema_version": "2",
+            "map_value_contract": "nullable_coverage_v1",
             "config_path": str(app.config_path),
             "config_hash": app.config_hash,
             "scientific_config_hash": static_scientific_config_hash(app.raw_config),

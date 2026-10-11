@@ -1004,6 +1004,7 @@ def run_paired_surface_source_cells(
     *,
     limit: int | None = None,
     start: int = 0,
+    selected_source_cells: Sequence[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     snapshots = [
         expected_partition_metadata(app, refresh=True) for app in (bare_earth_app, canopy_app)
@@ -1012,7 +1013,9 @@ def run_paired_surface_source_cells(
         replace(app, partition_metadata_snapshot=snapshot)
         for app, snapshot in zip((bare_earth_app, canopy_app), snapshots, strict=True)
     ]
-    result = _run_paired_surface_source_cells(*apps, limit=limit, start=start)
+    result = _run_paired_surface_source_cells(
+        *apps, limit=limit, start=start, selected_source_cells=selected_source_cells
+    )
     if any(
         expected_partition_metadata(app, refresh=True) != snapshot
         for app, snapshot in zip(apps, snapshots, strict=True)
@@ -1024,7 +1027,12 @@ def run_paired_surface_source_cells(
 
 
 def _run_paired_surface_source_cells(
-    bare_earth_app: AppConfig, canopy_app: AppConfig, *, limit: int | None = None, start: int = 0
+    bare_earth_app: AppConfig,
+    canopy_app: AppConfig,
+    *,
+    limit: int | None = None,
+    start: int = 0,
+    selected_source_cells: Sequence[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run matched bare-earth and canopy surfaces from one prepared batch.
 
@@ -1060,6 +1068,20 @@ def _run_paired_surface_source_cells(
             _area_lookup_path_for_app(canopy_app),
         )
 
+    if selected_source_cells is not None:
+        requested = list(selected_source_cells)
+        if start or limit is not None:
+            raise ValueError("Explicit paired sources cannot be combined with start/limit")
+        if not requested or len(set(requested)) != len(requested):
+            raise ValueError("Explicit paired source selection must be nonempty and unique")
+        available = set(source_cells_gdf["h3_cell"].astype(str))
+        if not set(requested).issubset(available):
+            raise ValueError(
+                "Explicit paired source selection is absent from the prepared universe"
+            )
+        source_cells_gdf = source_cells_gdf[
+            source_cells_gdf["h3_cell"].astype(str).isin(requested)
+        ].copy()
     if start:
         source_cells_gdf = source_cells_gdf.iloc[start:].copy()
     if limit is not None:

@@ -220,3 +220,46 @@ def test_land_only_export_does_not_require_water_static_weights(tmp_path) -> Non
     assert '"type": "FeatureCollection"' in html
     manifest = json.loads(result.manifest.read_text(encoding="utf-8"))
     assert manifest["source_type"] == "land"
+
+
+def test_static_maps_preserve_unknowns_in_tables_html_and_cache_contract(tmp_path):
+    import pytest
+
+    config_path = _write_fixture(tmp_path)
+    path = tmp_path / "viewshed/LAND_STATIC_WEIGHTS_R7.parquet"
+    original = pl.read_parquet(path)
+    first_target = original["target_h3"][0]
+    original.with_columns(
+        pl.when(pl.col("target_h3") == first_target)
+        .then(None)
+        .otherwise(pl.col("weight_vegetation"))
+        .alias("weight_vegetation"),
+        pl.when(pl.col("target_h3") == first_target)
+        .then(None)
+        .otherwise(pl.col("weight_static_viewability"))
+        .alias("weight_static_viewability"),
+    ).write_parquet(path)
+    result = export_static_weight_maps(config_path)
+    target = pl.read_parquet(result.land_target_aggregate_values)
+    unknown = target.filter(pl.col("target_h3") == first_target).row(0, named=True)
+    assert unknown["target_static_kernel_sum"] is None
+    assert unknown["target_static_kernel_sum_status"] == "unavailable"
+    assert unknown["target_static_kernel_sum_missing_count"] == 1
+    source = pl.read_parquet(result.land_source_aggregate_values).row(0, named=True)
+    assert source["source_static_kernel_sum"] is None
+    assert source["source_static_kernel_sum_status"] == "partial"
+    assert source["source_static_kernel_sum_valid_count"] == original.height - 1
+    selected = pl.read_parquet(result.selected_values).filter(pl.col("target_h3") == first_target)
+    assert selected["net_static_weight"].item() is None
+    for html_path in (result.selected_html, result.land_aggregate_html):
+        html = html_path.read_text()
+        assert "null" in html and "unavailable" in html
+        assert "Gray dashed cells" in html
+    water = pl.read_parquet(result.water_target_aggregate_values)
+    assert water["vegetation_weight_sum"].null_count() == water.height
+    assert set(water["vegetation_weight_sum_status"]) == {"not_applicable"}
+    manifest = json.loads(result.manifest.read_text())
+    assert manifest.pop("map_value_contract") == "nullable_coverage_v1"
+    result.manifest.write_text(json.dumps(manifest))
+    with pytest.raises(FileExistsError, match="do not match"):
+        export_static_weight_maps(config_path)

@@ -380,3 +380,146 @@ Canopy source years come from normalized acquisition records. The global-canopy 
 its known 2020 product; local assets require an explicit `datasets.chm.source_year`. Unspecified
 local years remain null. Metadata refresh may change presentation settings only; changed scientific
 settings or disagreement between embedded metadata and sidecars requires rebuilding.
+
+## Partial canopy research calculations
+
+`weights.vegetation.partial` implements `canopy_edge_interval_v1` for bounded,
+explicit partial-coverage calculations. Its arrays must be aligned on a projected
+square grid with complete endpoint terrain. It preserves the GDAL edge recurrence,
+curvature, cell-centre range, grounded observer, and ground-referenced water targets.
+It is an internal research calculation surface, not a new production config policy
+or permission to promote incomplete tables through the compact finalizer.
+
+Unknown nonnegative canopy heights have a lower bound of zero and an unbounded
+upper bound. Positive-coefficient edge interpolation and horizon maxima propagate
+these bounds monotonically. A target blocked even under the lower bound is a
+supported zero; a target visible with no unknown horizon dependency is supported
+clear; otherwise its LOS is unknown. This is interval reasoning, not zero-filling.
+The explicit observer clearance mask applies only to that observer. Without a
+qualified grounded observer, in-range visibility remains unknown.
+
+Callers must max-resample a separate native missingness indicator as well as the
+height raster; max height alone can conceal masked 10 m subpixels. They must qualify
+water geometrically, retain masked built-up and land/water conflicts as unknown,
+and record clearance, grid, source fingerprints, mask classification, and contract
+version. Buildings are outside this canopy-only model. Their absence does not
+invalidate known canopy heights, and built-up NoData does not establish zero canopy.
+
+`partial_kernel_summary` retains the full observer-count times equivalent-water-pixel
+denominator. It returns lower and upper combined bounds and a point value only when
+the bounds coincide. A zero bare kernel gives a provable combined zero and a
+not-applicable vegetation ratio, not a canopy observation. Its `combined_status` is
+`zero_baseline_support`, including when every canopy observation is unknown. Positive
+baselines retain `computed_canopy_model` when the bounds coincide and
+`partial_unknown_paths` otherwise. Combined known-pair coverage includes zero baselines;
+canopy coverage counts supported vegetation ratios over positive-baseline pairs only.
+These status labels refine provenance without changing weights or interval bounds.
+Unknown pair values remain
+null; aggregate available sums and valid-value means must name their denominators.
+Do not substitute a bound or a partial observed sum for a complete pair weight.
+
+`prepare.elevation.canopy.qualify_partial_canopy_grid` preserves native unknown
+land subpixels even when an all-touched modeled water endpoint overlaps the same
+30 m cell. Only the geometrically qualified native-water exemption removes those
+native missing values; the coarser water mask cannot erase uncertain shoreline land.
+
+
+## Retained sample comparison maps
+
+`viewshed_toolkit.export_comparison_maps(payload, output_directory)` exports offline target,
+source and selected-source maps plus `SOURCE_CELL_COMPARISON_MEANS.csv`. The payload contains
+`viewpoints` pair rows, `composite_sources` and display `source_polygons`, coastline and bounds.
+Each pair requires actual integer `n_observers`, `target_sample_count`, clear/blocked/unknown
+canopy counts and `bare_clear_observations`; duplicate or null source/target keys are rejected.
+The actual count population must equal observers × target samples. For this retained pilot,
+these are five land source samples × all retained 30 m water raster centers.
+
+This export is separate from the production equivalent-area kernel: arithmetic full mean is
+clear / total only if unknown=0 and total>0; otherwise null. Bounds are clear / total to
+(clear+unknown) / total. Known-only mean clear / (clear+blocked) is descriptive and never
+estimates unknown comparisons. Empty target populations have null metrics and are excluded
+from sums and equal-cell means. Source-cell rows carry observer_scope=source_cell_samples
+and no exact-point viewpoint_id. Original weighted Parquets remain unchanged.
+
+Target maps group candidate source pairs per target; source maps group target pairs per source.
+Selected-source maps default to the five-observer composite with Victoria/Dungeness choices,
+with exact points secondary. Count pooling weights each comparison equally; sums add per-pair
+metrics and equal-H3 means average known nonempty pair metrics. Full sums stay null with
+unknown support. These statistics differ when target populations differ. Bounds use the same
+sum/mean choice. Terrain-only arithmetic uses retained bare binary counts; FABDEM exact-point
+scenarios expose distance-integrated weight_terrain and are explicitly labeled weighted,
+rather than claiming a supported arithmetic mean. No acquisition or LOS rerun occurs.
+
+
+## Opt-in supported water-footprint qualification
+
+`qualify_water_footprints` classifies cells on the exact projected raster grid using retained
+precise land/water polygons and an aligned native-mask support mask. A cell must be wholly
+inside water and must not touch any land polygon or water boundary. All-touched exclusion
+preserves tiny islands and mixed shoreline footprints that a pixel-center water mask misses.
+Overlapping or shifted coastal geometry removes qualification. Unsupported mask cells are
+excluded. WorldCover center labels are descriptive diagnostics, not an alternative shoreline.
+
+Pass this mask as explicit `qualified_water` to `qualify_partial_canopy_grid`. Qualified water
+has known zero canopy even if max-resampled native NoData leaked into it. Apply the same mask
+to intervening ray cells and target cells, with the declared water surface elevation. The
+bounded pilot uses its existing 0 m water convention; this is not a tidal observation or a
+resolved vertical-datum reconciliation. Mixed cells preserve known positive canopy and missing
+land heights. Missing built-up land heights are not imputed zero. Source samples remain in land;
+observer locations and the existing private 30 m canopy clearance are unchanged. Retained
+coarse mixed-cell terrain approximations remain a limitation.
+
+This opt-in research contract is `full_supported_water_footprint_v1`. Persist grid identity,
+geometry/input checksums, support-mask identity, water level, and the qualification version with
+replayed products; prior interval products are not reusable under this identity. The legacy
+endpoint-only call remains unchanged and conservative about native unknowns. Production regional
+nodata defaults and complete paired-finalizer acceptance are unchanged. A qualified water mask
+must be contained in the declared water-elevation mask; alignment/CRS mismatches fail.
+
+Map coverage now follows the selected metric and statistic. Known-only is available only for
+arithmetic canopy LOS. Conditional vegetation ratios exclude zero-baseline N/A pairs, while
+missing positive-baseline ratios keep a complete sum null. N/A ratio support, valid combined
+baseline-forced zeros and unresolved values have distinct colors and labels.
+
+The retained two-site water replay removes 4,504 Victoria native-unknown cells but adds one supported cell with missing aligned CHM that was previously treated as modeled water. Its aligned index is row759/column1668 (EPSG:32610 center491655,5370885); the native unknown indicator is0, aligned CHM is missing, and the full-water footprint does not qualify. Thus225,776−4,504+1=221,273 unknown cells. Dungeness adds none:128,516−1,964=126,552. Grid/geometry/input pins are unchanged.
+
+The replay also restores known mixed-cell canopy and resets8 Victoria/118 Dungeness qualified-water terrain cells to the retained declared0m convention. Both changes can alter rays. The21 fewer Victoria clear comparisons are an observed net result; no per-ray causal attribution between these changes was retained.
+
+The prequalification spatial diagnostic categories overlap:2 Victoria and6 Dungeness native-unknown cells qualify as full precise water while falling outside the old modeled-water mask. They are counted in both pure-water and old nonwater categories. Category sums225,778/128,522 therefore reconcile to unique native-unknown totals225,776/128,516 after subtracting this overlap. These are aligned raster populations before observer clearance, not additional unknown cells.
+
+## Opt-in building obstruction research contract
+
+`compose_above_ground_surface` combines aligned, nonnegative above-ground canopy and building
+lower heights by **maximum**, never by addition. Bounds are conditional on supported height predictions; they are missingness bounds, not empirical or calibrated confidence limits. Unknown upper support is the union of component
+unknown masks; a supported roof under unknown canopy can still prove a ray blocked. The optional
+`unknown_height_lower` argument of `partial_canopy_visibility` retains that lower obstruction.
+Its default remains zero, preserving the canopy-only numerical contract. Unknown target endpoints
+remain unknown. Terrain is added once and distance attenuation is integrated once.
+
+The research adapter `pipeline.providers.global_building_atlas.iter_gba_subset` reads a qualified
+bbox-filtered SQLite subset of [GlobalBuildingAtlas](https://github.com/zhu-xlab/GlobalBuildingAtlas).
+It requires original EPSG:3857 footprint geometry and the official source + id + region height
+join key. LoD1 `height` is a predicted AGL footprint height; `var` is an uncertainty diagnostic,
+not a calibrated interval. Negative, absent and nonfinite heights stay missing. A predicted zero
+is not building absence. No published footprint is not verified absence: callers must retain an
+unknown building upper surface unless a separate absence qualification exists. Full-footprint
+qualified water may resolve zero obstruction; a building/water contradiction stays unknown.
+A 30 m all-touched opaque footprint raster is a coarse model, not surveyed roof geometry.
+
+The dataset is static, primarily based on 2019 imagery with 2018 fill; combining it with ETH 2020
+canopy does not supply annual 2009–2026 obstruction. Heights and non-ODbL footprints carry
+CC BY-NC 4.0; ODbL footprints retain their separate ODbL 1.0 terms. Each derived product must carry
+source revisions, checksums, licenses, epochs, grid and rasterization choices. Do not commit source
+vectors to Git. Regional inventory containment does not establish regional completeness.
+
+This opt-in helper does not alter the production raster provider registry, stages or existing
+`weight_vegetation` meaning. Building-only and canopy-only diagnostics remain separate from a
+joint obstruction metric; do not multiply both conditional factors. Private canopy clearance
+must be applied before combination so it cannot erase neighboring buildings. A grounded source
+cell is an explicit observer model assumption, not evidence of building absence.
+
+The reusable rasterizer and joint LOS caller are described in the
+[building obstruction recipe](building-obstruction-pilot.md). Composition preserves
+input precision: float64 lower heights are not rounded upward to float32 at grazing
+rays. The retained pilot inputs are already float32, so this precision hardening does
+not alter its numerical outputs.

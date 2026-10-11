@@ -237,3 +237,11 @@ See [CONTRIBUTING](CONTRIBUTING.md), the [change history](CHANGELOG.md), and
 [CITATION.cff](CITATION.cff). Cite the exact commit or release used with the separate source-data
 attributions. Software checks are not field validation; see the
 [acceptance matrix](docs/development/acceptance.md).
+
+
+Retained land-pilot comparison counts can be exported with
+`viewshed_toolkit.export_comparison_maps(payload, output_directory)`. This produces distinct
+target/source aggregates and a selected-source map, with actual-count arithmetic visibility,
+unknown intervals and secondary exact-point diagnostics. See the
+[API contract](docs/api.md#retained-sample-comparison-maps) and
+[scientific definitions](docs/scientific-methodology.md#retained-sample-comparison-maps).

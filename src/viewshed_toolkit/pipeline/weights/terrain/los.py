@@ -79,6 +79,7 @@ from affine import Affine
 from rasterio.crs import CRS
 
 from viewshed_toolkit._internal.geo.raster import remove_partial
+from viewshed_toolkit._internal.pilot import PilotCallLimitError, claim_native_call
 
 from ...config import (
     AppConfig,
@@ -369,6 +370,7 @@ def run_gdal_viewshed(
         str(out_path),
     ]
 
+    claim_native_call("gdal_cli")
     try:
         result = subprocess.run(
             cmd,
@@ -924,6 +926,7 @@ def _run_gdal_viewshed_in_process_to_bool_array(
             parent_path=context.analysis_dem_path,
         )
 
+        claim_native_call("gdal_python")
         gdal.ErrorReset()
         gdal.PushErrorHandler("CPLQuietErrorHandler")
         try:
@@ -1209,6 +1212,8 @@ def _run_gdal_viewshed_dispatch(
 
     try:
         return _run_gdal_viewshed_in_process_to_bool_array(**arguments)
+    except PilotCallLimitError:
+        raise
     except Exception as in_process_error:
         LOGGER.warning(
             "In-process GDAL viewshed failed; retrying with gdal_viewshed CLI. "
@@ -1221,6 +1226,8 @@ def _run_gdal_viewshed_dispatch(
         )
         try:
             fallback = _run_gdal_viewshed_cli_to_bool_array(**arguments)
+        except PilotCallLimitError:
+            raise
         except Exception as cli_error:
             raise RuntimeError(
                 "Both in-process GDAL and the gdal_viewshed CLI fallback failed. "

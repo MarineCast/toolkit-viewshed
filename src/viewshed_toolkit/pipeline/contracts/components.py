@@ -84,6 +84,11 @@ def provenance(app: AppConfig, algorithm: str, inputs: Mapping[str, Path]) -> di
         "source_h3_resolution": app.h3.source_resolution,
         "target_h3_resolution": app.h3.target_resolution,
         "inputs": input_checksums(inputs),
+        **(
+            {"marinecast_study": app.raw_config["marinecast_study"]}
+            if "marinecast_study" in app.raw_config
+            else {}
+        ),
     }
 
 
@@ -166,6 +171,15 @@ def acquisition_request(app: AppConfig, dataset: str) -> dict[str, Any]:
                 )
             }
         )
+    if "marinecast_study" in app.raw_config:
+        from ..config.reporting import load_reporting_support
+
+        support = load_reporting_support(app.raw_config, app.viewshed.crs_projected)
+        return {
+            "dataset": settings.model_dump(mode="json"),
+            "acquisition_bbox": list(support.native_extent.bounds),
+            "reporting_support": support.identity,
+        }
     forward = Transformer.from_crs(4326, app.viewshed.crs_projected, always_xy=True)
     inverse = Transformer.from_crs(app.viewshed.crs_projected, 4326, always_xy=True)
     west, south, east, north = forward.transform_bounds(

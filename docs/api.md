@@ -29,6 +29,9 @@ from viewshed_toolkit.resources import default_config_path
 
 `load_app_config` reads and validates configuration without creating output directories:
 
+An optional `study_config=Path(...)` selects the portable MarineCast study v1 contract;
+`ViewshedRequest` accepts the same field. See [shared-study selection, roles and gates](shared-study.md).
+
 ```python
 from viewshed_toolkit import load_app_config
 from viewshed_toolkit.resources import default_config_path
@@ -229,3 +232,136 @@ historical manifests without that inventory before entering stage checks. It doe
 certify older cached outputs. Rebuild affected producers with their explicit overwrite controls
 or a fresh workspace, then create a new manifest. Remote source freshness is not certified by
 local checksum validation.
+
+## Bounded DEM preparation
+
+The existing source runner can select `batch.raster_stack_mode: windowed`; cross-CRS/resolution
+inputs additionally require a pinned producer chunk receipt or an explicitly built and pinned
+native metadata planner. Canopy alignment has its own maximum-resampling receipt. This opt-in preserves the established global warp processing
+contexts and crops only requested LOS windows. See [bounded native windows](BOUNDED_WINDOWS.md)
+for qualification, receipt provenance, helper build instructions and resource-limit requirements.
+No acquisition or full reference warp runs implicitly, and default global behavior is unchanged.
+
+## Bounded one-source engineering pilot
+
+`viewshed_toolkit.pipeline.api.pilot.run_bounded_land_pilot` is an advanced POSIX-only API
+for prepared and qualified paired land configs. Supply `bare_config`, `canopy_config`, one
+`source_h3`, an existing owned `staging_root`, and a fresh child `checkpoint_dir`; optionally
+supply the shared `study_config` and stricter `PilotCaps`. It performs no acquisition or final
+promotion, retains checkpoints, and rejects output paths outside staging or preexisting manifests
+and partitions. Keep batch intermediates, disable overwrite/combine/maps, use one worker and
+windowed rasters. Candidate lookup validation is filtered and bounded to 6,001 keys.
+
+A completed subprocess is not a validated product. Input qualification is unchanged, and the
+caller must independently verify all paired outputs before publishing. See
+[bounded native windows](BOUNDED_WINDOWS.md) for ceilings, sampling limitations and scientific
+qualification. This advanced API is deliberately not exported from the package root.
+
+
+### Missing values in map summaries
+
+Map value contract `nullable_coverage_v1` preserves unknown factors as null in Parquet,
+GeoJSON and HTML. For each sum column, the main value requires complete applicable-pair
+coverage. A partial total remains null; separately named `*_available` and `*_mean_valid`
+columns describe only available contributions. Companion `*_valid_count`, `*_missing_count`,
+`*_applicable_count`, `*_not_applicable_count`, `*_coverage_fraction` and `*_status` fields expose the denominator.
+Valid computed zeros count in the mean. With no valid applicable values, sums and means are
+null. Neutral vegetation factors for water sources or zero bare-earth baseline are not
+vegetation observations and are excluded. Unknown baseline support leaves vegetation unknown.
+Source and target summaries use the same rules and keep source roles separate.
+
+Native H3 layers show missing or inapplicable values with gray dashed cells and expose their
+status and coverage on hover. Computed zero remains transparent with a numeric zero. Smoothed
+surfaces stay within positive known H3 support; they do not estimate missing cells. Older map
+manifests without this value contract require explicit regeneration with overwrite.
+
+These are presentation rules for the supplied candidate rows. They cannot detect omitted
+candidates, certify raster coverage, or enable partially available canopy LOS in the compact
+finalizer. Existing source policies, finalization requirements and scientific hashes are unchanged.
+
+
+## Retained sample comparison maps
+
+`viewshed_toolkit.export_comparison_maps(payload, output_directory)` exports offline target,
+source and selected-source maps plus `SOURCE_CELL_COMPARISON_MEANS.csv`. The payload contains
+`viewpoints` pair rows, `composite_sources` and display `source_polygons`, coastline and bounds.
+Each pair requires actual integer `n_observers`, `target_sample_count`, clear/blocked/unknown
+canopy counts and `bare_clear_observations`; duplicate or null source/target keys are rejected.
+The actual count population must equal observers × target samples. For this retained pilot,
+these are five land source samples × all retained 30 m water raster centers.
+
+This export is separate from the production equivalent-area kernel: arithmetic full mean is
+clear / total only if unknown=0 and total>0; otherwise null. Bounds are clear / total to
+(clear+unknown) / total. Known-only mean clear / (clear+blocked) is descriptive and never
+estimates unknown comparisons. Empty target populations have null metrics and are excluded
+from sums and equal-cell means. Source-cell rows carry observer_scope=source_cell_samples
+and no exact-point viewpoint_id. Original weighted Parquets remain unchanged.
+
+Target maps group candidate source pairs per target; source maps group target pairs per source.
+Selected-source maps default to the five-observer composite with Victoria/Dungeness choices,
+with exact points secondary. Count pooling weights each comparison equally; sums add per-pair
+metrics and equal-H3 means average known nonempty pair metrics. Full sums stay null with
+unknown support. These statistics differ when target populations differ. Bounds use the same
+sum/mean choice. Terrain-only arithmetic uses retained bare binary counts; FABDEM exact-point
+scenarios expose distance-integrated weight_terrain and are explicitly labeled weighted,
+rather than claiming a supported arithmetic mean. No acquisition or LOS rerun occurs.
+
+
+Research callers may opt into full supported water-cell qualification through
+`pipeline.prepare.elevation.canopy.qualify_water_footprints` and the explicit
+`qualified_water=` argument to `qualify_partial_canopy_grid`; see the
+[scientific contract](scientific-methodology.md#opt-in-supported-water-footprint-qualification).
+The caller must align geometry, raster/support grids, and the declared water elevation surface.
+This does not execute acquisition or automatically replace production outputs.
+
+The comparison-map combined lower/upper metric choices visibly lock View to the corresponding bound. Select Combined to choose coverage, resolved values, or either bound independently.
+
+## Opt-in above-ground obstruction helper
+
+```python
+from viewshed_toolkit import compose_above_ground_surface
+
+surface = compose_above_ground_surface(
+    canopy_lower, canopy_unknown, building_lower, building_unknown,
+    qualified_water=qualified_water, building_present=building_present,
+)
+```
+
+All arrays must share a projected grid. The result exposes `lower_height`, `unknown`,
+`qualified_water` and `water_conflicts`. Inputs are not mutated. Missing footprint support must
+remain unknown unless separately qualified. For LOS, pass `surface.lower_height` as both the
+height input and `unknown_height_lower`, and `surface.unknown` as the unknown mask. Apply canopy
+clearance to the canopy input before composition; a clearance mask on the combined surface would
+also erase buildings and is inappropriate. See the [research contract](scientific-methodology.md#opt-in-building-obstruction-research-contract).
+
+`rasterize_building_footprints` streams original EPSG:3857 footprint WKB/AGL-height
+pairs onto a caller-owned projected metre grid. It returns maximum lower heights,
+footprint presence, missing-height and unknown masks plus processing counts.
+`above_ground_visibility` applies private clearance only to canopy before joint
+composition, preserving adjacent roofs. `grounded_observer=True` is an explicit
+central source-cell grounding assumption. These helpers perform no acquisition,
+sampling, distance weighting or production promotion. See the
+[portable research caller recipe](building-obstruction-pilot.md).
+
+For offline comparison input inspection, `export_raster_overlay_asset` writes a
+shared local classic-script asset from caller-qualified aligned float32 terrain
+and lower-height arrays plus raw uint8 CHM and support flags. It preserves native
+values, adds a display-only WGS84 preview, and rejects unqualified grids. See
+[the building pilot recipe](building-obstruction-pilot.md#inspect-the-actual-pilot-input-grids)
+for units, missingness, observer assumptions and packaging requirements.
+
+
+### Single pilot layer map
+
+`viewshed_toolkit.export_pilot_map(payload, output_path)` creates one offline HTML entrypoint
+from the same validated retained comparison payload. Extract shared `raster_inputs/` beside it.
+Checkbox groups show DEM elevation, raw CHM and predicted building heights (metres AGL), selected
+source-to-target weights, source-cell aggregates and target composites across all source cells.
+Several layers can be shown together. Click a source outline or actual sample pin to select its
+five-point population, then use **Focus source** for native input inspection. Click cells for
+values, coverage, full means, bounds and aggregation details. Unknown and empty values remain
+unavailable; obstruction known means describe resolved comparisons only. Arithmetic aggregates
+pool actual comparisons; weighted aggregates use complete equal-pair means, with sums and known
+pair means separate in details. This exporter changes presentation only and never runs LOS.
+The legend scrolls independently inside a full-viewport map, collapses, and does not intercept
+map zoom while scrolling. Local browser rendering must still be qualified separately.

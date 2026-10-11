@@ -477,3 +477,35 @@ def test_cli_profile_and_validation_match_api(
     result = json.loads(capsys.readouterr().out)
     assert result["valid"] is True
     assert result["product_type"] == "distance_profile"
+
+
+def test_pair_content_identity_is_portable_and_order_independent(monkeypatch):
+    import hashlib
+
+    from viewshed_toolkit.pipeline.weights.distance.products import _pair_content_identity
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Durable identity must not call Polars version-dependent row hashing")
+
+    monkeypatch.setattr(pl.DataFrame, "hash_rows", forbidden)
+    frame = pl.DataFrame(
+        {
+            "source_type": ["water", "land"],
+            "source_h3": ["a", "b"],
+            "target_h3": ["c", "d"],
+            "distance_m": [1250.0, 0.0],
+            "distance_km": [1.25, 0.0],
+        }
+    )
+    expected = hashlib.sha256(
+        b'pair_values_jsonl_v2\n["land","b","d",0.0,0.0]\n["water","a","c",1250.0,1.25]\n'
+    ).hexdigest()
+    assert _pair_content_identity(frame) == expected
+    assert _pair_content_identity(frame.reverse()) == expected
+    assert _pair_content_identity(frame.select(frame.columns[::-1])) == expected
+    changed = frame.with_columns((pl.col("distance_m") + 1).alias("distance_m"))
+    assert _pair_content_identity(changed) != expected
+    assert (
+        _pair_content_identity(frame.head(0))
+        == hashlib.sha256(b"pair_values_jsonl_v2\n").hexdigest()
+    )

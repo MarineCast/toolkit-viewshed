@@ -21,7 +21,7 @@ from .datasets import CompositionConfig, DatasetsConfig
 from .case_study import CaseStudyConfig
 
 
-def load_yaml_config(config_path: str | Path) -> dict[str, Any]:
+def load_yaml_config(config_path: str | Path, *, apply_study: bool = True) -> dict[str, Any]:
     config_path = resolve_config_path(config_path)
     raw = load_data_config(config_path, domains="HUMAN_LAYER")
     is_normalized_runtime = any(
@@ -41,7 +41,12 @@ def load_yaml_config(config_path: str | Path) -> dict[str, Any]:
         raw = viewshed_raw
     if not isinstance(raw, dict):
         raise ValueError(f"Config file must parse to a dictionary: {config_path}")
-    return normalize_viewshed_config(raw)
+    normalized = normalize_viewshed_config(raw)
+    from .study import adapt_raw_config, load_study_config, selected_study_path
+
+    if apply_study and selected_study_path() is not None:
+        return adapt_raw_config(normalized, load_study_config())
+    return normalized
 
 
 def normalize_viewshed_config(raw: dict[str, Any]) -> dict[str, Any]:

@@ -697,6 +697,7 @@ def test_paired_surface_runner_prepares_batch_once(
     bare_manifest, canopy_manifest = runner.run_paired_surface_source_cells(
         bare_app,
         canopy_app,
+        selected_source_cells=[cell],
     )
 
     assert prepare_calls == [(cell,)]

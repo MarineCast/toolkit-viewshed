@@ -861,3 +861,104 @@ def isolate_observer_canopy_vrt(
             )
         ET.ElementTree(tree).write(output_path, encoding="utf-8", xml_declaration=True)
     return output_path
+
+
+def qualify_partial_canopy_grid(
+    canopy_height: np.ndarray,
+    native_unknown: np.ndarray,
+    modeled_water: np.ndarray,
+    *,
+    qualified_water: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Preserve unknown land subpixels when applying modeled water endpoints.
+
+    With explicit full-footprint qualified_water, water canopy is known zero and
+    native resampling uncertainty is removed only there. Mixed cells retain known
+    canopy heights and unknowns. The legacy center/all-touched endpoint-only mode
+    remains conservative and never clears native uncertainty.
+
+    Height NoData must be NaN, not a numeric sentinel. ``native_unknown`` is an
+    independently max-resampled boolean mask: only geometrically qualified native
+    water may have been exempted before resampling. An all-touched water endpoint
+    must never clear that mask, since a mixed shoreline cell can contain unknown
+    land obstruction. Water removes the modeled known canopy increment only.
+    """
+    if (
+        canopy_height.ndim != 2
+        or not canopy_height.size
+        or canopy_height.shape != native_unknown.shape
+        or canopy_height.shape != modeled_water.shape
+        or native_unknown.dtype != np.bool_
+        or modeled_water.dtype != np.bool_
+    ):
+        raise ValueError("Aligned nonempty heights and boolean masks required")
+    if np.any(np.isinf(canopy_height)) or np.any(canopy_height < 0):
+        raise ValueError("Canopy heights must be nonnegative or NaN")
+    if qualified_water is not None:
+        if qualified_water.shape != canopy_height.shape or qualified_water.dtype != np.bool_:
+            raise ValueError("Aligned qualified-water mask required")
+        if np.any(qualified_water & ~modeled_water):
+            raise ValueError("Qualified water must share the declared water elevation mask")
+        valid = np.isfinite(canopy_height)
+        unknown = (native_unknown | ~valid) & ~qualified_water
+        height = np.where(valid, canopy_height, 0.0).astype("float32")
+        height[qualified_water] = 0.0
+        return height, unknown
+    valid = np.isfinite(canopy_height)
+    unknown = native_unknown | (~valid & ~modeled_water)
+    height = np.where(valid, canopy_height, 0.0).astype("float32")
+    height[modeled_water] = 0.0
+    return height, unknown
+
+
+PARTIAL_WATER_QUALIFICATION_VERSION = "full_supported_water_footprint_v1"
+
+
+def qualify_water_footprints(
+    water_geometry,
+    land_geometry,
+    *,
+    transform,
+    shape: tuple[int, int],
+    geometry_crs,
+    raster_crs,
+    supported_mask: np.ndarray,
+) -> np.ndarray:
+    """Qualify only supported full water cells, excluding any land/boundary touch.
+
+    Geometry must be projected into the exact raster CRS beforehand. All-touched
+    land and water boundaries exclude mixed shoreline cells, even tiny islands
+    missed by a center-point mask. Geometry overlap or a coast shift therefore
+    removes qualification rather than erasing land. The mask applies equally to
+    target cells and intervening cells; it is not an endpoint-only override.
+    """
+    from pyproj import CRS
+    from rasterio.features import rasterize
+
+    crs = CRS.from_user_input(raster_crs)
+    if CRS.from_user_input(geometry_crs) != crs or not crs.is_projected:
+        raise ValueError("Geometry must share the projected raster CRS")
+    if (
+        len(shape) != 2
+        or min(shape) <= 0
+        or supported_mask.shape != shape
+        or supported_mask.dtype != np.bool_
+        or transform.a <= 0
+        or transform.e >= 0
+        or transform.b != 0
+        or transform.d != 0
+    ):
+        raise ValueError("Aligned boolean support and north-up raster grid required")
+    if water_geometry.is_empty or not water_geometry.is_valid or not land_geometry.is_valid:
+        raise ValueError("Valid polygonal water and land support required")
+    water = (
+        rasterize([(water_geometry, 1)], out_shape=shape, transform=transform, dtype="uint8") == 1
+    )
+    exclusion = [(water_geometry.boundary, 1)]
+    if not land_geometry.is_empty:
+        exclusion.append((land_geometry, 1))
+    boundary_or_land = (
+        rasterize(exclusion, out_shape=shape, transform=transform, all_touched=True, dtype="uint8")
+        == 1
+    )
+    return supported_mask & water & ~boundary_or_land
