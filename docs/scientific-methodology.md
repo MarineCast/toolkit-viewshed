@@ -197,6 +197,13 @@ GDAL model, H3 sample design or distance-integrated kernel.
 
 ## Canopy surface and observer clearance
 
+The optional [WorldCover plus CHM transmission trial](building-obstruction-pilot.md#worldcover-plus-canopy-transmission-trial)
+uses class-specific coefficients and intersected canopy-column path lengths to produce an
+assumption-based attenuation estimate alongside canopy envelope bounds. It preserves missing
+land heights and explicitly records any class-80 zero-vegetation policy. Its retained-raster,
+unweighted transmission denominator is distinct from the production kernels below; the trial
+does not replace the canonical vegetation factor.
+
 Land sources are evaluated on matched surfaces:
 
 ```text

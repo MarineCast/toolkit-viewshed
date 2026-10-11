@@ -101,6 +101,60 @@ cell clear bounds and unknown fractions, with no native consistency conflicts. T
 agreement with the model reference at the two sites; it does not establish source completeness,
 observer-sampling convergence everywhere, canopy transmission, or empirical viewshed accuracy.
 
+## WorldCover plus canopy transmission trial
+
+`PYTHONPATH=src python scripts/compare_classified_canopy.py CONFIG.json` consumes the saved
+cell-score `benchmark.json` and a completed retained WorldCover classification inventory.
+Required config fields are `benchmark_report`, `worldcover_manifest` and a dedicated
+`output_dir`. Optional `beta_per_m` is a list of unique positive finite attenuation settings
+including `0.002` (default `[0.001, 0.002, 0.004]`); `repetitions` defaults to 3.
+`water_class_policy` accepts `zero_if_missing` (trial default) or `retain_unknown`.
+All retained WorldCover assets and prepared caches are verified against their recorded hashes.
+No download, cleanup or canonical promotion runs.
+
+The reusable experimental calculation is
+[`weights/vegetation/classified.py`](../src/viewshed_toolkit/pipeline/weights/vegetation/classified.py),
+with contract `worldcover_chm_intersection_transmission_v1`. It uses the historical OrcaCast
+WorldCover multipliers/floors and CHM obstruction bins: `<2 m: 0`, `2–<5 m: 0.25`,
+`5–<15 m: 0.65`, `≥15 m: 1`. Per-cell coefficient is
+`max(height_obstruction × class_multiplier, class_floor)`. These are dimensionless assumptions,
+not measured transparency. Floors do not invent an obstacle height.
+
+Terrain and buildings first resolve baseline rays. For a baseline-clear ray, the exact raster
+traversal integrates weighted **horizontal** metres beneath the canopy top, including curvature
+and partial cell intersections. Modeled transmission is `exp(-beta × weighted_metres)`.
+Rays above the CHM and zero-height columns retain transmission one. Known terrain/roof blockers
+retain zero. Buildings are never cleared by a vegetation class or observer canopy clearance.
+The ground-to-CHM columns do not describe actual crown bases, trunks, or undergrowth. This is a
+class-aware transmission scenario, not a calibrated geometric visibility fraction or detection
+probability. Its cell denominator and observer design match the bounded runtime experiment;
+there is no distance attenuation or observer access factor.
+
+The explicit `zero_if_missing` policy assumes zero vegetation where WorldCover class 80
+(permanent water) coincides with missing CHM and a zero lower height. It does not change terrain,
+building support, target-water geometry or the original missing-height mask. Positive-height
+water conflicts remain unknown. Missing land canopy and intersected unrecognized classes remain
+unknown. The reusable calculation defaults to `retain_unknown`; the trial also exports a
+`fast_strict` comparison retaining all missing heights. Classification is a model assumption,
+not evidence that shoreline geometry or canopy has been field verified.
+
+Outputs are `worldcover_canopy_scores.parquet`, `worldcover_view_scores.parquet`, `report.json`
+and self-contained `report.html`. Open the generated HTML, not the `.html.in` template in
+`scripts/`. Each row retains the model, policy, beta, source/target identity, support bounds and
+missing-input fraction. The selected lookup uses the central beta and fast target sampling only
+if it passes against full-target calculations at both sites; otherwise it uses the reference.
+All estimates must remain within the original canopy envelope. One ray evaluation supplies all
+beta scenarios. Timings include the baseline rays, private clearance, three scenarios and cell
+aggregation; input alignment, warmup and acquisition are excluded. The JSON records source/code
+hashes, parameters, class context and a scientific signature. Empirical accuracy and regional
+observer convergence remain unqualified.
+
+The retained trial uses [ESA WorldCover 2020 v100](https://doi.org/10.5281/zenodo.5571936),
+aligned categorically with nearest sampling onto the same 10 m grid as ETH 2020. Retain
+`© ESA WorldCover project 2020 / Contains modified Copernicus Sentinel data (2020) processed by
+ESA WorldCover consortium`, CC BY 4.0, input acquisition records, hashes and source ETags.
+WorldCover class 50 is built-up land, not a building-footprint inventory or proof of no trees.
+
 ## Required retained inputs
 
 Use the same north-up 30 m EPSG:32610 grid for bare terrain, ETH 2020 maximum canopy,
@@ -193,8 +247,9 @@ unknown with zero or reweight these comparisons to create positives.
 The package rasterizer projects with `always_xy=True`, records projected polygon
 repairs, burns every touched pixel at the maximum overlapping valid AGL prediction,
 and ORs overlapping missing-height support. Feature order cannot change heights or
-support. Outside published footprints on land, the lower bound is zero and the upper
-height remains unknown. A predicted zero is a value, not verified building absence.
+support. Outside published footprints on land, the lower height is zero; it is known zero under
+`assume_complete` and retains unknown upper support under `unverified`. A predicted zero is a
+value; inventory completeness remains an explicit model assumption.
 Composition is `max(canopy_lower, building_lower)` above terrain; upper uncertainty is
 the union of component unknown masks. Full-water qualification may resolve zero,
 except building/water contradictions remain unknown. The LOS helper retains known
