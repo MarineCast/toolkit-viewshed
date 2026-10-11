@@ -1,28 +1,30 @@
 """Opt-in canopy/building lower surfaces with conservative joint support."""
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 OBSTRUCTION_CONTRACT = "above_ground_max_interval_v1"
 
 
 @dataclass(frozen=True)
 class ObstructionSurface:
-    lower_height: np.ndarray
-    unknown: np.ndarray
-    qualified_water: np.ndarray
-    water_conflicts: np.ndarray
+    lower_height: NDArray[Any]
+    unknown: NDArray[np.bool_]
+    qualified_water: NDArray[np.bool_]
+    water_conflicts: NDArray[np.bool_]
 
 
 def compose_above_ground_surface(
-    canopy_lower: np.ndarray,
-    canopy_unknown: np.ndarray,
-    building_lower: np.ndarray,
-    building_unknown: np.ndarray,
+    canopy_lower: NDArray[Any],
+    canopy_unknown: NDArray[np.bool_],
+    building_lower: NDArray[Any],
+    building_unknown: NDArray[np.bool_],
     *,
-    qualified_water: np.ndarray,
-    building_present: np.ndarray,
+    qualified_water: NDArray[np.bool_],
+    building_present: NDArray[np.bool_],
 ) -> ObstructionSurface:
     """Combine compatible AGL heights by max, retaining unknown upper support.
 
@@ -49,7 +51,7 @@ def compose_above_ground_surface(
         raise ValueError("Finite nonnegative component lower heights required")
     conflicts = qualified_water & building_present
     water = qualified_water & ~conflicts
-    lower = np.maximum(canopy_lower, building_lower).astype(np.float32)
+    lower = np.maximum(canopy_lower, building_lower)
     unknown = canopy_unknown | building_unknown
     lower[water] = 0
     unknown[water] = False

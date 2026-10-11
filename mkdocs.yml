@@ -62,6 +62,7 @@ nav:
       - Configuration: configuration.md
       - Shared study and R7 reporting: shared-study.md
       - Bounded native raster windows: BOUNDED_WINDOWS.md
+      - Building obstruction pilot: building-obstruction-pilot.md
       - Pipeline stages: pipelines.md
       - Performance: performance.md
   - Development:

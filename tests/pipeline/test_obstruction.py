@@ -116,3 +116,14 @@ def test_gba_readonly_join_and_missing_contract(tmp_path):
     with pytest.raises(ValueError, match="identity mismatch"):
         list(iter_gba_subset(path, (0, 0, 1, 1)))
     con.close()
+
+
+def test_float64_lower_surface_does_not_round_up():
+    floor = np.array([[np.nextafter(1.0, 0.0)]], dtype="float64")
+    no = np.zeros(floor.shape, bool)
+    surface = compose_above_ground_surface(
+        floor, no, np.zeros_like(floor), no, qualified_water=no, building_present=no
+    )
+    assert surface.lower_height.dtype == np.float64
+    assert surface.lower_height[0, 0] == floor[0, 0]
+    assert surface.lower_height[0, 0] < np.float32(floor[0, 0])

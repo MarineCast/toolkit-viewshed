@@ -517,3 +517,9 @@ This opt-in helper does not alter the production raster provider registry, stage
 joint obstruction metric; do not multiply both conditional factors. Private canopy clearance
 must be applied before combination so it cannot erase neighboring buildings. A grounded source
 cell is an explicit observer model assumption, not evidence of building absence.
+
+The reusable rasterizer and joint LOS caller are described in the
+[building obstruction recipe](building-obstruction-pilot.md). Composition preserves
+input precision: float64 lower heights are not rounded upward to float32 at grazing
+rays. The retained pilot inputs are already float32, so this precision hardening does
+not alter its numerical outputs.

@@ -121,7 +121,8 @@ def test_all_empty_aggregate_has_no_mean():
     assert result["results"][0]["ui_canopy_mean_interval_sum"] == [None, None]
 
 
-def test_scenario_to_composite_caption_transitions(tmp_path):
+@pytest.mark.parametrize("joint", [False, True])
+def test_scenario_to_composite_caption_transitions(tmp_path, joint):
     """Execute the packaged renderer on both composites from every FABDEM exact scenario."""
     from copy import deepcopy
     from pathlib import Path
@@ -177,6 +178,24 @@ def test_scenario_to_composite_caption_transitions(tmp_path):
         scenario: {p: deepcopy(data["viewpoints"][p]) for p in ("p1", "p2")}
         for scenario in ("-1", "0", "1")
     }
+    if joint:
+        data.update(
+            primary_visibility="above_ground_obstruction",
+            obstruction_reference="Joint canopy/building surface",
+        )
+        for item in data["viewpoints"].values():
+            for row in item["rows"]:
+                for component in ("obstruction", "building"):
+                    for status in ("clear", "zero", "unknown"):
+                        row[component + "_" + status + "_observations"] = row[
+                            "canopy_" + status + "_observations"
+                        ]
+                row.update(
+                    weight_obstruction=None,
+                    weight_obstruction_combined=None,
+                    obstruction_combined_lower=0.2,
+                    obstruction_combined_upper=0.4,
+                )
     prepared = prepare_comparison_payload(data)
     for product in ("s", "t"):
         assert all(
@@ -196,6 +215,8 @@ def test_scenario_to_composite_caption_transitions(tmp_path):
     )
     checks = json.loads(result.stdout)
     assert checks["results"][2]["scenario_to_composite_transitions"] == 12
+    assert all(r["footer_links_preserved"] >= 3 for r in checks["results"])
+    assert all(r["joint_mode"] == joint for r in checks["results"])
 
 
 def test_ratio_aggregation_excludes_baseline_na_but_preserves_missing_applicable():

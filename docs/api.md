@@ -333,3 +333,12 @@ remain unknown unless separately qualified. For LOS, pass `surface.lower_height`
 height input and `unknown_height_lower`, and `surface.unknown` as the unknown mask. Apply canopy
 clearance to the canopy input before composition; a clearance mask on the combined surface would
 also erase buildings and is inappropriate. See the [research contract](scientific-methodology.md#opt-in-building-obstruction-research-contract).
+
+`rasterize_building_footprints` streams original EPSG:3857 footprint WKB/AGL-height
+pairs onto a caller-owned projected metre grid. It returns maximum lower heights,
+footprint presence, missing-height and unknown masks plus processing counts.
+`above_ground_visibility` applies private clearance only to canopy before joint
+composition, preserving adjacent roofs. `grounded_observer=True` is an explicit
+central source-cell grounding assumption. These helpers perform no acquisition,
+sampling, distance weighting or production promotion. See the
+[portable research caller recipe](building-obstruction-pilot.md).
