@@ -323,3 +323,21 @@ def export_comparison_maps(payload, output_directory):
         writer.writeheader()
         writer.writerows(rows)
     return paths
+
+
+def export_pilot_map(payload, output_path):
+    """Write one viewport map from retained counts; shared raster assets stay external.
+
+    Preserve the source/target aggregates and every input product for inspection.
+    This presentation export never runs LOS or modifies scientific artifacts.
+    """
+    data = prepare_comparison_payload(payload)
+    data["map_contract"] = "single_pilot_layer_map_v1"
+    data["kind"] = "pilot"
+    template = files("viewshed_toolkit.resources").joinpath("pilot_map.html").read_text()
+    script = files("viewshed_toolkit.resources").joinpath("pilot_map.js").read_text()
+    encoded = json.dumps(data, separators=(",", ":"), allow_nan=False).replace("<", "\\u003c")
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(template.replace("__PAYLOAD__", encoded).replace("__MAP_SCRIPT__", script))
+    return path

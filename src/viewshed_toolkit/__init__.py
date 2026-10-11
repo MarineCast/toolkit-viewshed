@@ -22,7 +22,7 @@ from .pipeline.contracts import WorkflowIdentity
 from .pipeline.prepare.elevation.buildings import rasterize_building_footprints
 from .pipeline.prepare.elevation.obstruction import compose_above_ground_surface
 
-from .pipeline.visualization.comparison_maps import export_comparison_maps
+from .pipeline.visualization.comparison_maps import export_comparison_maps, export_pilot_map
 from .pipeline.visualization.raster_overlays import export_raster_overlay_asset
 from .pipeline.weights.obstruction import above_ground_visibility
 
@@ -44,6 +44,7 @@ __all__ = [
     "build_distance_profile",
     "build_pair_distances",
     "export_comparison_maps",
+    "export_pilot_map",
     "export_raster_overlay_asset",
     "load_app_config",
     "process",

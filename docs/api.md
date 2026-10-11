@@ -349,3 +349,19 @@ and lower-height arrays plus raw uint8 CHM and support flags. It preserves nativ
 values, adds a display-only WGS84 preview, and rejects unqualified grids. See
 [the building pilot recipe](building-obstruction-pilot.md#inspect-the-actual-pilot-input-grids)
 for units, missingness, observer assumptions and packaging requirements.
+
+
+### Single pilot layer map
+
+`viewshed_toolkit.export_pilot_map(payload, output_path)` creates one offline HTML entrypoint
+from the same validated retained comparison payload. Extract shared `raster_inputs/` beside it.
+Checkbox groups show DEM elevation, raw CHM and predicted building heights (metres AGL), selected
+source-to-target weights, source-cell aggregates and target composites across all source cells.
+Several layers can be shown together. Click a source outline or actual sample pin to select its
+five-point population, then use **Focus source** for native input inspection. Click cells for
+values, coverage, full means, bounds and aggregation details. Unknown and empty values remain
+unavailable; obstruction known means describe resolved comparisons only. Arithmetic aggregates
+pool actual comparisons; weighted aggregates use complete equal-pair means, with sums and known
+pair means separate in details. This exporter changes presentation only and never runs LOS.
+The legend scrolls independently inside a full-viewport map, collapses, and does not intercept
+map zoom while scrolling. Local browser rendering must still be qualified separately.

@@ -63,6 +63,9 @@ bundled = package_resources.files('viewshed_toolkit.resources')
 for name in ['study.schema.json', 'registry-artifact-interface.v1.json', 'native_warp_plan.cpp', 'comparison_map.html', 'raster_overlay.js']:
     assert bundled.joinpath(name).is_file(), name
 assert callable(viewshed_toolkit.export_comparison_maps)
+assert callable(viewshed_toolkit.export_pilot_map)
+assert bundled.joinpath("pilot_map.js").is_file()
+assert bundled.joinpath("pilot_map.html").is_file()
 assert callable(viewshed_toolkit.export_raster_overlay_asset)
 assert "rasterPixel" in bundled.joinpath("raster_overlay.js").read_text()
 from viewshed_toolkit.pipeline.prepare.elevation.warp_planner import planner_source_sha256
