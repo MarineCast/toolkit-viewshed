@@ -155,6 +155,30 @@ aligned categorically with nearest sampling onto the same 10 m grid as ETH 2020.
 ESA WorldCover consortium`, CC BY 4.0, input acquisition records, hashes and source ETags.
 WorldCover class 50 is built-up land, not a building-footprint inventory or proof of no trees.
 
+### Additional average-viewability maps
+
+`PYTHONPATH=src python scripts/map_average_viewability.py CONFIG.json` adds plots for every
+target water cell within 5 km of at least one saved source observer. Config contains exactly
+`trial_report` (the saved WorldCover trial `report.json`) and a new dedicated `output_dir`.
+It retains the same 15 observers, 10 m obstacle grid, 30 m terrain and water-centre lattice,
+central attenuation coefficient and explicit water-class policy. Retained inputs are checked
+against their hashes. It performs no acquisition or canonical promotion.
+
+Unlike the original complete-cell benchmark, these maps include boundary cells. A score describes
+the **in-range water portion** of an H3 resolution 7 cell. All observer/target comparisons remain
+in the denominator; comparisons beyond 5 km from an individual observer contribute zero.
+Targets beyond the retained obstacle raster remain in the pair universe with unknown in-range
+comparisons and explicit coverage fractions. They are not dropped or counted as blocked.
+The changed target population makes these maps distinct from whole-cell benchmark scores.
+
+Outputs include `average_viewability.parquet`, `average_viewability.json`, scientific map images
+and a canonical portable-report `artifact.json`. Fast sampling is checked against every retained
+target before selection; full-target reference bounds remain on every row. The supplemental
+`average-viewability.html` is packaged from that artifact using the Data Analytics portable builder.
+The copied detailed `report.html` links to the additional page; the original report is preserved.
+Map colours share a 0–100% scale and separate lower/upper estimates. The HTML payload can be
+structurally checked when browser navigation is unavailable; that is not browser interaction QA.
+
 ## Required retained inputs
 
 Use the same north-up 30 m EPSG:32610 grid for bare terrain, ETH 2020 maximum canopy,
