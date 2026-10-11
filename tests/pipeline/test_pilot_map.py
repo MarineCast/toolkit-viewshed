@@ -91,6 +91,13 @@ def pilot_payload(tmp_path):
             name=name, path="raster_inputs/" + source + ".js"
         )
         data["raster_overlays"]["product_sites"][source] = source
+    samples = [p for source in data["composite_sources"].values() for p in source["samples"]]
+    data["bounds"] = [
+        min(p["lon"] for p in samples) - 0.015,
+        min(p["lat"] for p in samples) - 0.015,
+        max(p["lon"] for p in samples) + 0.015,
+        max(p["lat"] for p in samples) + 0.015,
+    ]
     return data
 
 
