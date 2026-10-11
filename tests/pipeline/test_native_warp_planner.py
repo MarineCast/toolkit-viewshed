@@ -62,14 +62,18 @@ def native_helper(tmp_path_factory):
     + [("canopy", 255, "uint8", "EPSG:4326", 3200)],
 )
 def test_metadata_clone_chunks_and_pixels_match_original(
-    tmp_path, caplog, native_helper, kind, nodata, dtype, source_crs, size
+    tmp_path, caplog, native_helper, kind, nodata, dtype, source_crs, size, request
 ):
     import json
 
-    if size == 3200 and os.environ.get("VIEWSHED_ISOLATED_WARP_TEST") != "1":
-        # The expanded suite retains GDAL caches. Qualify this bounded large
-        # fixture in a fresh process without weakening the production RSS cap.
-        node = "tests/pipeline/test_native_warp_planner.py::test_metadata_clone_chunks_and_pixels_match_original[canopy-255-uint8-EPSG:4326-3200]"
+    if (size == 3200 or source_crs == "EPSG:5070") and os.environ.get(
+        "VIEWSHED_ISOLATED_WARP_TEST"
+    ) != "1":
+        # The expanded Python 3.14 suite retains ~756 MiB of parent RSS before
+        # these fixtures. A ~48 MiB metadata child correctly trips the unchanged
+        # 768 MiB combined guard. Qualify in a fresh process, as for the large
+        # fixture, rather than charging unrelated suite caches to this planner.
+        node = request.node.nodeid
         result = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", node],
             cwd=ROOT,
