@@ -449,3 +449,34 @@ unknown support. These statistics differ when target populations differ. Bounds 
 sum/mean choice. Terrain-only arithmetic uses retained bare binary counts; FABDEM exact-point
 scenarios expose distance-integrated weight_terrain and are explicitly labeled weighted,
 rather than claiming a supported arithmetic mean. No acquisition or LOS rerun occurs.
+
+
+## Opt-in supported water-footprint qualification
+
+`qualify_water_footprints` classifies cells on the exact projected raster grid using retained
+precise land/water polygons and an aligned native-mask support mask. A cell must be wholly
+inside water and must not touch any land polygon or water boundary. All-touched exclusion
+preserves tiny islands and mixed shoreline footprints that a pixel-center water mask misses.
+Overlapping or shifted coastal geometry removes qualification. Unsupported mask cells are
+excluded. WorldCover center labels are descriptive diagnostics, not an alternative shoreline.
+
+Pass this mask as explicit `qualified_water` to `qualify_partial_canopy_grid`. Qualified water
+has known zero canopy even if max-resampled native NoData leaked into it. Apply the same mask
+to intervening ray cells and target cells, with the declared water surface elevation. The
+bounded pilot uses its existing 0 m water convention; this is not a tidal observation or a
+resolved vertical-datum reconciliation. Mixed cells preserve known positive canopy and missing
+land heights. Missing built-up land heights are not imputed zero. Source samples remain in land;
+observer locations and the existing private 30 m canopy clearance are unchanged. Retained
+coarse mixed-cell terrain approximations remain a limitation.
+
+This opt-in research contract is `full_supported_water_footprint_v1`. Persist grid identity,
+geometry/input checksums, support-mask identity, water level, and the qualification version with
+replayed products; prior interval products are not reusable under this identity. The legacy
+endpoint-only call remains unchanged and conservative about native unknowns. Production regional
+nodata defaults and complete paired-finalizer acceptance are unchanged. A qualified water mask
+must be contained in the declared water-elevation mask; alignment/CRS mismatches fail.
+
+Map coverage now follows the selected metric and statistic. Known-only is available only for
+arithmetic canopy LOS. Conditional vegetation ratios exclude zero-baseline N/A pairs, while
+missing positive-baseline ratios keep a complete sum null. N/A ratio support, valid combined
+baseline-forced zeros and unresolved values have distinct colors and labels.

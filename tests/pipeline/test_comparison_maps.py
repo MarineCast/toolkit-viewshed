@@ -196,3 +196,36 @@ def test_scenario_to_composite_caption_transitions(tmp_path):
     )
     checks = json.loads(result.stdout)
     assert checks["results"][2]["scenario_to_composite_transitions"] == 12
+
+
+def test_ratio_aggregation_excludes_baseline_na_but_preserves_missing_applicable():
+    data = payload()
+    rows = data["viewpoints"]["s"]["rows"]
+    rows[0].update(
+        weight_terrain=0,
+        weight_vegetation=None,
+        weight_combined=0,
+        combined_lower=0,
+        combined_upper=0,
+    )
+    rows[1].update(
+        target_sample_count=2,
+        canopy_zero_observations=10,
+        weight_terrain=0.5,
+        weight_vegetation=0,
+        weight_combined=0,
+        combined_lower=0,
+        combined_upper=0,
+    )
+    group = prepare_comparison_payload(data)["source_rows"][0]
+    assert group["weight_vegetation_sum"] == 0
+    assert group["weight_vegetation_applicable_count"] == 1
+    assert group["weight_vegetation_missing_count"] == 0
+    rows[1]["weight_vegetation"] = None
+    group = prepare_comparison_payload(data)["source_rows"][0]
+    assert group["weight_vegetation_sum"] is None
+    assert group["weight_vegetation_missing_count"] == 1
+    rows[1]["weight_terrain"] = 0
+    group = prepare_comparison_payload(data)["source_rows"][0]
+    assert group["weight_vegetation_sum"] is None
+    assert group["weight_vegetation_applicable_count"] == 0

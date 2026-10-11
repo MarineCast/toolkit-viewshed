@@ -305,3 +305,11 @@ unknown support. These statistics differ when target populations differ. Bounds 
 sum/mean choice. Terrain-only arithmetic uses retained bare binary counts; FABDEM exact-point
 scenarios expose distance-integrated weight_terrain and are explicitly labeled weighted,
 rather than claiming a supported arithmetic mean. No acquisition or LOS rerun occurs.
+
+
+Research callers may opt into full supported water-cell qualification through
+`pipeline.prepare.elevation.canopy.qualify_water_footprints` and the explicit
+`qualified_water=` argument to `qualify_partial_canopy_grid`; see the
+[scientific contract](scientific-methodology.md#opt-in-supported-water-footprint-qualification).
+The caller must align geometry, raster/support grids, and the declared water elevation surface.
+This does not execute acquisition or automatically replace production outputs.

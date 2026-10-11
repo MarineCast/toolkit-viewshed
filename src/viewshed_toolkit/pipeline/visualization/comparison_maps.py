@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ..weights.comparison_mean import comparison_mean
 
-REVISION = "source_cell_arithmetic_visibility_v7"
+REVISION = "source_cell_arithmetic_visibility_v8"
 METRICS = (
     "ui_canopy_mean",
     "ui_known_only_mean",
@@ -154,13 +154,22 @@ def _aggregate(rows, key, data):
             row["canopy_unknown_observations"],
         )
         for field in METRICS:
-            summary = metric_summary([r.get(field) for r in nonempty])
+            eligible = (
+                [r for r in nonempty if r.get("weight_terrain", 0) > 0]
+                if field in ("weight_vegetation", "ui_vegetation_lower", "ui_vegetation_upper")
+                else nonempty
+            )
+            summary = metric_summary([r.get(field) for r in eligible])
+            row[field + "_missing_count"] = summary["null"]
+            row[field + "_valid_count"] = summary["valid"]
+            row[field + "_applicable_count"] = len(eligible)
             row[field + "_sum"] = summary["full_sum"]
             row[field + "_mean_valid"] = summary["mean_valid"]
             row[field + "_available"] = summary["available_sum"]
             row[field] = (
-                summary["full_sum"] / len(nonempty) if summary["full_sum"] is not None else None
+                summary["full_sum"] / len(eligible) if summary["full_sum"] is not None else None
             )
+        row["zero_baseline_pair_count"] = sum(r.get("weight_terrain") == 0 for r in nonempty)
         row.update(
             ui_canopy_mean=mean["complete"],
             ui_known_only_mean=mean["known_only"],
