@@ -20,6 +20,8 @@ from .pipeline.api.components import run_component_stage, run_components
 from .pipeline.config import AppConfig, load_app_config
 from .pipeline.contracts import WorkflowIdentity
 
+from .pipeline.visualization.comparison_maps import export_comparison_maps
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -34,6 +36,7 @@ __all__ = [
     "WorkflowIdentity",
     "build_distance_profile",
     "build_pair_distances",
+    "export_comparison_maps",
     "load_app_config",
     "process",
     "run_component_stage",

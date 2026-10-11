@@ -278,3 +278,30 @@ manifests without this value contract require explicit regeneration with overwri
 These are presentation rules for the supplied candidate rows. They cannot detect omitted
 candidates, certify raster coverage, or enable partially available canopy LOS in the compact
 finalizer. Existing source policies, finalization requirements and scientific hashes are unchanged.
+
+
+## Retained sample comparison maps
+
+`viewshed_toolkit.export_comparison_maps(payload, output_directory)` exports offline target,
+source and selected-source maps plus `SOURCE_CELL_COMPARISON_MEANS.csv`. The payload contains
+`viewpoints` pair rows, `composite_sources` and display `source_polygons`, coastline and bounds.
+Each pair requires actual integer `n_observers`, `target_sample_count`, clear/blocked/unknown
+canopy counts and `bare_clear_observations`; duplicate or null source/target keys are rejected.
+The actual count population must equal observers × target samples. For this retained pilot,
+these are five land source samples × all retained 30 m water raster centers.
+
+This export is separate from the production equivalent-area kernel: arithmetic full mean is
+clear / total only if unknown=0 and total>0; otherwise null. Bounds are clear / total to
+(clear+unknown) / total. Known-only mean clear / (clear+blocked) is descriptive and never
+estimates unknown comparisons. Empty target populations have null metrics and are excluded
+from sums and equal-cell means. Source-cell rows carry observer_scope=source_cell_samples
+and no exact-point viewpoint_id. Original weighted Parquets remain unchanged.
+
+Target maps group candidate source pairs per target; source maps group target pairs per source.
+Selected-source maps default to the five-observer composite with Victoria/Dungeness choices,
+with exact points secondary. Count pooling weights each comparison equally; sums add per-pair
+metrics and equal-H3 means average known nonempty pair metrics. Full sums stay null with
+unknown support. These statistics differ when target populations differ. Bounds use the same
+sum/mean choice. Terrain-only arithmetic uses retained bare binary counts; FABDEM exact-point
+scenarios expose distance-integrated weight_terrain and are explicitly labeled weighted,
+rather than claiming a supported arithmetic mean. No acquisition or LOS rerun occurs.
