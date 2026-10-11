@@ -229,3 +229,38 @@ def test_ratio_aggregation_excludes_baseline_na_but_preserves_missing_applicable
     group = prepare_comparison_payload(data)["source_rows"][0]
     assert group["weight_vegetation_sum"] is None
     assert group["weight_vegetation_applicable_count"] == 0
+
+
+def test_joint_counts_preserve_canopy_and_building_diagnostics():
+    data = payload()
+    data["primary_visibility"] = "above_ground_obstruction"
+    for row in data["viewpoints"]["s"]["rows"]:
+        total = sum(
+            row[k]
+            for k in (
+                "canopy_clear_observations",
+                "canopy_zero_observations",
+                "canopy_unknown_observations",
+            )
+        )
+        row.update(
+            obstruction_clear_observations=0,
+            obstruction_zero_observations=total // 2,
+            obstruction_unknown_observations=total - total // 2,
+            building_clear_observations=total // 4,
+            building_zero_observations=total // 4,
+            building_unknown_observations=total // 2,
+        )
+    current = prepare_comparison_payload(data)
+    row = current["viewpoints"]["s"]["rows"][0]
+    assert row["ui_known_only_mean"] == 0.5
+    assert row["ui_obstruction_known_only_mean"] == 0
+    assert row["ui_obstruction_mean"] is None
+    assert row["ui_obstruction_mean_upper"] == 0.5
+    source = current["source_rows"][0]
+    assert source["ui_obstruction_known_only_mean"] == 0
+    assert source["ui_building_known_only_mean"] == 0.5
+    assert current["results"][0]["obstruction_count_pooled"]["complete"] is None
+    data["viewpoints"]["s"]["rows"][0]["building_clear_observations"] += 1
+    with pytest.raises(ValueError, match="Diagnostic comparison population"):
+        prepare_comparison_payload(data)

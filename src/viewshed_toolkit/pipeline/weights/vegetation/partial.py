@@ -22,7 +22,7 @@ def _quadrant(ground, canopy, unknown, eye, pixel, curve, radius, target):
         for i in range(nx):
             r2 = (i * pixel) ** 2 + (j * pixel) ** 2
             z = float(ground[j, i]) - eye - curve * r2
-            obstacle = z + (0.0 if unknown[j, i] else canopy[j, i])
+            obstacle = z + canopy[j, i]
             p = -np.inf
             u = False
             if max(i, j) > 1:
@@ -68,8 +68,13 @@ def partial_canopy_visibility(
     earth_radius_m: float = 6378137.0,
     max_distance_m: float = 30000.0,
     clearance_mask: np.ndarray | None = None,
+    unknown_height_lower: np.ndarray | None = None,
 ) -> np.ndarray:
     """Return -1 unknown, 0 blocked/out-of-range, 1 visible at ground targets.
+
+    Optional unknown_height_lower retains supported model obstruction below an unknown
+    upper surface, for example a known roof under unknown canopy. The legacy
+    default lower height is zero and numerical behavior is unchanged.
 
     All arrays must already share one projected square grid. Caller qualifies
     water and native-subpixel validity before resampling. Endpoint terrain must
@@ -107,6 +112,15 @@ def partial_canopy_visibility(
         raise ValueError("Observer outside grid")
     canopy = canopy.copy()
     unknown = unknown.copy()
+    canopy[unknown] = 0
+    if unknown_height_lower is not None:
+        if (
+            unknown_height_lower.shape != ground.shape
+            or not np.all(np.isfinite(unknown_height_lower))
+            or np.any(unknown_height_lower < 0)
+        ):
+            raise ValueError("Aligned finite nonnegative unknown-height lower bound required")
+        canopy[unknown] = unknown_height_lower[unknown]
     if clearance_mask is not None:
         if (
             clearance_mask.shape != ground.shape

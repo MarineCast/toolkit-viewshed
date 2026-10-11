@@ -315,3 +315,21 @@ The caller must align geometry, raster/support grids, and the declared water ele
 This does not execute acquisition or automatically replace production outputs.
 
 The comparison-map combined lower/upper metric choices visibly lock View to the corresponding bound. Select Combined to choose coverage, resolved values, or either bound independently.
+
+## Opt-in above-ground obstruction helper
+
+```python
+from viewshed_toolkit import compose_above_ground_surface
+
+surface = compose_above_ground_surface(
+    canopy_lower, canopy_unknown, building_lower, building_unknown,
+    qualified_water=qualified_water, building_present=building_present,
+)
+```
+
+All arrays must share a projected grid. The result exposes `lower_height`, `unknown`,
+`qualified_water` and `water_conflicts`. Inputs are not mutated. Missing footprint support must
+remain unknown unless separately qualified. For LOS, pass `surface.lower_height` as both the
+height input and `unknown_height_lower`, and `surface.unknown` as the unknown mask. Apply canopy
+clearance to the canopy input before composition; a clearance mask on the combined surface would
+also erase buildings and is inappropriate. See the [research contract](scientific-methodology.md#opt-in-building-obstruction-research-contract).

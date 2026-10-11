@@ -486,3 +486,34 @@ The retained two-site water replay removes 4,504 Victoria native-unknown cells b
 The replay also restores known mixed-cell canopy and resets8 Victoria/118 Dungeness qualified-water terrain cells to the retained declared0m convention. Both changes can alter rays. The21 fewer Victoria clear comparisons are an observed net result; no per-ray causal attribution between these changes was retained.
 
 The prequalification spatial diagnostic categories overlap:2 Victoria and6 Dungeness native-unknown cells qualify as full precise water while falling outside the old modeled-water mask. They are counted in both pure-water and old nonwater categories. Category sums225,778/128,522 therefore reconcile to unique native-unknown totals225,776/128,516 after subtracting this overlap. These are aligned raster populations before observer clearance, not additional unknown cells.
+
+## Opt-in building obstruction research contract
+
+`compose_above_ground_surface` combines aligned, nonnegative above-ground canopy and building
+lower heights by **maximum**, never by addition. Bounds are conditional on supported height predictions; they are missingness bounds, not empirical or calibrated confidence limits. Unknown upper support is the union of component
+unknown masks; a supported roof under unknown canopy can still prove a ray blocked. The optional
+`unknown_height_lower` argument of `partial_canopy_visibility` retains that lower obstruction.
+Its default remains zero, preserving the canopy-only numerical contract. Unknown target endpoints
+remain unknown. Terrain is added once and distance attenuation is integrated once.
+
+The research adapter `pipeline.providers.global_building_atlas.iter_gba_subset` reads a qualified
+bbox-filtered SQLite subset of [GlobalBuildingAtlas](https://github.com/zhu-xlab/GlobalBuildingAtlas).
+It requires original EPSG:3857 footprint geometry and the official source + id + region height
+join key. LoD1 `height` is a predicted AGL footprint height; `var` is an uncertainty diagnostic,
+not a calibrated interval. Negative, absent and nonfinite heights stay missing. A predicted zero
+is not building absence. No published footprint is not verified absence: callers must retain an
+unknown building upper surface unless a separate absence qualification exists. Full-footprint
+qualified water may resolve zero obstruction; a building/water contradiction stays unknown.
+A 30 m all-touched opaque footprint raster is a coarse model, not surveyed roof geometry.
+
+The dataset is static, primarily based on 2019 imagery with 2018 fill; combining it with ETH 2020
+canopy does not supply annual 2009–2026 obstruction. Heights and non-ODbL footprints carry
+CC BY-NC 4.0; ODbL footprints retain their separate ODbL 1.0 terms. Each derived product must carry
+source revisions, checksums, licenses, epochs, grid and rasterization choices. Do not commit source
+vectors to Git. Regional inventory containment does not establish regional completeness.
+
+This opt-in helper does not alter the production raster provider registry, stages or existing
+`weight_vegetation` meaning. Building-only and canopy-only diagnostics remain separate from a
+joint obstruction metric; do not multiply both conditional factors. Private canopy clearance
+must be applied before combination so it cannot erase neighboring buildings. A grounded source
+cell is an explicit observer model assumption, not evidence of building absence.

@@ -10,8 +10,22 @@ from pathlib import Path
 
 from ..weights.comparison_mean import comparison_mean
 
-REVISION = "source_cell_arithmetic_visibility_v9"
+REVISION = "source_cell_arithmetic_visibility_v10"
 METRICS = (
+    "ui_obstruction_mean",
+    "ui_obstruction_known_only_mean",
+    "ui_obstruction_mean_lower",
+    "ui_obstruction_mean_upper",
+    "ui_building_mean",
+    "ui_building_known_only_mean",
+    "ui_building_mean_lower",
+    "ui_building_mean_upper",
+    "weight_obstruction",
+    "weight_obstruction_combined",
+    "obstruction_combined_lower",
+    "obstruction_combined_upper",
+    "ui_obstruction_ratio_lower",
+    "ui_obstruction_ratio_upper",
     "ui_canopy_mean",
     "ui_known_only_mean",
     "ui_canopy_mean_lower",
@@ -87,10 +101,38 @@ def prepare_comparison_payload(payload):
                 observer_latitude=None if n > 1 else row.get("observer_latitude"),
                 observer_longitude=None if n > 1 else row.get("observer_longitude"),
             )
+            for component in ("obstruction", "building"):
+                if component + "_clear_observations" not in row:
+                    continue
+                counts = comparison_mean(
+                    *[
+                        row[component + suffix]
+                        for suffix in (
+                            "_clear_observations",
+                            "_zero_observations",
+                            "_unknown_observations",
+                        )
+                    ]
+                )
+                if counts["total"] != mean["total"]:
+                    raise ValueError("Diagnostic comparison population mismatch")
+                row.update(
+                    {
+                        "ui_" + component + "_mean": counts["complete"],
+                        "ui_" + component + "_known_only_mean": counts["known_only"],
+                        "ui_" + component + "_mean_lower": counts["lower"],
+                        "ui_" + component + "_mean_upper": counts["upper"],
+                    }
+                )
             terrain = row.get("weight_terrain")
             for bound in ("lower", "upper"):
                 value = row.get("combined_" + bound)
                 row["ui_vegetation_" + bound] = (
+                    value / terrain if terrain and value is not None else None
+                )
+            for bound in ("lower", "upper"):
+                value = row.get("obstruction_combined_" + bound)
+                row["ui_obstruction_ratio_" + bound] = (
                     value / terrain if terrain and value is not None else None
                 )
         item["rows"].sort(key=lambda r: (r["source_h3"], r["target_h3"]))
@@ -116,6 +158,18 @@ def prepare_comparison_payload(payload):
                 )
             ]
         )
+        if data.get("primary_visibility") == "above_ground_obstruction":
+            if any("obstruction_clear_observations" not in r for r in rows):
+                raise ValueError("Joint obstruction payload requires joint counts")
+            result["ui_obstruction_mean"] = metric_summary(
+                [r["ui_obstruction_mean"] for r in nonempty]
+            )
+            result["obstruction_count_pooled"] = comparison_mean(
+                *[
+                    sum(r["obstruction_" + k + "_observations"] for r in rows)
+                    for k in ("clear", "zero", "unknown")
+                ]
+            )
         results.append(result)
     data["results"] = results
     composites = [r for p in data["composite_sources"] for r in data["viewpoints"][p]["rows"]]
@@ -148,6 +202,11 @@ def _aggregate(rows, key, data):
             "sample_comparisons_known",
         ):
             row[field] = sum(r[field] for r in members)
+        for component in ("obstruction", "building"):
+            if component + "_clear_observations" in members[0]:
+                for status in ("clear", "zero", "unknown"):
+                    field = component + "_" + status + "_observations"
+                    row[field] = sum(r[field] for r in members)
         mean = comparison_mean(
             row["canopy_clear_observations"],
             row["canopy_zero_observations"],
@@ -156,7 +215,15 @@ def _aggregate(rows, key, data):
         for field in METRICS:
             eligible = (
                 [r for r in nonempty if r.get("weight_terrain", 0) > 0]
-                if field in ("weight_vegetation", "ui_vegetation_lower", "ui_vegetation_upper")
+                if field
+                in (
+                    "weight_vegetation",
+                    "ui_vegetation_lower",
+                    "ui_vegetation_upper",
+                    "weight_obstruction",
+                    "ui_obstruction_ratio_lower",
+                    "ui_obstruction_ratio_upper",
+                )
                 else nonempty
             )
             summary = metric_summary([r.get(field) for r in eligible])
@@ -179,6 +246,22 @@ def _aggregate(rows, key, data):
                 row["bare_clear_observations"] / mean["total"] if mean["total"] else None
             ),
         )
+        for component in ("obstruction", "building"):
+            if component + "_clear_observations" in row:
+                counts = comparison_mean(
+                    *[
+                        row[component + "_" + k + "_observations"]
+                        for k in ("clear", "zero", "unknown")
+                    ]
+                )
+                row.update(
+                    {
+                        "ui_" + component + "_mean": counts["complete"],
+                        "ui_" + component + "_known_only_mean": counts["known_only"],
+                        "ui_" + component + "_mean_lower": counts["lower"],
+                        "ui_" + component + "_mean_upper": counts["upper"],
+                    }
+                )
         output.append(row)
     return output
 
@@ -219,6 +302,11 @@ def export_comparison_maps(payload, output_directory):
         "canopy_zero_observations",
         "canopy_unknown_observations",
         "bare_clear_observations",
+        *[
+            c + "_" + k + "_observations"
+            for c in ("obstruction", "building")
+            for k in ("clear", "zero", "unknown")
+        ],
         *METRICS,
     ]
     with (directory / "SOURCE_CELL_COMPARISON_MEANS.csv").open("w", newline="") as stream:
