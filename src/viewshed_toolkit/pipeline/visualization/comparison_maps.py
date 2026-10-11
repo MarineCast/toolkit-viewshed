@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ..weights.comparison_mean import comparison_mean
 
-REVISION = "source_cell_arithmetic_visibility_v8"
+REVISION = "source_cell_arithmetic_visibility_v9"
 METRICS = (
     "ui_canopy_mean",
     "ui_known_only_mean",

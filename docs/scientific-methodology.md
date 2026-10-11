@@ -480,3 +480,9 @@ Map coverage now follows the selected metric and statistic. Known-only is availa
 arithmetic canopy LOS. Conditional vegetation ratios exclude zero-baseline N/A pairs, while
 missing positive-baseline ratios keep a complete sum null. N/A ratio support, valid combined
 baseline-forced zeros and unresolved values have distinct colors and labels.
+
+The retained two-site water replay removes 4,504 Victoria native-unknown cells but adds one supported cell with missing aligned CHM that was previously treated as modeled water. Its aligned index is row759/column1668 (EPSG:32610 center491655,5370885); the native unknown indicator is0, aligned CHM is missing, and the full-water footprint does not qualify. Thus225,776−4,504+1=221,273 unknown cells. Dungeness adds none:128,516−1,964=126,552. Grid/geometry/input pins are unchanged.
+
+The replay also restores known mixed-cell canopy and resets8 Victoria/118 Dungeness qualified-water terrain cells to the retained declared0m convention. Both changes can alter rays. The21 fewer Victoria clear comparisons are an observed net result; no per-ray causal attribution between these changes was retained.
+
+The prequalification spatial diagnostic categories overlap:2 Victoria and6 Dungeness native-unknown cells qualify as full precise water while falling outside the old modeled-water mask. They are counted in both pure-water and old nonwater categories. Category sums225,778/128,522 therefore reconcile to unique native-unknown totals225,776/128,516 after subtracting this overlap. These are aligned raster populations before observer clearance, not additional unknown cells.

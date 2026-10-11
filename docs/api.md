@@ -313,3 +313,5 @@ Research callers may opt into full supported water-cell qualification through
 [scientific contract](scientific-methodology.md#opt-in-supported-water-footprint-qualification).
 The caller must align geometry, raster/support grids, and the declared water elevation surface.
 This does not execute acquisition or automatically replace production outputs.
+
+The comparison-map combined lower/upper metric choices visibly lock View to the corresponding bound. Select Combined to choose coverage, resolved values, or either bound independently.
