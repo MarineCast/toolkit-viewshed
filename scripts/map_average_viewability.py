@@ -46,15 +46,17 @@ PARTS_SQL = "\nUNION ALL\n".join(
 )
 
 
-def target_population(water, transform, grid_shape, observers):
+def target_population(water, transform, grid_shape, observers, *, max_distance_m=RANGE_M):
     """All 30m water centres within range of at least one source observer.
 
     The lattice extends past the retained obstacle cache. Those targets remain
     explicit missing coverage rather than being dropped from the pair universe.
     """
+    if not math.isfinite(max_distance_m) or max_distance_m <= 0:
+        raise ValueError("Positive finite target distance required")
     coarse = transform * Affine.scale(3)
-    lo = observers[:, :2].min(0) - RANGE_M
-    hi = observers[:, :2].max(0) + RANGE_M
+    lo = observers[:, :2].min(0) - max_distance_m
+    hi = observers[:, :2].max(0) + max_distance_m
     c0 = math.floor((lo[0] - coarse.c) / 30)
     c1 = math.ceil((hi[0] - coarse.c) / 30)
     r0 = math.floor((coarse.f - hi[1]) / 30)
@@ -64,7 +66,7 @@ def target_population(water, transform, grid_shape, observers):
     selected = contains_xy(water, x, y)
     within = np.zeros(selected.shape, bool)
     for ox, oy, _ in observers:
-        within |= np.hypot(x - ox, y - oy) <= RANGE_M
+        within |= np.hypot(x - ox, y - oy) <= max_distance_m
     selected &= within
     targets = np.column_stack((x[selected], y[selected]))
     inside = (
@@ -170,7 +172,7 @@ def polygons(ax, geometry, centre, **kwargs):
                 )
 
 
-def plot_site(site, rows, water, envelope, out):
+def plot_site(site, rows, water, envelope, out, *, distance_label="5 km"):
     plt.rcParams.update({"svg.fonttype": "none", "font.size": 10})
     centre = np.asarray(site["observers"])[:, :2].mean(0)
     cmap = LinearSegmentedColormap.from_list("viewability", ["#f5f7f9", "#144e7b"])
@@ -204,14 +206,14 @@ def plot_site(site, rows, water, envelope, out):
             )
             label = area.representative_point()
             lx, ly = (np.array([label.x, label.y]) - centre) / 1000
-            if area.area > 100000:
+            if area.area > 100000 and (len(rows) <= 100 or row[field] >= 0.005):
                 ax.text(
                     lx,
                     ly,
                     f"{100*row[field]:.0f}%",
                     ha="center",
                     va="center",
-                    fontsize=9,
+                    fontsize=6.5 if len(rows) > 100 else 9,
                     color="white" if row[field] > 0.58 else "#25313a",
                     bbox={"facecolor": cmap(row[field]), "edgecolor": "none", "pad": 0.7},
                 )
@@ -226,7 +228,7 @@ def plot_site(site, rows, water, envelope, out):
         ax.set_ylabel("North (km)")
     fig.suptitle(
         site["name"] + " · average viewability of target water cells\n"
-        "15 source observers · H3 resolution 7 · all water targets within 5 km of any observer",
+        f"15 source observers · H3 resolution 7 · all water targets within {distance_label} of any observer",
         fontsize=15,
     )
     fig.colorbar(
@@ -250,7 +252,7 @@ def plot_site(site, rows, water, envelope, out):
                 facecolor="white",
                 edgecolor="#666666",
                 linestyle="--",
-                label="5 km reach from the observer locations",
+                label=f"{distance_label} reach from the observer locations",
             ),
         ],
         loc="outside lower center",
@@ -481,7 +483,7 @@ def run(config):
     return summary
 
 
-def make_artifact(rows, sites, svgs, decomposition):
+def make_artifact(rows, sites, svgs, decomposition, *, distance_label="5 km"):
     title = "Average viewability from our source cells"
     source = dict(
         id="target_scores",
@@ -593,6 +595,13 @@ def make_artifact(rows, sites, svgs, decomposition):
         defaultSort={"field": "lower", "direction": "desc"},
         columns=columns,
     )
+    # Keep default report wording stable; extended demos declare their actual radius.
+    for block in blocks:
+        if block["type"] == "markdown":
+            block["body"] = block["body"].replace("5 km", distance_label)
+    source["query"]["metric_definitions"]["viewability"] = source["query"]["metric_definitions"][
+        "viewability"
+    ].replace("5km", distance_label)
     return dict(
         surface="report",
         manifest=dict(

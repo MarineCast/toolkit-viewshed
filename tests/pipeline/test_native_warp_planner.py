@@ -66,13 +66,11 @@ def test_metadata_clone_chunks_and_pixels_match_original(
 ):
     import json
 
-    if (size == 3200 or source_crs == "EPSG:5070") and os.environ.get(
-        "VIEWSHED_ISOLATED_WARP_TEST"
-    ) != "1":
-        # The expanded Python 3.14 suite retains ~756 MiB of parent RSS before
-        # these fixtures. A ~48 MiB metadata child correctly trips the unchanged
-        # 768 MiB combined guard. Qualify in a fresh process, as for the large
-        # fixture, rather than charging unrelated suite caches to this planner.
+    if os.environ.get("VIEWSHED_ISOLATED_WARP_TEST") != "1":
+        # Every metadata fixture has a strict 768 MiB parent-plus-child guard.
+        # Expanded geospatial suites retain enough parent cache to trip it even
+        # for small EPSG:4326 fixtures. Qualify every case in a fresh process;
+        # keep the producer's resource guard and pixel-parity checks unchanged.
         node = request.node.nodeid
         result = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", node],

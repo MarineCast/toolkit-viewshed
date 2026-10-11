@@ -329,3 +329,33 @@ grounding. Neighboring building heights are never cleared. Native values, grid
 metadata, source hashes, immutable pins and attribution travel with each asset.
 This inspection makes modeling assumptions visible; it is not field validation.
 Do not alter clearance, weights or unknown support to reproduce an expected view.
+
+## Extend the retained demo to 15 miles
+
+`scripts/extend_viewability_demo.py CONFIG.json` rebuilds the two saved source-cell demos
+from retained regional terrain, native ETH canopy tiles, WorldCover clips and the validated
+GlobalBuildingAtlas subset. Configuration has exactly `trial_report`, `terrain_raster`,
+`output_dir` and `radius_miles`; the bounded helper accepts up to 15 statute miles
+(24,140.16 m). Use a new empty output directory. No download, production promotion or cleanup
+of prior artifacts occurs.
+
+The raster extent encloses the union of all saved observers' reach, with padding on the
+original 30 m terrain / nested 10 m obstacle lattice. The prior cache is retained exactly
+inside its original window; outer terrain is nearest-aligned at 30 m and repeated to 10 m.
+Native canopy and categorical WorldCover alignment use a near-exact reprojection tolerance
+of 1e-8 source pixels to prevent approximate-transform overlap at tile seams. Building
+footprints use the same cell-center maximum-height rule and assumed-complete inventory.
+The existing declared 0 m water convention remains in force. Missing land terrain fails;
+missing canopy or roof heights remain unknown. Full-footprint qualified water and the
+explicit WorldCover-water zero-canopy assumption remain separate from missing land inputs.
+
+Outputs include georeferenced terrain, canopy, building and qualification/missingness rasters
+in `rasters/`, H3 R7 target-pair Parquet/JSON, scientific PNG maps and a canonical `artifact.json`
+for the portable report builder. Every 30 m water centre within reach of at least one observer
+enters the target population. Individual observers keep their own distance cutoff; boundary
+cells describe their in-range water portions. Full-population and weighted stride-2 calculations
+are compared before selecting the sampled result, with the existing 10 percentage-point maximum
+and 5 percentage-point p95 error gates. Actual errors and runtimes are recorded. Earth curvature
+is active, so targets inside the requested radius can still be below the modeled horizon.
+This trial measures geometric/canopy transmission without an additional distance-decay factor;
+it does not change the production distance-integrated kernel or establish field calibration.
