@@ -548,7 +548,7 @@ def make_artifact(rows, sites, svgs, decomposition):
             dict(
                 id="assumptions",
                 type="markdown",
-                body="## What to improve next\n\nPrioritize missing canopy heights along the widest-range views and extend obstacle rasters where target coverage is incomplete. The model uses 2020 canopy and WorldCover inputs and assumes a complete building inventory. It assumes zero vegetation where WorldCover reports water and canopy height is missing. Transmission coefficients remain assumptions awaiting field calibration.\n\nThe maps use 10 m obstacle grids, retained 30 m terrain and water targets, and H3 resolution 7 reporting cells.",
+                body="## What to improve next\n\nPrioritize missing canopy heights along the widest-range views and extend obstacle rasters where target coverage is incomplete. The model uses 2020 canopy and WorldCover inputs and assumes a complete building inventory. It assumes zero vegetation where WorldCover reports water and canopy height is missing. Transmission coefficients remain assumptions awaiting field calibration.\n\nThe maps use 10 m obstacle grids, retained 30 m terrain and water targets, and H3 resolution 7 reporting cells.\n\nWorldCover attribution: © ESA WorldCover project 2020 / Contains modified Copernicus Sentinel data (2020) processed by ESA WorldCover consortium. CC BY 4.0.",
             ),
             dict(
                 id="back",
