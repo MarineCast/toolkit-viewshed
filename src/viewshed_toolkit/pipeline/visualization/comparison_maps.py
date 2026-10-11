@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ..weights.comparison_mean import comparison_mean
 
-REVISION = "source_cell_arithmetic_visibility_v6"
+REVISION = "source_cell_arithmetic_visibility_v7"
 METRICS = (
     "ui_canopy_mean",
     "ui_known_only_mean",
@@ -84,6 +84,8 @@ def prepare_comparison_payload(payload):
                 ui_terrain_mean=bare / mean["total"] if mean["total"] else None,
                 observer_scope="source_cell_samples" if n > 1 else "single_point",
                 viewpoint_id=None if n > 1 else product,
+                observer_latitude=None if n > 1 else row.get("observer_latitude"),
+                observer_longitude=None if n > 1 else row.get("observer_longitude"),
             )
             terrain = row.get("weight_terrain")
             for bound in ("lower", "upper"):

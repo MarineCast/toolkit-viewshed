@@ -23,6 +23,8 @@ def payload():
             bare_clear_observations=clear + unknown,
             observer_scope="single_point",
             viewpoint_id="exact",
+            observer_latitude=48.0,
+            observer_longitude=-123.0,
         )
 
     return dict(
@@ -53,6 +55,8 @@ def test_rebuild_summaries_scope_and_preserve_input():
     rows = data["viewpoints"]["s"]["rows"]
     assert rows[0]["observer_scope"] == "source_cell_samples"
     assert rows[0]["viewpoint_id"] is None
+    assert rows[0]["observer_latitude"] is None
+    assert rows[0]["observer_longitude"] is None
     assert original["viewpoints"]["s"]["rows"][0]["observer_scope"] == "single_point"
     summary = data["results"][0]
     assert summary["ui_canopy_mean"]["valid"] == 0
@@ -115,3 +119,80 @@ def test_all_empty_aggregate_has_no_mean():
     assert result["source_rows"][0]["ui_canopy_mean"] is None
     assert result["source_rows"][0]["ui_canopy_mean_sum"] is None
     assert result["results"][0]["ui_canopy_mean_interval_sum"] == [None, None]
+
+
+def test_scenario_to_composite_caption_transitions(tmp_path):
+    """Execute the packaged renderer on both composites from every FABDEM exact scenario."""
+    from copy import deepcopy
+    from pathlib import Path
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node required to execute offline renderer transition regressions")
+    data = payload()
+    polygon = data["viewpoints"]["s"]["rows"][0]["polygon"]
+    data.update(
+        bounds=[-1, -1, 2, 2],
+        land=dict(type="GeometryCollection", geometries=[]),
+        terrain_reference="Retained pilot terrain",
+        points={},
+    )
+    for product in ("s", "t"):
+        data["viewpoints"][product] = deepcopy(data["viewpoints"]["s"])
+        for row in data["viewpoints"][product]["rows"]:
+            row.update(
+                source_h3=product,
+                weight_terrain=0.5,
+                weight_distance=0.8,
+                weight_vegetation=None,
+                weight_combined=None,
+                combined_lower=0.2,
+                combined_upper=0.4,
+                distance_km=1,
+            )
+        data["composite_sources"][product] = dict(
+            name=product,
+            target_sampling="Retained centers",
+            samples=[dict(sample_id=str(i), lon=0.1 * i, lat=0.1 * i) for i in range(5)],
+        )
+        data["source_polygons"][product] = polygon
+    for product, source in (("p1", "s"), ("p2", "t")):
+        data["viewpoints"][product] = deepcopy(data["viewpoints"][source])
+        for row in data["viewpoints"][product]["rows"]:
+            row.update(
+                n_observers=1,
+                target_sample_count=sum(
+                    row[k]
+                    for k in (
+                        "canopy_clear_observations",
+                        "canopy_zero_observations",
+                        "canopy_unknown_observations",
+                    )
+                ),
+            )
+        data["points"][product] = dict(name=product, lon=0, lat=0)
+    data["scenarios"] = {
+        scenario: {p: deepcopy(data["viewpoints"][p]) for p in ("p1", "p2")}
+        for scenario in ("-1", "0", "1")
+    }
+    prepared = prepare_comparison_payload(data)
+    for product in ("s", "t"):
+        assert all(
+            row["observer_latitude"] is None and row["observer_longitude"] is None
+            for row in prepared["viewpoints"][product]["rows"]
+        )
+        assert len(prepared["composite_sources"][product]["samples"]) == 5
+    for product in ("p1", "p2"):
+        assert all(
+            row["observer_latitude"] == 48.0 and row["observer_longitude"] == -123.0
+            for row in prepared["viewpoints"][product]["rows"]
+        )
+    export_comparison_maps(data, tmp_path)
+    script = Path(__file__).resolve().parents[2] / "scripts" / "check_comparison_maps.js"
+    result = subprocess.run(
+        [node, str(script), str(tmp_path)], capture_output=True, text=True, check=True
+    )
+    checks = json.loads(result.stdout)
+    assert checks["results"][2]["scenario_to_composite_transitions"] == 12
