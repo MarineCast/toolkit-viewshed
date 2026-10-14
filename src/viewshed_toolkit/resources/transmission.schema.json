@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "InputAsset": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "InputAsset",
+      "type": "object"
+    },
+    "TransmissionQualification": {
+      "additionalProperties": false,
+      "description": "Declared scenario provenance; declarations never certify field accuracy.",
+      "properties": {
+        "building_height_reference": {
+          "const": "above_ground",
+          "title": "Building Height Reference",
+          "type": "string"
+        },
+        "canopy_height_reference": {
+          "const": "above_ground",
+          "title": "Canopy Height Reference",
+          "type": "string"
+        },
+        "empirical_status": {
+          "const": "uncalibrated_scenario",
+          "title": "Empirical Status",
+          "type": "string"
+        },
+        "source_epochs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Source Epochs",
+          "type": "object"
+        },
+        "source_licenses": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Source Licenses",
+          "type": "object"
+        },
+        "terrain_vertical_reference": {
+          "minLength": 1,
+          "title": "Terrain Vertical Reference",
+          "type": "string"
+        },
+        "vertical_units": {
+          "const": "m",
+          "title": "Vertical Units",
+          "type": "string"
+        },
+        "water_vertical_reference": {
+          "minLength": 1,
+          "title": "Water Vertical Reference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "terrain_vertical_reference",
+        "water_vertical_reference",
+        "vertical_units",
+        "canopy_height_reference",
+        "building_height_reference",
+        "source_epochs",
+        "source_licenses",
+        "empirical_status"
+      ],
+      "title": "TransmissionQualification",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "V2 method recipe; regional acquisition and existing generation overwrite are excluded.",
+  "properties": {
+    "building_inventory_policy": {
+      "default": "assume_complete",
+      "enum": [
+        "assume_complete",
+        "unverified"
+      ],
+      "title": "Building Inventory Policy",
+      "type": "string"
+    },
+    "census_sources": {
+      "default": 12,
+      "minimum": 1,
+      "title": "Census Sources",
+      "type": "integer"
+    },
+    "census_threshold": {
+      "default": 1000,
+      "minimum": 0,
+      "title": "Census Threshold",
+      "type": "integer"
+    },
+    "distance_weight": {
+      "additionalProperties": true,
+      "title": "Distance Weight",
+      "type": "object"
+    },
+    "inputs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/InputAsset"
+      },
+      "title": "Inputs",
+      "type": "object"
+    },
+    "max_distance_m": {
+      "default": 24140.16,
+      "exclusiveMinimum": 0,
+      "maximum": 24140.16,
+      "title": "Max Distance M",
+      "type": "number"
+    },
+    "max_prepared_bytes": {
+      "default": 4294967296,
+      "exclusiveMinimum": 0,
+      "maximum": 4294967296,
+      "title": "Max Prepared Bytes",
+      "type": "integer"
+    },
+    "max_raster_pixels": {
+      "default": 128000000,
+      "exclusiveMinimum": 0,
+      "maximum": 128000000,
+      "title": "Max Raster Pixels",
+      "type": "integer"
+    },
+    "maximum_sampling_error": {
+      "default": 0.1,
+      "maximum": 0.1,
+      "minimum": 0,
+      "title": "Maximum Sampling Error",
+      "type": "number"
+    },
+    "memory_budget_gib": {
+      "default": 6.0,
+      "exclusiveMinimum": 0,
+      "maximum": 6,
+      "title": "Memory Budget Gib",
+      "type": "number"
+    },
+    "method": {
+      "const": "worldcover_chm_intersection_transmission_v2",
+      "title": "Method",
+      "type": "string"
+    },
+    "output_dir": {
+      "title": "Output Dir",
+      "type": "string"
+    },
+    "p95_sampling_error": {
+      "default": 0.05,
+      "maximum": 0.05,
+      "minimum": 0,
+      "title": "P95 Sampling Error",
+      "type": "number"
+    },
+    "qualification": {
+      "$ref": "#/$defs/TransmissionQualification"
+    },
+    "schema_version": {
+      "const": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_bbox_wgs84": {
+      "items": {
+        "type": "number"
+      },
+      "title": "Source Bbox Wgs84",
+      "type": "array"
+    },
+    "source_samples": {
+      "default": 15,
+      "maximum": 15,
+      "minimum": 1,
+      "title": "Source Samples",
+      "type": "integer"
+    },
+    "target_stride": {
+      "default": 2,
+      "maximum": 2,
+      "minimum": 1,
+      "title": "Target Stride",
+      "type": "integer"
+    },
+    "wall_seconds": {
+      "default": 21600.0,
+      "exclusiveMinimum": 0,
+      "maximum": 21600,
+      "title": "Wall Seconds",
+      "type": "number"
+    },
+    "water_class_policy": {
+      "default": "zero_if_missing",
+      "enum": [
+        "zero_if_missing",
+        "retain_unknown"
+      ],
+      "title": "Water Class Policy",
+      "type": "string"
+    },
+    "workers": {
+      "default": 1,
+      "maximum": 2,
+      "minimum": 1,
+      "title": "Workers",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "method",
+    "output_dir",
+    "source_bbox_wgs84",
+    "inputs",
+    "qualification"
+  ],
+  "title": "TransmissionConfig",
+  "type": "object"
+}

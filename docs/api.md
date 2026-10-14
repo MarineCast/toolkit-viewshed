@@ -378,3 +378,22 @@ pool actual comparisons; weighted aggregates use complete equal-pair means, with
 pair means separate in details. This exporter changes presentation only and never runs LOS.
 The legend scrolls independently inside a full-viewport map, collapses, and does not intercept
 map zoom while scrolling. Local browser rendering must still be qualified separately.
+
+## Versioned direct transmission API
+
+`run_transmission(config, stage="prepare"|"score"|"run"|"validate")` exposes the supported
+`worldcover_chm_intersection_transmission_v2` scenario with `TransmissionConfig`,
+`load_transmission_config`, and `validate_transmission_product`. It uses its own fresh generation,
+partial-water support and nullable/bounded schema; paired GDAL/component APIs retain their existing
+contracts. See [direct transmission](direct-transmission.md) for provisioned inputs, strict JSON
+configuration, effective-config snapshots, execution bounds and qualification limits.
+
+### Persistent direct-transmission tile workflow
+
+`run_transmission_tiles(request, stage="plan")` loads a strict `TransmissionTileConfig` and plans
+provisioned canonical tiles without writes. Explicit stages are `plan`, `prepare`, `recover-store`,
+`validate-store`, `score`, and `validate`; stage names come from the central registry. Preparation and
+scoring use one current compressed tile store, explicit resume and bounded owned children. See
+[the persistent tile contract](direct-transmission.md#persistent-xarray-tile-preparation-and-scoring)
+for resource limits, identity checks and missingness semantics. `load_transmission_tile_config` is
+read-only. The legacy production and dense explicit-transmission workflows remain separate.

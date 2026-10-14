@@ -1,0 +1,94 @@
+{
+  "reference_commit": "ffbba023169ba9660d16af8ff8cec67395ca5501",
+  "reference": "original scripts/extend_viewability_demo.py before package integration; synthetic 9x30 EPSG-metre grid",
+  "scenarios": {
+    "clear": {
+      "score": [
+        1.0,
+        1.0
+      ],
+      "lower": [
+        1.0,
+        1.0
+      ],
+      "upper": [
+        1.0,
+        1.0
+      ],
+      "unknown": [
+        0.0,
+        0.0
+      ],
+      "out_of_range": [
+        0.0,
+        0.0
+      ]
+    },
+    "roof": {
+      "score": [
+        0.0,
+        0.0
+      ],
+      "lower": [
+        0.0,
+        0.0
+      ],
+      "upper": [
+        0.0,
+        0.0
+      ],
+      "unknown": [
+        0.0,
+        0.0
+      ],
+      "out_of_range": [
+        0.0,
+        0.0
+      ]
+    },
+    "unknown": {
+      "score": [
+        null,
+        null
+      ],
+      "lower": [
+        0.0,
+        0.0
+      ],
+      "upper": [
+        1.0,
+        1.0
+      ],
+      "unknown": [
+        1.0,
+        1.0
+      ],
+      "out_of_range": [
+        0.0,
+        0.0
+      ]
+    },
+    "transmission": {
+      "score": [
+        0.9970034701311543,
+        0.9969993728615657
+      ],
+      "lower": [
+        0.9970034701311543,
+        0.9969993728615657
+      ],
+      "upper": [
+        0.9970034701311543,
+        0.9969993728615657
+      ],
+      "unknown": [
+        0.0,
+        0.0
+      ],
+      "out_of_range": [
+        0.0,
+        0.0
+      ]
+    }
+  }
+}

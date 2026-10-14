@@ -5,11 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
-from . import components, compute, finalize, prepare, visualize
 from ..config import DEFAULT_CONFIG
+from . import components, compute, finalize, prepare, transmission, transmission_tiles, visualize
 
 STATIC_INPUT_CACHE_PATHS = [
     Path("data/raw/canopy/eth_10m"),
@@ -48,6 +48,8 @@ def build_cli() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     default_config = str(DEFAULT_CONFIG)
     components.register_commands(subparsers, default_config=default_config)
+    transmission.register_commands(subparsers)
+    transmission_tiles.register_commands(subparsers)
     prepare.register_commands(
         subparsers,
         default_config=default_config,

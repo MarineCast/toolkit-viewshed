@@ -24,6 +24,7 @@ from shapely.ops import unary_union
 
 from viewshed_toolkit import direct_ray_visibility
 from viewshed_toolkit.pipeline.prepare.area.sampling import sample_points_in_source_geometry
+from viewshed_toolkit.pipeline.prepare.area.transmission import target_design
 from viewshed_toolkit.pipeline.prepare.elevation.obstruction import compose_above_ground_surface
 from viewshed_toolkit.pipeline.prepare.elevation.terrain import sample_observer_ground_elevation
 
@@ -45,37 +46,6 @@ PROFILES = [
 def digest(path):
     with Path(path).open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
-
-
-def target_design(rows, cols, codes, stride, *, census_threshold=0):
-    """One actual water point per target/cell-block; weights preserve all pixels."""
-    if (
-        isinstance(stride, bool)
-        or stride < 1
-        or not isinstance(stride, int)
-        or len(rows) != len(cols)
-        or len(rows) != len(codes)
-    ):
-        raise ValueError("Aligned target rows, columns, codes and positive integer stride required")
-    if (
-        not isinstance(census_threshold, int)
-        or isinstance(census_threshold, bool)
-        or census_threshold < 0
-    ):
-        raise ValueError("Nonnegative integer census threshold required")
-    counts = np.bincount(codes)
-    effective = np.where(counts[codes] < census_threshold, 1, stride)
-    groups = np.column_stack((codes, rows // effective, cols // effective))
-    _, inverse, weights = np.unique(groups, axis=0, return_inverse=True, return_counts=True)
-    # Choose nearest actual water centre to block centre, with stable row/col ties.
-    d = ((rows % effective) + 0.5 - effective / 2) ** 2 + (
-        (cols % effective) + 0.5 - effective / 2
-    ) ** 2
-    order = np.lexsort((cols, rows, d, inverse))
-    unique, first = np.unique(inverse[order], return_index=True)
-    selected = order[first]
-    assert np.array_equal(unique, np.arange(len(weights))) and weights.sum() == len(rows)
-    return selected, weights
 
 
 def aggregate(states, codes, weights, cell_count):
@@ -274,7 +244,7 @@ def export_html(report, out):
             )
             rows.append(
                 f'<tr><td>{html.escape(site["name"])}</td><td>{html.escape(profile["name"])}</td>'
-                f'<td>{profile["median_seconds"]:.3f}</td><td>{profile["speedup"]:.1f}×</td>'
+                f'<td>{profile["median_seconds"]:.3f}</td><td>{profile["speedup"]:.1f}x</td>'
                 f'<td>{100*e["p95"]:.1f}</td><td>{100*e["maximum"]:.1f}</td>'
                 f"<td>{status}</td></tr>"
             )

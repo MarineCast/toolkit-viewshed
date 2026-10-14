@@ -170,3 +170,13 @@ def test_envelope_known_terrain_block_survives_missing_canopy():
         curvature_coefficient=0,
     )
     assert result.tolist() == [0]
+
+
+def test_unknown_target_does_not_hide_proven_intervening_blockage():
+    lower = np.zeros((9, 9))
+    lower[4, 5] = 20
+    unknown = np.zeros((9, 9), bool)
+    unknown[4, 8] = True
+    assert run(lower, unknown).tolist() == [0]
+    lower[4, 5] = 0
+    assert run(lower, unknown).tolist() == [-1]

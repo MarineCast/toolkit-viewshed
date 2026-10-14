@@ -11,11 +11,11 @@ import numpy as np
 from affine import Affine
 from numba import njit
 
-DIRECT_RAY_CONTRACT = "direct_grid_ray_interval_v1"
-DIRECT_ENVELOPE_CONTRACT = "direct_grid_height_envelope_v1"
+DIRECT_RAY_CONTRACT = "direct_grid_ray_interval_v2"
+DIRECT_ENVELOPE_CONTRACT = "direct_grid_height_envelope_v2"
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def _rays(
     ground,
     lower,
@@ -31,11 +31,19 @@ def _rays(
     target_height,
     curve,
     radius,
+    terrain_support,
+    row_offset,
+    col_offset,
 ):
     out = np.full(len(targets), -1, dtype=np.int8)
     height, width = ground.shape
-    source_col = int(math.floor((ox - origin_x) / pixel))
-    source_row = int(math.floor((origin_y - oy) / pixel))
+    source_col = math.floor((ox - origin_x) / pixel)
+    source_row = math.floor((origin_y - oy) / pixel)
+    if (
+        terrain_support is not None
+        and not terrain_support[source_row - row_offset, source_col - col_offset]
+    ):
+        raise ValueError("Observer outside declared terrain support")
     for n in range(len(targets)):
         tx, ty = targets[n]
         dx, dy = tx - ox, ty - oy
@@ -43,14 +51,22 @@ def _rays(
         if distance > radius:
             out[n] = -2  # Range exclusion is distinct from obstruction.
             continue
-        tr = int(math.floor((origin_y - ty) / pixel))
-        tc = int(math.floor((tx - origin_x) / pixel))
-        if unknown[tr, tc] and not clearance[tr, tc]:
-            continue
+        tr = math.floor((origin_y - ty) / pixel)
+        tc = math.floor((tx - origin_x) / pixel)
+        if not math.isfinite(ground[tr - row_offset, tc - col_offset]) or (
+            terrain_support is not None and not terrain_support[tr - row_offset, tc - col_offset]
+        ):
+            raise ValueError("Required target terrain missing or outside support")
+        endpoint_unknown = (
+            unknown[tr - row_offset, tc - col_offset]
+            and not clearance[tr - row_offset, tc - col_offset]
+        )
         if distance == 0:
-            out[n] = 1
+            out[n] = -1 if endpoint_unknown else 1
             continue
-        slope = (ground[tr, tc] + target_height - eye - curve * distance**2) / distance
+        slope = (
+            ground[tr - row_offset, tc - col_offset] + target_height - eye - curve * distance**2
+        ) / distance
         vx, vy = dx / distance, -dy / distance
         col, row = source_col, source_row
         sx, sy = (1 if vx >= 0 else -1), (1 if vy >= 0 else -1)
@@ -58,14 +74,26 @@ def _rays(
         next_y = ((row + (sy > 0)) * pixel - (origin_y - oy)) / vy if vy != 0 else math.inf
         delta_x = pixel / abs(vx) if vx != 0 else math.inf
         delta_y = pixel / abs(vy) if vy != 0 else math.inf
-        entered, uncertain, blocked = 0.0, False, False
-        while 0 <= row < height and 0 <= col < width:
+        entered, uncertain, blocked = 0.0, endpoint_unknown, False
+        while row_offset <= row < row_offset + height and col_offset <= col < col_offset + width:
             exited = min(next_x, next_y, distance)
             # Central source cell is explicitly grounded. Cell boundaries of
             # zero length do not turn an adjacent off-ray roof into a blocker.
             if exited > entered + 1e-9 and (row != source_row or col != source_col):
-                h = 0.0 if clearance[row, col] else lower[row, col]
-                if unknown[row, col] and not clearance[row, col]:
+                if not math.isfinite(ground[row - row_offset, col - col_offset]) or (
+                    terrain_support is not None
+                    and not terrain_support[row - row_offset, col - col_offset]
+                ):
+                    raise ValueError("Required ray terrain missing or outside support")
+                h = (
+                    0.0
+                    if clearance[row - row_offset, col - col_offset]
+                    else lower[row - row_offset, col - col_offset]
+                )
+                if (
+                    unknown[row - row_offset, col - col_offset]
+                    and not clearance[row - row_offset, col - col_offset]
+                ):
                     uncertain = True
                 if row != tr or col != tc:
                     d = (
@@ -73,7 +101,14 @@ def _rays(
                         if curve > 0
                         else (entered if slope >= 0 else exited)
                     )
-                    if ground[row, col] + h - eye - slope * d - curve * d * d > 1e-7:
+                    if (
+                        ground[row - row_offset, col - col_offset]
+                        + h
+                        - eye
+                        - slope * d
+                        - curve * d * d
+                        > 1e-7
+                    ):
                         blocked = True
                         break
             if exited >= distance:
@@ -100,6 +135,8 @@ def direct_ray_visibility(
     targets_xy: np.ndarray,
     observer_ground_elevation_m: float,
     clearance_mask: np.ndarray | None = None,
+    terrain_support_mask: np.ndarray | None = None,
+    ray_reference_transform: Affine | None = None,
     observer_height_m: float = 1.7,
     target_height_m: float = 1.0,
     curvature_coefficient: float = 0.85714,
@@ -121,11 +158,18 @@ def direct_ray_visibility(
         or ground.shape != lower_height.shape
         or ground.shape != unknown.shape
         or unknown.dtype != np.bool_
-        or not np.isfinite(ground).all()
         or not np.isfinite(lower_height).all()
         or (lower_height < 0).any()
     ):
         raise ValueError("Aligned finite terrain/lower heights and boolean unknown required")
+    if terrain_support_mask is None:
+        finite = np.isfinite(ground).all()
+    else:
+        if terrain_support_mask.shape != ground.shape or terrain_support_mask.dtype != np.bool_:
+            raise ValueError("Aligned boolean terrain support required")
+        finite = np.isfinite(ground[terrain_support_mask]).all()
+    if not finite:
+        raise ValueError("Required terrain support must be finite")
     if (
         not all(math.isfinite(v) for v in transform)
         or transform.a <= 0
@@ -170,6 +214,13 @@ def direct_ray_visibility(
         clearance = clearance_mask
         if clearance.shape != ground.shape or clearance.dtype != np.bool_:
             raise ValueError("Aligned boolean clearance mask required")
+    reference = transform if ray_reference_transform is None else ray_reference_transform
+    if reference.a != transform.a or reference.e != transform.e or reference.b or reference.d:
+        raise ValueError("Ray reference must share the extraction pixel lattice")
+    dr = (reference.f - transform.f) / transform.a
+    dc = (transform.c - reference.c) / transform.a
+    if not math.isfinite(dr) or not math.isfinite(dc) or not dr.is_integer() or not dc.is_integer():
+        raise ValueError("Ray reference offset must be integral pixels")
     return _rays(
         ground,
         lower_height,
@@ -177,13 +228,16 @@ def direct_ray_visibility(
         clearance,
         *observer_xy,
         targets,
-        transform.c,
-        transform.f,
+        reference.c,
+        reference.f,
         transform.a,
         observer_ground_elevation_m + observer_height_m,
         target_height_m,
         curvature_coefficient / (2 * earth_radius_m),
         max_distance_m,
+        terrain_support_mask,
+        int(dr),
+        int(dc),
     )
 
 

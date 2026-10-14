@@ -3,7 +3,7 @@
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from affine import Affine
@@ -34,7 +34,7 @@ class BuildingSurface:
     inventory_policy: BuildingInventoryPolicy = "assume_complete"
 
 
-def rasterize_building_footprints(
+def rasterize_building_footprints_reference(
     footprints: Iterable[tuple[bytes, float | None]],
     *,
     shape: tuple[int, int],
@@ -133,6 +133,128 @@ def rasterize_building_footprints(
             view = lower[r0:r1, c0:c1]
             np.maximum(view, np.where(burn, height, 0), out=view)
         count += 1
+    return BuildingSurface(
+        lower,
+        present,
+        missing,
+        missing.copy() if inventory_policy == "assume_complete" else ~present | missing,
+        count,
+        missing_count,
+        repairs,
+        "all_touched_max_agl" if all_touched else "cell_center_max_agl",
+        inventory_policy,
+    )
+
+
+def rasterize_building_footprints(
+    footprints: Any,
+    *,
+    shape: Any,
+    transform: Any,
+    crs: Any,
+    all_touched: Any = True,
+    inventory_policy: Any = "assume_complete",
+    batch_size: Any = 4096,
+) -> Any:
+    if not isinstance(all_touched, bool):
+        raise ValueError("all_touched must be boolean")
+    if inventory_policy not in ("assume_complete", "unverified"):
+        raise ValueError("inventory_policy must be assume_complete or unverified")
+    target_crs = CRS.from_user_input(crs)
+    if (
+        len(shape) != 2
+        or any(isinstance(n, bool) or not isinstance(n, int) or n <= 0 for n in shape)
+        or not target_crs.is_projected
+        or target_crs.linear_units not in ("metre", "meter")
+        or not all(math.isfinite(v) for v in transform)
+        or transform.a <= 0
+        or transform.e >= 0
+        or transform.b != 0
+        or transform.d != 0
+        or not math.isclose(transform.a, -transform.e)
+    ):
+        raise ValueError("Nonempty north-up square projected metre grid required")
+    if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
+        raise ValueError("Positive integer batch size required")
+    extent = box(
+        transform.c,
+        transform.f + shape[0] * transform.e,
+        transform.c + shape[1] * transform.a,
+        transform.f,
+    )
+    projector = Transformer.from_crs("EPSG:3857", target_crs, always_xy=True)
+    lower = np.zeros(shape, np.float32)
+    present = np.zeros(shape, bool)
+    missing = np.zeros(shape, bool)
+    entries: list[Any] = []
+    count = missing_count = repairs = 0
+
+    def flush() -> None:
+        known = sorted([(g, h) for g, h in entries if h is not None], key=lambda p: p[1])
+        holes = [(g, 1) for g, h in entries if h is None]
+        if known:
+            np.maximum(
+                lower,
+                rasterize(
+                    known,
+                    out_shape=shape,
+                    transform=transform,
+                    all_touched=all_touched,
+                    dtype="float32",
+                ),
+                out=lower,
+            )
+        present[:] |= rasterize(
+            [(g, 1) for g, h in entries],
+            out_shape=shape,
+            transform=transform,
+            all_touched=all_touched,
+            dtype="uint8",
+        ).astype(bool)
+        if holes:
+            missing[:] |= rasterize(
+                holes, out_shape=shape, transform=transform, all_touched=all_touched, dtype="uint8"
+            ).astype(bool)
+        entries.clear()
+
+    for wkb, height in footprints:
+        if height is not None and (
+            isinstance(height, bool)
+            or not isinstance(height, (int, float))
+            or not math.isfinite(height)
+            or height < 0
+            or height > np.finfo(np.float32).max
+        ):
+            raise ValueError("Finite nonnegative predicted AGL height or None required")
+        geometry = from_wkb(wkb)
+        if geometry.geom_type not in ("Polygon", "MultiPolygon") or geometry.is_empty:
+            raise ValueError("Nonempty polygonal EPSG:3857 footprint required")
+        if not np.isfinite(get_coordinates(geometry)).all():
+            raise ValueError("Finite footprint coordinates required")
+        geometry = project_geometry(projector.transform, geometry)
+        if not geometry.intersects(extent):
+            continue
+        if not geometry.is_valid:
+            geometry = make_valid(geometry)
+            repairs += 1
+        if not geometry.is_valid or geometry.is_empty or geometry.area <= 0:
+            raise ValueError("Projected footprint cannot be qualified")
+        if geometry.geom_type not in ("Polygon", "MultiPolygon"):
+            raise ValueError("Projected footprint repair is not polygonal")
+        w = from_bounds(*geometry.bounds, transform=transform)
+        r0 = max(0, math.floor(w.row_off) - 1)
+        c0 = max(0, math.floor(w.col_off) - 1)
+        r1 = min(shape[0], math.ceil(w.row_off + w.height) + 1)
+        c1 = min(shape[1], math.ceil(w.col_off + w.width) + 1)
+        if r1 <= r0 or c1 <= c0:
+            continue
+        entries.append((geometry, height))
+        count += 1
+        missing_count += height is None
+        if len(entries) >= batch_size:
+            flush()
+    if entries:
+        flush()
     return BuildingSurface(
         lower,
         present,

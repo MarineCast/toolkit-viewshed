@@ -544,3 +544,13 @@ The reusable rasterizer and joint LOS caller are described in the
 input precision: float64 lower heights are not rounded upward to float32 at grazing
 rays. The retained pilot inputs are already float32, so this precision hardening does
 not alter its numerical outputs.
+
+## Supported direct-transmission v2 scenario
+
+The demonstrated ray-length canopy transmission scenario is available through the supported
+package/CLI workflow described in [direct transmission](direct-transmission.md). It preserves
+partial in-reach water populations, arithmetic transmission means and conditional weighted
+above-ground bounds explicitly. V2 fixes source grounding and known-blockage resolution with
+unknown endpoints; legacy prepared/output identities cannot certify v2 results. Existing GDAL
+full-cell kernels and their vegetation meaning remain unchanged. Package support does not
+establish empirical calibration, regional completeness or vertical-datum equivalence.

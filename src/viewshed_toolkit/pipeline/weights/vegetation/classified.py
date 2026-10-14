@@ -6,6 +6,9 @@ as zero vegetation. Terrain and roofs retain their separate direct-ray model.
 """
 
 import math
+import time
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from affine import Affine
@@ -14,7 +17,7 @@ from numba import njit
 from ..rays import direct_ray_visibility
 from .defaults import ESA_WORLDCOVER_CLASS_WEIGHTS
 
-CLASSIFIED_CANOPY_CONTRACT = "worldcover_chm_intersection_transmission_v1"
+CLASSIFIED_CANOPY_CONTRACT = "worldcover_chm_intersection_transmission_v2"
 HEIGHT_BREAKS_M = (2.0, 5.0, 15.0)
 HEIGHT_OBSTRUCTION = (0.0, 0.25, 0.65, 1.0)
 DEFAULT_BETA_PER_M = 0.002
@@ -35,25 +38,82 @@ def class_obstruction(canopy: np.ndarray, landcover: np.ndarray):
         or not np.issubdtype(landcover.dtype, np.integer)
     ):
         raise ValueError("Aligned finite nonnegative canopy and integer WorldCover required")
-    height_score = np.select(
-        [canopy < value for value in HEIGHT_BREAKS_M],
-        HEIGHT_OBSTRUCTION[:-1],
-        default=HEIGHT_OBSTRUCTION[-1],
-    )
-    score = np.zeros(canopy.shape, dtype="float64")
-    missing = np.ones(canopy.shape, bool)
+    # Bin indices are lossless;0.65 and resulting coefficients stay float64.
+    height_band = np.zeros(canopy.shape, dtype="uint8")
+    for index, threshold in enumerate(HEIGHT_BREAKS_M, start=1):
+        height_band[canopy >= threshold] = index
+    lookup = np.zeros((256, 4), dtype="float64")
+    known = np.zeros(256, bool)
     for code, values in ESA_WORLDCOVER_CLASS_WEIGHTS.items():
-        selected = landcover == code
-        score[selected] = np.maximum(
-            height_score[selected] * values["obstruction_multiplier"],
-            values["obstruction_floor"],
-        )
-        missing[selected] = False
-    missing |= (landcover == 80) & (canopy > 0)
+        known[code] = True
+        for band, weight in enumerate(HEIGHT_OBSTRUCTION):
+            lookup[code, band] = max(
+                weight * values["obstruction_multiplier"], values["obstruction_floor"]
+            )
+    outside = (landcover < 0) | (landcover >= 256)
+    index = landcover if landcover.dtype == np.uint8 else np.where(outside, 0, landcover)
+    score = lookup[index, height_band]
+    missing = outside | ~known[index] | ((landcover == 80) & (canopy > 0))
     return score, missing
 
 
-@njit(cache=True)
+@dataclass(frozen=True)
+class PreparedClassifiedCanopy:
+    """Owned, immutable stationary inputs shared across observer rays."""
+
+    canopy: np.ndarray
+    landcover: np.ndarray
+    input_unknown: np.ndarray
+    coefficient: np.ndarray
+    missing_class: np.ndarray
+    missing_height: np.ndarray
+    water_class_policy: str
+    zero_clearance: np.ndarray
+    class_preparation_seconds: float
+
+
+def prepare_classified_canopy(
+    canopy: Any, canopy_unknown: Any, landcover: Any, water_class_policy: Any
+) -> PreparedClassifiedCanopy:
+    """Validate/copy once; per-observer clearance remains private."""
+    if canopy_unknown.shape != canopy.shape or canopy_unknown.dtype != np.bool_:
+        raise ValueError("Aligned boolean canopy missing mask required")
+    if water_class_policy not in ("retain_unknown", "zero_if_missing"):
+        raise ValueError("Unknown water-class policy")
+    owned_canopy = np.array(canopy, copy=True)
+    owned_classes = np.array(landcover, copy=True)
+    owned_unknown = np.array(canopy_unknown, copy=True)
+    started = time.perf_counter()
+    coefficient, missing_class = class_obstruction(owned_canopy, owned_classes)
+    class_seconds = time.perf_counter() - started
+    missing_height = owned_unknown.copy()
+    if water_class_policy == "zero_if_missing":
+        missing_height[(owned_classes == 80) & (owned_canopy == 0)] = False
+    zero_clearance = np.zeros(canopy.shape, bool)
+    for array in (
+        owned_canopy,
+        owned_classes,
+        owned_unknown,
+        coefficient,
+        missing_class,
+        missing_height,
+        zero_clearance,
+    ):
+        array.flags.writeable = False
+    return PreparedClassifiedCanopy(
+        owned_canopy,
+        owned_classes,
+        owned_unknown,
+        coefficient,
+        missing_class,
+        missing_height,
+        water_class_policy,
+        zero_clearance,
+        class_seconds,
+    )
+
+
+@njit(cache=True, nogil=True)
 def _below_length(start, end, eye, slope, curve, ceiling):
     """Exact length with eye+slope*d+curve*d² below a constant canopy top."""
     if curve == 0:
@@ -72,7 +132,7 @@ def _below_length(start, end, eye, slope, curve, ceiling):
     return max(0.0, min(end, upper) - max(start, lower))
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def _path_depth(
     ground,
     canopy,
@@ -90,6 +150,8 @@ def _path_depth(
     eye,
     target_height,
     curve,
+    row_offset,
+    col_offset,
 ):
     """Return weighted canopy-intersection metres; negative states stay distinct."""
     output = baseline.astype(np.float64)
@@ -107,10 +169,15 @@ def _path_depth(
             continue
         tr = math.floor((origin_y - ty) / pixel)
         tc = math.floor((tx - origin_x) / pixel)
-        if missing_height[tr, tc] and not clearance[tr, tc]:
+        if (
+            missing_height[tr - row_offset, tc - col_offset]
+            and not clearance[tr - row_offset, tc - col_offset]
+        ):
             output[n] = -1
             continue
-        slope = (ground[tr, tc] + target_height - eye - curve * distance**2) / distance
+        slope = (
+            ground[tr - row_offset, tc - col_offset] + target_height - eye - curve * distance**2
+        ) / distance
         vx, vy = dx / distance, -dy / distance
         col, row = source_col, source_row
         sx, sy = (1 if vx >= 0 else -1), (1 if vy >= 0 else -1)
@@ -119,25 +186,31 @@ def _path_depth(
         delta_x = pixel / abs(vx) if vx != 0 else math.inf
         delta_y = pixel / abs(vy) if vy != 0 else math.inf
         entered, depth, uncertain = 0.0, 0.0, False
-        while 0 <= row < height and 0 <= col < width:
+        while row_offset <= row < row_offset + height and col_offset <= col < col_offset + width:
             exited = min(next_x, next_y, distance)
             if (
                 exited > entered + 1e-9
                 and (row != source_row or col != source_col)
                 and (row != tr or col != tc)
-                and not clearance[row, col]
+                and not clearance[row - row_offset, col - col_offset]
             ):
-                if missing_height[row, col]:
+                if missing_height[row - row_offset, col - col_offset]:
                     uncertain = True
-                elif canopy[row, col] > 0:
+                elif canopy[row - row_offset, col - col_offset] > 0:
                     length = _below_length(
-                        entered, exited, eye, slope, curve, ground[row, col] + canopy[row, col]
+                        entered,
+                        exited,
+                        eye,
+                        slope,
+                        curve,
+                        ground[row - row_offset, col - col_offset]
+                        + canopy[row - row_offset, col - col_offset],
                     )
                     if length > 0:
-                        if missing_class[row, col]:
+                        if missing_class[row - row_offset, col - col_offset]:
                             uncertain = True
                         else:
-                            depth += coefficient[row, col] * length
+                            depth += coefficient[row - row_offset, col - col_offset] * length
             if exited >= distance:
                 break
             advance_x, advance_y = next_x <= next_y, next_y <= next_x
@@ -167,6 +240,10 @@ def classified_ray_support(
     beta_per_m: float = DEFAULT_BETA_PER_M,
     water_class_policy: str = "retain_unknown",
     canopy_clearance_mask: np.ndarray | None = None,
+    terrain_support_mask: np.ndarray | None = None,
+    ray_reference_transform: Affine | None = None,
+    prepared_canopy: PreparedClassifiedCanopy | None = None,
+    profile: dict | None = None,
     observer_height_m: float = 1.7,
     target_height_m: float = 1.0,
     curvature_coefficient: float = 0.85714,
@@ -193,10 +270,20 @@ def classified_ray_support(
         or water_class_policy not in ("retain_unknown", "zero_if_missing")
     ):
         raise ValueError("Aligned canopy/boolean missing mask and positive finite beta required")
-    coefficient, missing_class = class_obstruction(canopy, landcover)
-    missing_height = canopy_unknown.copy()
-    if water_class_policy == "zero_if_missing":
-        missing_height[(landcover == 80) & (canopy == 0)] = False
+    if prepared_canopy is None:
+        prepared_canopy = prepare_classified_canopy(
+            canopy, canopy_unknown, landcover, water_class_policy
+        )
+    elif (
+        prepared_canopy.canopy is not canopy
+        or prepared_canopy.landcover is not landcover
+        or prepared_canopy.input_unknown is not canopy_unknown
+        or prepared_canopy.water_class_policy != water_class_policy
+    ):
+        raise ValueError("Prepared canopy must own the supplied immutable inputs and policy")
+    coefficient = prepared_canopy.coefficient
+    missing_class = prepared_canopy.missing_class
+    missing_height = prepared_canopy.missing_height
     if canopy_clearance_mask is None:
         clearance = np.zeros(ground.shape, bool)
     else:
@@ -204,6 +291,7 @@ def classified_ray_support(
         if clearance.shape != ground.shape or clearance.dtype != np.bool_:
             raise ValueError("Aligned boolean canopy clearance required")
     targets = np.asarray(targets_xy, dtype="float64")
+    baseline_started = time.perf_counter()
     baseline = direct_ray_visibility(
         ground,
         building_height,
@@ -217,7 +305,14 @@ def classified_ray_support(
         curvature_coefficient=curvature_coefficient,
         earth_radius_m=earth_radius_m,
         max_distance_m=max_distance_m,
+        terrain_support_mask=terrain_support_mask,
+        ray_reference_transform=ray_reference_transform,
+        clearance_mask=prepared_canopy.zero_clearance,
     )
+    reference = transform if ray_reference_transform is None else ray_reference_transform
+    row_offset = round((reference.f - transform.f) / transform.a)
+    col_offset = round((transform.c - reference.c) / transform.a)
+    depth_started = time.perf_counter()
     depth = _path_depth(
         ground,
         canopy,
@@ -228,13 +323,18 @@ def classified_ray_support(
         baseline,
         *observer_xy,
         targets,
-        transform.c,
-        transform.f,
+        reference.c,
+        reference.f,
         transform.a,
         observer_ground_elevation_m + observer_height_m,
         target_height_m,
         curvature_coefficient / (2 * earth_radius_m),
+        row_offset,
+        col_offset,
     )
+    if profile is not None:
+        profile["roof_baseline_seconds"] = depth_started - baseline_started
+        profile["canopy_depth_seconds"] = time.perf_counter() - depth_started
     result = depth.copy()
     visible = baseline == 1
     supported = visible & (depth >= 0)

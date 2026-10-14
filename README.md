@@ -245,3 +245,15 @@ target/source aggregates and a selected-source map, with actual-count arithmetic
 unknown intervals and secondary exact-point diagnostics. See the
 [API contract](docs/api.md#retained-sample-comparison-maps) and
 [scientific definitions](docs/scientific-methodology.md#retained-sample-comparison-maps).
+
+### Supported direct-ray transmission scenario
+
+The demonstrated WorldCover/CHM method is now available as `viewshed-toolkit transmission` and
+`viewshed_toolkit.run_transmission`. Select the explicit v2 method and a fresh provisioned-input
+workspace. It retains partial-water coverage, uncertainty bounds and conditional factors; old
+GDAL outputs retain their meaning. See [direct transmission](docs/direct-transmission.md) for
+configuration, execution and regional qualification limits.
+
+Provisioned explicit-v2 inputs can also use a persistent xarray tile workflow: plan and preprocess one
+compressed current store, then run weights from read-only prepared tiles. See
+[prepare-then-score commands and limits](docs/direct-transmission.md#persistent-xarray-tile-preparation-and-scoring).

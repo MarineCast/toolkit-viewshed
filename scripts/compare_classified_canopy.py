@@ -28,6 +28,7 @@ from rasterio.vrt import WarpedVRT
 from viewshed_toolkit._internal.artifacts.contracts import atomic_write_json
 from viewshed_toolkit._internal.data.parquet import atomic_sink_parquet
 from viewshed_toolkit.pipeline.prepare.elevation.obstruction import compose_above_ground_surface
+from viewshed_toolkit.pipeline.weights.transmission import aggregate_support
 from viewshed_toolkit.pipeline.weights.vegetation.classified import (
     CLASSIFIED_CANOPY_CONTRACT,
     DEFAULT_BETA_PER_M,
@@ -52,37 +53,6 @@ COLORS = {
     95: "#20715a",
     100: "#b7bc8b",
 }
-
-
-def aggregate_support(values, codes, weights, cell_count):
-    """Full-population transmission bounds; no available-only renormalization."""
-    if (
-        values.ndim != 2
-        or values.shape[1] != len(codes)
-        or len(codes) != len(weights)
-        or not np.isfinite(values).all()
-        or (weights <= 0).any()
-        or not ((values == -1) | (values == -2) | ((values >= 0) & (values <= 1))).all()
-    ):
-        raise ValueError("Aligned valid transmission states and positive weights required")
-    total = np.bincount(codes, weights=weights, minlength=cell_count) * len(values)
-    if (total <= 0).any():
-        raise ValueError("Every target cell requires positive observer/target support")
-    unknown = np.bincount(codes, weights=(values == -1).sum(0) * weights, minlength=cell_count)
-    summed = np.bincount(
-        codes, weights=np.maximum(values, 0).sum(0) * weights, minlength=cell_count
-    )
-    lower, upper = summed / total, (summed + unknown) / total
-    return dict(
-        score=[None if n else float(v) for v, n in zip(lower, unknown, strict=True)],
-        lower=lower,
-        upper=upper,
-        unknown=unknown / total,
-        out_of_range=np.bincount(
-            codes, weights=(values == -2).sum(0) * weights, minlength=cell_count
-        )
-        / total,
-    )
 
 
 def load_worldcover(assets, shape, transform):

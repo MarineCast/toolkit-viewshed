@@ -374,6 +374,55 @@ all sources finish and their scientific inputs, bounds, missingness and pair ide
 The combined rows sort by source role, source H3 and target H3 independently of completion order.
 
 Only the declared retained sources are processed. This does not launch a full-region run or
-change production scheduling. The runner still prepares each source window independently;
-shared regional raster preparation and reusable spatial tiles are separate future improvements.
+change production scheduling. This two-site runner prepares source windows independently;
+the regional pilot below provides separate shared raster preparation.
 Memory measurements sample every 0.1 s and are safeguards, not operating-system reservations.
+
+### Regional land-source runtime pilot
+
+`scripts/regional_viewability_pilot.py CONFIG.json` enumerates eligible H3 R7 land sources
+in a caller-supplied `source_bbox_wgs84` (`west, south, east, north`). It prepares a shared
+30 m bilinear terrain / nested 10 m obstacle lattice once in bounded 1,536-pixel tiles,
+then scores contiguous source windows in one or two persistent processes. Targets retain
+the full 15-mile observer reach beyond the source rectangle. This is the same opt-in
+classified ray scenario, without additional distance decay; it does not run or promote
+the canonical pipeline.
+
+Configuration contains exactly `source_bbox_wgs84`, `output_dir`, `inputs`, `workers`
+and `memory_budget_gib`. Supply a new empty output directory, at most a one-square-degree
+rectangle, one or two workers and at most 6 GiB for the sampled parent/worker memory guard.
+The explicit input map records `path` and SHA256 for `coastline` (the provisioned
+`land_area`/`water_area` GeoPackage), `terrain_vrt`, its referenced native terrain assets,
+`terrain_provenance`, `canopy_inventory`, `worldcover_manifest`, `gba_subset` and
+`gba_manifest`. The canopy inventory supplies checksummed native tiles; the WorldCover
+manifest supplies checksummed clips and `bounds_wgs84`. Building coverage must come from a
+completed validated subset. No input downloads or previous-output cleanup occur.
+
+Sources need at least 1% clipped land and at most 95% clipped water relative to the full
+H3 polygon. Fifteen deterministic samples lie on the source's land portion inside the
+rectangle, excluding building-present 10 m cells. A 30 m private canopy clearance remains
+an observer assumption; it does not certify access. Terrain gaps or missing geometric
+support fail; missing canopy/roof heights retain uncertainty bounds and nullable complete
+scores. Full-footprint water qualification uses geometry beyond each tile edge so tile
+boundaries cannot invent unknown-water seams.
+
+Weighted stride-2 targets retain each H3/block population count, with a census for target
+portions smaller than 1,000 water pixels. Twelve evenly distributed sources in sorted H3
+order receive full target-census checks. The maximum 10 percentage-point / p95 5
+percentage-point gates are inherited experimental tolerances, not accuracy guarantees for
+unchecked sources. A failed check prevents final completion, while retaining partitions.
+
+Run `prepare` and `score` as separate CLI actions to release preparation memory before
+scoring. `run` performs both. Outputs include read-only NumPy surface bands plus grid
+metadata, clipped land/water polygons, observer designs, per-source pair partitions,
+`average_viewability.parquet` and `runtime.json`. The summary records preparation wall time,
+per-source preparation/scoring/reference times, scoring wall time and sampled combined RSS.
+Cold retained-input acquisition, field calibration and extrapolation to different terrain,
+source counts or hardware remain separate from this regional timing evidence.
+
+## Supported v2 execution
+
+The regional experiment adapter now delegates new runs to the installed v2 method. Use
+[direct transmission](direct-transmission.md) and its explicit JSON configuration. V1 artifacts
+remain historical evidence; prepared grids require a genuine rebuild with separate unflattened
+observer ground. No existing Data product was replaced during integration.

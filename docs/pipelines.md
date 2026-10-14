@@ -134,3 +134,21 @@ historical manifests without that inventory before entering stage checks. It doe
 certify older cached outputs. Rebuild affected producers with their explicit overwrite controls
 or a fresh workspace, then create a new manifest. Remote source freshness is not certified by
 local checksum validation.
+
+## Explicit direct-transmission workflow
+
+`viewshed-toolkit transmission --config request.json --stage prepare|score|run|validate` selects
+the separate versioned scenario workflow registered in `TRANSMISSION_STAGES`. It neither acquires
+inputs nor overwrites/promotes legacy outputs. Completion requires matched input/configuration/code
+identity and validated source partitions. Failed generations remain incomplete with evidence
+preserved. See [direct transmission](direct-transmission.md) for schema and lifecycle details.
+
+### Persistent explicit-transmission tiles
+
+The opt-in `transmission-tiles` workflow plans provisioned inputs, preprocesses each required canonical
+parent once into immutable compressed storage tiles, then reads those tiles for weights. It has no
+acquisition dependency or implicit cleanup. A completion ledger rejects unwritten/deleted chunks;
+explicit resume validates receipts, and explicit recovery refuses live owners or committed corruption.
+The [persistent workflow](direct-transmission.md#persistent-xarray-tile-preparation-and-scoring) retains
+full-source observer support, source-relative sampling, original ray coordinates, conservative terrain
+support and numerical census gates. Final source evidence and one prepared store remain local.

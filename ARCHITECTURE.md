@@ -222,3 +222,29 @@ Before handing off a change:
 6. Verify ignored/generated products were not accidentally staged.
 7. Report tests run, skips, missing data or GDAL limitations, and any regional workflows or
    notebooks intentionally not run.
+
+## Direct-transmission method ownership
+
+The explicit v2 scenario uses `config/transmission.py` for strict configuration,
+`contracts/transmission.py` for identity, `prepare/transmission.py` plus area/elevation helpers
+for provisioned grids/designs, `weights/transmission.py` and `transmission_worker.py` for
+calculations, `finalize/transmission.py` for acceptance, and `api/transmission.py` for orchestration.
+`cli/transmission.py` presents `TRANSMISSION_STAGES`; `_internal/workers.py` supervises owned
+processes. Demo adapters call these owners. Legacy default stages remain unchanged.
+
+The opt-in persistent variant uses `config/transmission_tiles.py`, `contracts/transmission_store.py`
+and `contracts/transmission_tile_budget.py`; `prepare/elevation/transmission_store.py` owns immutable
+xarray tile IO and `prepare/area/transmission_index.py` owns the separate water/H3 dictionary. Typed
+preparation is in `api/transmission_tiles.py`; supervised workflow dispatch is in
+`api/transmission_tile_workflow.py`, weights in `weights/transmission_store.py`, acceptance in
+`finalize/transmission_tiles.py`, and presentation in `cli/transmission_tiles.py`. Canonical warping and
+rasterization stay in their existing preparation owner; stage names stay in the central registry.
+
+
+Exact direct-transmission acceleration remains in the weights layer:
+`weights/transmission_fast.py` owns bounded target scheduling and validated
+execution, `weights/transmission_fast_kernels.py` owns conservative native block
+proofs, and `weights/transmission_reduce.py` owns the unchanged ordered reductions
+shared with the reference calculation. `prepare/area/transmission_support_cache.py`
+owns the bounded geometry-mask cache. All depend toward existing numerical,
+preparation and contract owners; preparation never imports calculation modules.

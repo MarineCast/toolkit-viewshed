@@ -91,11 +91,25 @@ from ...prepare.area.geometry import (
 from ...prepare.area.inputs import load_source_cells
 from .. import distance
 
+
+class _RetainedIdentity:
+    """Keep cache inputs alive and compare identity even when integer IDs collide."""
+
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+    def __hash__(self) -> int:
+        return id(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _RetainedIdentity) and self.value is other.value
+
+
 LOGGER = logging.getLogger(__name__)
 _TARGET_WATER_AREA_BY_H3_CACHE: dict[tuple[Any, ...], pl.DataFrame] = {}
 _WATER_TERRAIN_DOMAIN_CACHE: dict[str, domains.DomainGeometries] = {}
-_PROJECTED_LAND_DOMAIN_CACHE: dict[tuple[str, str, str, int], Any] = {}
-_PROJECTED_LAND_EXCLUSION_CACHE: dict[tuple[int, float], Any] = {}
+_PROJECTED_LAND_DOMAIN_CACHE: dict[tuple[str, str, str, _RetainedIdentity], Any] = {}
+_PROJECTED_LAND_EXCLUSION_CACHE: dict[tuple[_RetainedIdentity, float], Any] = {}
 _PROJECTED_TRANSFORMER_CACHE: dict[tuple[str, str, str], Transformer] = {}
 _PROJECTED_H3_BOUND_CACHE: dict[tuple[str, str, str, str], tuple[float, float, float]] = {}
 _PROJECTED_H3_BOUNDS_CACHE: dict[tuple[str, str, str], dict[str, tuple[float, float, float]]] = {}
@@ -628,7 +642,12 @@ def _water_land_mask_settings(app: AppConfig) -> tuple[float, int]:
 
 def _projected_land_domain_for_app(app: AppConfig, domain_geometries: domains.DomainGeometries):
     crs = str(app.viewshed.crs_projected)
-    cache_key = (str(app.config_path), app.config_hash, crs, id(domain_geometries.land_domain))
+    cache_key = (
+        str(app.config_path),
+        app.config_hash,
+        crs,
+        _RetainedIdentity(domain_geometries.land_domain),
+    )
     cached = _PROJECTED_LAND_DOMAIN_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -760,7 +779,7 @@ def _projected_land_exclusion_for_app(
 
     projected_land = _projected_land_domain_for_app(app, domain_geometries)
     clearance_m = max(0.0, float(land_clearance_m))
-    cache_key = (id(projected_land), clearance_m)
+    cache_key = (_RetainedIdentity(projected_land), clearance_m)
     cached = _PROJECTED_LAND_EXCLUSION_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -815,8 +834,8 @@ def _projected_water_target_samples_for_app(
         str(app.viewshed.crs_projected),
         str(target_cell),
         int(max_samples),
-        id(water_domain),
-        id(_water_geometry_sample_points),
+        _RetainedIdentity(water_domain),
+        _RetainedIdentity(_water_geometry_sample_points),
     )
     cached = _PROJECTED_WATER_TARGET_SAMPLE_CACHE.get(cache_key)
     if cached is not None:

@@ -63,6 +63,8 @@ nav:
       - Shared study and R7 reporting: shared-study.md
       - Bounded native raster windows: BOUNDED_WINDOWS.md
       - Building obstruction pilot: building-obstruction-pilot.md
+      - Direct-ray transmission: direct-transmission.md
+      - Retained weight diagnostics: regional-weight-diagnostics.md
       - Pipeline stages: pipelines.md
       - Performance: performance.md
   - Development:

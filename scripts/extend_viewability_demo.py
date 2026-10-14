@@ -20,7 +20,6 @@ import polars as pl
 import rasterio
 from affine import Affine
 from benchmark_cell_scores import digest, target_design
-from compare_classified_canopy import aggregate_support
 from map_average_viewability import PARTS_SQL, make_artifact, plot_site, target_population
 from pyproj import Transformer
 from rasterio.enums import Resampling
@@ -34,9 +33,13 @@ from viewshed_toolkit._internal.artifacts.contracts import atomic_write_json
 from viewshed_toolkit._internal.data.parquet import atomic_sink_parquet
 from viewshed_toolkit.pipeline.prepare.elevation.buildings import rasterize_building_footprints
 from viewshed_toolkit.pipeline.prepare.elevation.canopy import qualify_water_footprints
-from viewshed_toolkit.pipeline.prepare.elevation.obstruction import compose_above_ground_surface
 from viewshed_toolkit.pipeline.providers.global_building_atlas import iter_gba_subset
-from viewshed_toolkit.pipeline.weights.vegetation.classified import classified_ray_support
+from viewshed_toolkit.pipeline.weights.rays import DIRECT_RAY_CONTRACT
+from viewshed_toolkit.pipeline.weights.transmission import calculate
+from viewshed_toolkit.pipeline.weights.vegetation.classified import (
+    CLASSIFIED_CANOPY_CONTRACT,
+    classified_ray_support,
+)
 
 CONTRACT = "extended_retained_viewability_demo_v1"
 METRES_PER_MILE = 1609.344
@@ -66,8 +69,9 @@ def extended_grid(transform, observers, radius):
 
 
 def align(path, grid_shape, transform, *, nodata, dtype):
-    with rasterio.open(path) as src:
-        with WarpedVRT(
+    with (
+        rasterio.open(path) as src,
+        WarpedVRT(
             src,
             crs="EPSG:32610",
             transform=transform,
@@ -78,8 +82,9 @@ def align(path, grid_shape, transform, *, nodata, dtype):
             dtype=dtype,
             warp_mem_limit=64,
             tolerance=1e-8,
-        ) as vrt:
-            return vrt.read(1)
+        ) as vrt,
+    ):
+        return vrt.read(1)
 
 
 def load_classes(assets, grid_shape, transform):
@@ -96,7 +101,7 @@ def load_classes(assets, grid_shape, transform):
 def overlay_previous(data, old, original, transform):
     """Preserve the intersecting prior window, including smaller configured reach."""
     col, row = (~transform) * (original.c, original.f)
-    row, col = int(round(row)), int(round(col))
+    row, col = round(row), round(col)
     height, width = old["ground"].shape
     target_height, target_width = data["ground"].shape
     r0, c0 = max(0, row), max(0, col)
@@ -212,46 +217,6 @@ def prepare(site, old_path, inventory, dem, assets, acquisition, subset, radius,
     )
     atomic_write_json(cache / f"{site['name']}.json", support, overwrite=True)
     return data, classes, water, support
-
-
-def calculate(data, classes, observers, targets, codes, weights, cells, radius):
-    started = time.perf_counter()
-    ground = data["ground"]
-    buildings = compose_above_ground_surface(
-        np.zeros_like(ground),
-        np.zeros(ground.shape, bool),
-        data["building"],
-        data["building_unknown"],
-        qualified_water=data["qualified_water"],
-        building_present=data["building_present"],
-    )
-    canopy = np.where(buildings.qualified_water, 0, data["canopy"])
-    unknown = data["canopy_unknown"] & ~buildings.qualified_water
-    values = np.empty((len(observers), len(targets)), dtype="float64")
-    for i, (x, y, elevation) in enumerate(observers):
-        clearance = np.zeros(ground.shape, bool)
-        row, col = rasterio.transform.rowcol(data["transform"], x, y)
-        r0, r1, c0, c1 = max(0, row - 4), row + 5, max(0, col - 4), col + 5
-        rr, cc = np.mgrid[r0:r1, c0:c1]
-        xx, yy = data["transform"] * (cc + 0.5, rr + 0.5)
-        clearance[r0:r1, c0:c1] = np.hypot(xx - x, yy - y) <= 30
-        clearance[row, col] = True
-        values[i] = classified_ray_support(
-            ground,
-            canopy,
-            unknown,
-            classes,
-            buildings.lower_height,
-            buildings.unknown,
-            transform=data["transform"],
-            observer_xy=(x, y),
-            targets_xy=targets,
-            observer_ground_elevation_m=float(elevation),
-            water_class_policy="zero_if_missing",
-            canopy_clearance_mask=clearance,
-            max_distance_m=radius,
-        )
-    return aggregate_support(values, codes, weights, len(cells)), time.perf_counter() - started
 
 
 def run(config):
@@ -380,7 +345,7 @@ def run(config):
                     "30m water centres in union of observer reach; "
                     "partial boundary H3 water portions"
                 ),
-                model_contract=trial["model"]["contract"],
+                model_contract=CLASSIFIED_CANOPY_CONTRACT,
                 beta_per_m=0.002,
                 water_class_policy="zero_if_missing",
                 sampling="fast" if accepted else "full",
@@ -431,7 +396,12 @@ def run(config):
         previous_report_sha256=digest(trial_path),
         sites=sites,
         pairs=table.to_dicts(),
-        model=trial["model"],
+        input_model=trial["model"],
+        model={
+            **trial["model"],
+            "contract": CLASSIFIED_CANOPY_CONTRACT,
+            "direct_ray_contract": DIRECT_RAY_CONTRACT,
+        },
         worldcover=trial["worldcover"],
         code_checksums={
             Path(p).name: digest(p)

@@ -5,6 +5,14 @@ import sys
 from pathlib import Path
 
 PATTERNS = (
+    "src/viewshed_toolkit/_internal/workers.py",
+    "src/viewshed_toolkit/pipeline/*/transmission*.py",
+    "src/viewshed_toolkit/pipeline/prepare/area/transmission.py",
+    "src/viewshed_toolkit/pipeline/prepare/elevation/transmission.py",
+    "src/viewshed_toolkit/pipeline/prepare/elevation/transmission_tiles.py",
+    "src/viewshed_toolkit/pipeline/prepare/elevation/transmission_store.py",
+    "src/viewshed_toolkit/pipeline/prepare/area/transmission_index.py",
+    "src/viewshed_toolkit/pipeline/prepare/area/transmission_envelope.py",
     "src/viewshed_toolkit/_internal/performance.py",
     "src/viewshed_toolkit/_internal/pilot.py",
     "src/viewshed_toolkit/pipeline/api/pilot.py",
@@ -45,6 +53,19 @@ def main() -> None:
     sources = sorted({str(path) for pattern in PATTERNS for path in Path().glob(pattern)})
     files = [
         *sources,
+        "tests/pipeline/test_transmission_workflow.py",
+        "tests/pipeline/test_transmission_tiles.py",
+        "tests/pipeline/test_transmission_store.py",
+        "tests/pipeline/test_transmission_tile_preparation.py",
+        "tests/pipeline/test_transmission_tile_weights.py",
+        "tests/pipeline/test_transmission_tile_lifecycle.py",
+        "scripts/preprocess_transmission_tiles.py",
+        "scripts/score_transmission_tiles.py",
+        "scripts/make_transmission_tile_request.py",
+        "tests/pipeline/test_regional_viewability_pilot.py",
+        "tests/pipeline/test_regional_weight_diagnostics.py",
+        "scripts/regional_viewability_pilot.py",
+        "scripts/regional_weight_diagnostics.py",
         "tests/pipeline/test_component_workflow.py",
         "tests/pipeline/test_case_study.py",
         "tests/pipeline/test_distance_products.py",
