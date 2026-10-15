@@ -313,11 +313,11 @@ existing completion. The decoded payload is18 bytes/pixel instead of21; this is 
 height-bin codes instead of a float64 height-score temporary. Precision experiments remain separate.
 
 
-## Exact fast calculation
+## Fast calculation
 
-Persistent tile requests default to `calculation_mode: exact_fast`. Set
-`calculation_mode: reference` to use the original observer calculation. The fast
-path retains every DDA step, curvature expression, float64 canopy coefficient,
+Persistent tile requests default to `calculation_mode: block_jump`. Set
+`calculation_mode: reference` to use the original observer calculation.
+`calculation_mode: exact_fast` retains every DDA step, curvature expression, float64 canopy coefficient,
 full observer-row exponentiation and ordered pair reduction. Conservative
 128-pixel block proofs omit obstruction or canopy checks only where immutably
 owned fields prove them unnecessary. Mutable, aliased or out-of-bound surface
@@ -328,7 +328,8 @@ The measured scheduling choice is eight workers and four target chunks per
 observer; four workers did not show a consistent chunking gain on both benchmark
 windows. Worker count still defaults to one. One pool serves all source windows
 in the persistent worker, and chunk jobs write disjoint slices. Whole-row
-exponentiation and reductions preserve exact deterministic results.
+exponentiation and reductions preserve deterministic ordering in both fast modes.
+The default `block_jump` additionally skips certified clear blocks as described below.
 
 Preparation uses bounded 4,096-footprint raster batches, retaining maximum
 overlapping float32 roof heights and independent presence/missing masks. The
@@ -343,3 +344,149 @@ base coverage. Code/configuration identity continues to invalidate stale reuse.
 These optimizations do not change observer eligibility, target population,
 scientific uncertainty, the covered-building absence assumption or acquired
 canopy-gap zero policy. Original masks and assumption provenance remain required.
+
+
+The decoded tile cache can be set with `decoded_cache_bytes` (default 64 MiB,
+maximum 256 MiB and at most one quarter of `max_memory_bytes`). This is private
+retained tile RAM; source windows and caller copies are accounted separately by
+the unchanged aggregate process guard. Every tile access still validates durable
+checksums, including RAM hits. A cache miss hashes once before decoding. Store
+telemetry records checksum and decode time, checks, hits, misses and decoded bytes.
+
+Exact-fast observer clearance uses a private patch with a raster offset, preserving
+the 30 m centre-distance rule and explicit source cell exception at grid edges.
+Bare terrain reuses a roof-visible state only with identical geometry and validated
+nonnegative building heights. Identically out-of-range states are shared; blocked
+and unknown roof states still run the bare traversal. Target grouping uses integer
+water dictionary codes internally and retains the original lexical H3 output order.
+The unchanged whole-row exponentiation and matrix reduction order remain in force.
+
+Window assembly consumes already decoded overlapping tiles before new misses can
+evict them. Each tile still passes its durable checksum on every access, and
+copies fill disjoint window regions. Source execution retains the prepared plan
+order and frozen census IDs; simple raster or geographic source sorting did not
+improve bounded-cache reuse in the retained-plan access-sequence experiment.
+
+### Exact calculation and tile reuse
+
+The `exact_fast` tile workflow shares a terrain-blockage proof from the roof/terrain
+pass with the bare-terrain diagnostic. It only reuses a known terrain obstruction
+under identical ray geometry; roof-only blockers and unresolved paths still receive
+the separate terrain calculation. Canopy and unknown-state rules are unchanged.
+
+On census sources, one full-population traversal also supplies the original sampled
+subset. Raw sampled depths are selected before their own whole-row exponentiation,
+and sample and census reductions retain their original order and weights. Both
+sampling-error gates still run. Source evidence marks `shared_census_traversal`;
+`scoring_seconds` then measures the sample reduction, while `reference_seconds`
+accounts for the remaining shared census calculation. Their sum is the combined
+calculation time. This saves duplicate rays only on census-checked sources.
+
+The scoring worker supplies its pending source-window sequence to the decoded tile
+cache. Within the existing byte budget, the cache preferentially retains tiles needed
+sooner and can decline to cache a one-use tile. Sources and frozen census membership
+are not reordered. Every requested tile still undergoes its durable checksum check,
+including cache hits; decoded fields are not reused across changed stores. The hints
+hold tile keys rather than raster data. Existing callers without a schedule retain
+LRU eviction. These are runtime optimizations of the same raster model, not evidence
+of physical visibility accuracy or a guaranteed regional completion time.
+
+
+### Direct clear-block jumps
+
+`block_jump` uses the same source/target design, obstruction rasters, curvature,
+missingness rules, terrain-blockage reuse and shared census reduction as `exact_fast`.
+It jumps to the exit of a 128-pixel block only after proving the entire surface
+below the sightline, or proving zero canopy depth with complete relevant support.
+Unknown heights, classes or missing terrain prevent those proofs. Cell crossings
+are recomputed from lattice coordinates, so this is not bitwise identical to the
+incremental-DDA `exact_fast` mode. Generic calculations outside the validated
+10 m / 30 km numerical envelope retain the incremental fast path. That mode remains available for comparisons;
+`reference` remains the unscheduled reference route.
+
+Two retained SRKW windows showed 31–35% lower full-source time in bounded prototype
+benchmarks, excluding durable tile IO and publication. Independent ray checks and
+synthetic geometry tests supplement comparisons with the existing implementation;
+this is not empirical visibility validation or a regional runtime guarantee.
+Target-sampling experiments are not enabled: rare unknown coverage can be missed.
+
+Both calculation mode and package code are already included in persisted identity.
+Changed code invalidates existing preparation/completion and scoring receipts; use
+fresh validated generations rather than relabeling existing caches. Existing
+requests explicitly selecting `exact_fast` retain that mode; choose `block_jump`
+to enable direct jumps. New requests omitting the mode select `block_jump`.
+
+
+### Exact target-preparation reuse
+
+Regional scoring continues to represent all eligible source land. The canonical
+water population, deterministic observer design, sample representatives, weights,
+and missing-data interpretation are unchanged by these preparation optimizations:
+
+- Water reach tests stop checking a target after one observer establishes membership
+  in the observer-reach union, using the same distance comparison at the boundary.
+- H3 grouping uses the provider's existing integer dictionary without sorting every
+  water point again; output H3 order remains lexical.
+- Target quadrature groups and representatives are selected in one ordering pass.
+  Row-ordered stride-1/2 populations use bounded integer keys and stable ordering;
+  generic or overflow-prone inputs retain lexicographic ordering. Per-H3 census
+  thresholds and source-relative sampling phase remain unchanged.
+- Compact uint8 canopy/class inputs reuse an immutable 256-by-256 coefficient and
+  unknown-class lookup (~576 KiB), derived from the generic float64 formula.
+  Other dtypes retain the generic formula. This shares classification work across
+  sources without retaining additional full-window rasters.
+
+These optimizations do not reduce the number of rays, coarsen obstruction rasters,
+change unknown coverage to known, or restrict sources to observation locations.
+Code fingerprints still require fresh validated generations after implementation
+changes. Timings from retained-window benchmarks exclude durable tile IO and do not
+establish a full regional completion time.
+
+
+### Bounded shared-raster batches
+
+`source_batch_size` defaults to 2; set it to 1 for sequential window assembly.
+The worker may assemble two adjacent, overlapping source windows in one tile pass,
+decoding each shared tile once. It preserves source order, census membership,
+all-land observers, target sampling, every raster byte and all missing-data masks.
+Each source is still scored and published separately. Prepared arrays are private
+and read-only; consuming each window rechecks every durable tile receipt, including
+changes made after prefetch. A corrupt or changed tile fails rather than using a
+stale buffered window.
+
+Batch buffers must fit within one quarter of `max_memory_bytes`. They also must
+fit a conservative scoring-memory estimate including the water index, decoded
+cache and a 512 MiB reserve. Unsupported modes, duplicate/nonoverlapping windows,
+or insufficient estimated headroom use sequential reads. The supervising process
+retains its hard aggregate memory limit; the estimate is not an RSS guarantee.
+Only two windows can be queued, and batch buffers are released after consumption
+or when leaving the batch. This adds no durable storage or cleanup operation.
+
+`raster_batch_assembly_seconds` records each window's pixel-proportional share of
+batch assembly time. That share is included in its `preparation_seconds` and
+`total_seconds`, so moving IO before scoring does not hide it from runtime evidence.
+The window-consumption checksum checks are additionally timed in the normal path.
+Code and request fingerprints require fresh validated generations after this change.
+
+Group-level terrain-blocking proofs remain an experiment rather than an enabled
+calculation path. Independent geometry and raw-ray parity checks are necessary but
+do not by themselves establish either empirical accuracy or a runtime improvement.
+
+### One-pass compact raster qualification
+
+Canonical Float32 ground/buildings, UInt8 canopy/classes, and Boolean support masks
+use one compiled pass to populate the same owned, read-only building and classified
+canopy arrays. This avoids full-window temporary masks and repeated copies. The
+coefficient lookup still comes from the generic classification formula; no height,
+resolution, observer, target, land population, or unknown-coverage policy changes.
+Other dtypes and signed building zero retain the generic preparation path. Invalid
+building heights are rejected even on qualified water. Source-specific terrain
+support, canopy-gap qualification/provenance and observer clearance remain separate.
+The compact path's `class_preparation_seconds` includes joint qualification, while
+`stationary_preparation_seconds` continues to include all stationary preparation.
+
+Prepared-tile caching and a fused roof/terrain/canopy ray traversal were evaluated
+but are not enabled: caching regressed when its working set exceeded its budget,
+and the tested fused traversal was slower than the existing block-jump kernels.
+No extra persistent cache or memory budget is introduced. Existing code fingerprints
+require fresh validated generations; do not relabel previous calculations.

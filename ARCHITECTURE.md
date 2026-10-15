@@ -243,7 +243,8 @@ rasterization stay in their existing preparation owner; stage names stay in the 
 
 Exact direct-transmission acceleration remains in the weights layer:
 `weights/transmission_fast.py` owns bounded target scheduling and validated
-execution, `weights/transmission_fast_kernels.py` owns conservative native block
+execution, `weights/transmission_jump_kernels.py` owns direct block exits with lattice-based crossing times,
+`weights/transmission_fast_kernels.py` owns conservative native block
 proofs, and `weights/transmission_reduce.py` owns the unchanged ordered reductions
 shared with the reference calculation. `prepare/area/transmission_support_cache.py`
 owns the bounded geometry-mask cache. All depend toward existing numerical,

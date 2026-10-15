@@ -13,6 +13,7 @@ from ..prepare.elevation.obstruction import compose_above_ground_surface
 from .distance.compute import distance_weight_values
 from .rays import direct_ray_visibility
 from .transmission_reduce import aggregate_support, reduce_weights
+from .transmission_stationary import stationary_compact
 from .vegetation.classified import classified_ray_support, prepare_classified_canopy
 
 
@@ -53,17 +54,23 @@ def prepare_calculation(
         raise ValueError("Acquired canopy coverage must be qualified before gap imputation")
     started = time.perf_counter()
     ground = _immutable(data["ground"])
-    buildings = compose_above_ground_surface(
-        np.zeros_like(ground),
-        np.zeros(ground.shape, bool),
-        data["building"],
-        data["building_unknown"],
-        qualified_water=data["qualified_water"],
-        building_present=data["building_present"],
-    )
-    canopy = np.where(buildings.qualified_water, 0, data["canopy"])
-    unknown = data["canopy_unknown"] & ~buildings.qualified_water
-    prepared_canopy = prepare_classified_canopy(canopy, unknown, classes, water_class_policy)
+    stationary = stationary_compact(data, classes, water_class_policy)
+    if stationary is None:
+        buildings = compose_above_ground_surface(
+            np.zeros_like(ground),
+            np.zeros(ground.shape, bool),
+            data["building"],
+            data["building_unknown"],
+            qualified_water=data["qualified_water"],
+            building_present=data["building_present"],
+        )
+        canopy = np.where(buildings.qualified_water, 0, data["canopy"])
+        unknown = data["canopy_unknown"] & ~buildings.qualified_water
+        prepared_canopy = prepare_classified_canopy(canopy, unknown, classes, water_class_policy)
+        building = _immutable(buildings.lower_height)
+        building_unknown = _immutable(buildings.unknown)
+    else:
+        building, building_unknown, prepared_canopy = stationary
     if terrain_support_mask is not None:
         if terrain_support_mask.dtype != np.bool_ or terrain_support_mask.shape != ground.shape:
             raise ValueError("Aligned boolean terrain support required")
@@ -105,8 +112,8 @@ def prepare_calculation(
     return PreparedCalculation(
         ground,
         prepared_canopy,
-        _immutable(buildings.lower_height),
-        _immutable(buildings.unknown),
+        building,
+        building_unknown,
         data["transform"],
         support,
         data.get("ray_reference_transform", data["transform"]),
@@ -172,6 +179,7 @@ def calculate_prepared(
     target_chunks: int = 4,
     pool: Any = None,
     profile: Any = None,
+    sampled_subset: Any = None,
 ) -> Any:
     """Deterministic row order with immutable fields and bounded native observer threads."""
     if (
@@ -180,11 +188,11 @@ def calculate_prepared(
         or not 1 <= observer_workers <= 32
     ):
         raise ValueError("Observer workers must be an integer from1to32")
-    if calculation_mode not in {"reference", "exact_fast"}:
+    if calculation_mode not in {"reference", "exact_fast", "block_jump"}:
         raise ValueError("Unknown calculation mode")
     if type(target_chunks) is not int or not 1 <= target_chunks <= 4:
         raise ValueError("Target chunks must be an integer from 1 to 4")
-    if calculation_mode == "exact_fast":
+    if calculation_mode in {"exact_fast", "block_jump"}:
         from .transmission_fast import calculate_chunked
 
         return calculate_chunked(
@@ -200,7 +208,11 @@ def calculate_prepared(
             chunks_per_observer=target_chunks,
             pool=pool,
             profile=profile,
+            sampled_subset=sampled_subset,
+            block_jumps=calculation_mode == "block_jump",
         )
+    if sampled_subset is not None:
+        raise ValueError("Sample reuse requires exact_fast or block_jump calculation mode")
     started = time.perf_counter()
     ground = prepared.ground
     pc = prepared.canopy

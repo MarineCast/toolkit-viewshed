@@ -33,7 +33,12 @@ from viewshed_toolkit.pipeline.weights.transmission_store import score_prepared_
 
 
 @pytest.mark.parametrize("state", ["clear", "unknown", "blocked"])
-def test_readonly_store_matches_independent_dense_calculation(tmp_path, state):
+@pytest.mark.parametrize("mode", ["reference", "exact_fast", "block_jump"])
+@pytest.mark.parametrize("threshold", [0, 1000])
+def test_readonly_store_matches_independent_dense_calculation(
+    tmp_path, monkeypatch, state, mode, threshold
+):
+    radius = 1000.0 if threshold == 0 else 120.0
     grid = Affine(10, 0, 499500, 0, -10, 5370500)
     size = (384, 384)
     data = {k: np.zeros(size, dtype=v) for k, v in DTYPES.items()}
@@ -49,9 +54,9 @@ def test_readonly_store_matches_independent_dense_calculation(tmp_path, state):
     # Outside required support retains rawNaN rather than forcing whole-tilefinite.
     data["ground"][0, 0] = np.nan
     old, oldshape = extended_grid(
-        grid, np.array([[*land.bounds[:2], 0], [*land.bounds[2:], 0]]), 120.0
+        grid, np.array([[*land.bounds[:2], 0], [*land.bounds[2:], 0]]), radius
     )
-    win, wh = endpoint_grid(old, land, water, 120.0)
+    win, wh = endpoint_grid(old, land, water, radius)
     lon, lat = Transformer.from_crs(32610, 4326, always_xy=True).transform(
         land.centroid.x, land.centroid.y
     )
@@ -75,10 +80,11 @@ def test_readonly_store_matches_independent_dense_calculation(tmp_path, state):
     before = {p.name: digest(p) for p in root.iterdir()}
     provider = decode_water_index(encode_water_index(water, grid), water, grid)
     config = SimpleNamespace(
-        max_distance_m=120.0,
+        max_distance_m=radius,
         source_samples=15,
         target_stride=2,
-        census_threshold=1000,
+        census_threshold=threshold,
+        calculation_mode=mode,
         observer_workers=1,
         maximum_sampling_error=0.1,
         p95_sampling_error=0.05,
@@ -90,7 +96,7 @@ def test_readonly_store_matches_independent_dense_calculation(tmp_path, state):
     )
     window = store.window(win, wh)
     observers, _ = observer_design(source, window, samples=15)
-    targets, rr, cc, _ = target_population(water, old, oldshape, observers, max_distance_m=120.0)
+    targets, rr, cc, _ = target_population(water, old, oldshape, observers, max_distance_m=radius)
     lon, lat = Transformer.from_crs(32610, 4326, always_xy=True).transform(
         targets[:, 0], targets[:, 1]
     )
@@ -98,8 +104,8 @@ def test_readonly_store_matches_independent_dense_calculation(tmp_path, state):
         np.array([h3.latlng_to_cell(y, x, 7) for x, y in zip(lon, lat, strict=True)]),
         return_inverse=True,
     )
-    selected, weights = target_design(rr, cc, codes, 2, census_threshold=1000)
-    support = required_support_mask(win, wh, land, water, 120.0)
+    selected, weights = target_design(rr, cc, codes, 2, census_threshold=threshold)
+    support = required_support_mask(win, wh, land, water, radius)
     window["ray_reference_transform"] = old
     result, _ = calculate(
         window,
@@ -109,7 +115,7 @@ def test_readonly_store_matches_independent_dense_calculation(tmp_path, state):
         codes[selected],
         weights,
         cells,
-        120.0,
+        radius,
         distance_config=DistanceWeightConfig(),
         terrain_support_mask=support,
     )
@@ -119,6 +125,7 @@ def test_readonly_store_matches_independent_dense_calculation(tmp_path, state):
         assert row["average_viewability"] == result["score"][i]
         for key, value in result["diagnostics"][i].items():
             assert row[key] == value
+    assert info.get("shared_census_traversal", False) == (mode in {"exact_fast", "block_jump"})
     assert info["census_checked"]
     assert len(info["observers"]) == 15
     assert before == {p.name: digest(p) for p in root.iterdir()}
@@ -128,6 +135,37 @@ def test_readonly_store_matches_independent_dense_calculation(tmp_path, state):
         store, source, water, provider, other, census=True, water_class_policy="zero_if_missing"
     )
     assert parallel.equals(frame)
+    # Shared raster assembly must preserve census gates, nulls and all physical
+    # weights, including the known-blocked and unknown fixtures above.
+    second_shape = (wh[0], wh[1] - 3)
+    store.prefetch_windows([(win, tuple(wh)), (win, second_shape)], max_bytes=64 * 1024**2)
+    batched, batch_info = score_prepared_source(
+        store, source, water, provider, other, census=True, water_class_policy="zero_if_missing"
+    )
+    assert batched.equals(frame)
+    assert batch_info["raster_batch_assembly_seconds"] > 0
+    assert batch_info["preparation_seconds"] >= batch_info["raster_batch_assembly_seconds"]
+    assert batch_info["sampling_error"] == info["sampling_error"]
+    assert batch_info["pair_support_interpretation"] == info["pair_support_interpretation"]
+    store.window(win, second_shape)
+    assert not store._prefetched
+
+    if mode in {"exact_fast", "block_jump"}:
+        import viewshed_toolkit.pipeline.weights.transmission_store as module
+
+        monkeypatch.setattr(
+            module, "sampling_difference", lambda *args: {"maximum": 1.0, "p95": 1.0}
+        )
+        with pytest.raises(ValueError, match="census gate rejected"):
+            score_prepared_source(
+                store,
+                source,
+                water,
+                provider,
+                config,
+                census=True,
+                water_class_policy="zero_if_missing",
+            )
 
 
 def test_water_index_integer_dictionary_exact_and_stale_geometry_rejected():

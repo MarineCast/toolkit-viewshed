@@ -216,7 +216,19 @@ def test_native_planner_receipt_rejects_scope_and_resource_damage(field, value):
         validate_global_warp_chunk_plan(payload, expected=expected)
 
 
-def test_metadata_helper_preserves_rejection_of_external_masks(tmp_path, native_helper):
+def test_metadata_helper_preserves_rejection_of_external_masks(tmp_path, native_helper, request):
+    if os.environ.get("VIEWSHED_ISOLATED_WARP_TEST") != "1":
+        # Diagnostic qualification must not depend on memory retained by earlier tests.
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", request.node.nodeid],
+            cwd=ROOT,
+            env={**os.environ, "VIEWSHED_ISOLATED_WARP_TEST": "1"},
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        return
     app = load_app_config(ROOT / "configs/salish_sea.yaml")
     source = tmp_path / "masked.tif"
     with rasterio.open(
@@ -287,3 +299,79 @@ def test_boolean_schema_cannot_become_legacy_receipt():
     payload = {**expected, "chunks": [[0, 0, 10, 10]], "producer_reference_sha256": "a" * 64}
     with pytest.raises(ValueError, match="Unsupported"):
         validate_global_warp_chunk_plan(payload, expected=expected)
+
+
+@pytest.mark.parametrize("parent_bytes,child_bytes", [(769 * 1024**2, 0), (0, 513 * 1024**2)])
+def test_native_planner_resource_guard_is_independent_of_diagnostics(
+    tmp_path, native_helper, monkeypatch, parent_bytes, child_bytes
+):
+    import json
+    from types import SimpleNamespace
+
+    from viewshed_toolkit.pipeline.prepare.elevation import warp_planner as planner
+
+    source = tmp_path / "source.tif"
+    with rasterio.open(
+        source,
+        "w",
+        driver="GTiff",
+        width=2,
+        height=2,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=from_origin(-123, 48, 0.001, 0.001),
+    ) as raster:
+        raster.write(np.ones((2, 2), np.float32), 1)
+    app = load_app_config(ROOT / "configs/salish_sea.yaml")
+    app = replace(
+        app,
+        paths=replace(app.paths, projected_dem_path=tmp_path / "unused.tif"),
+        batch=replace(
+            app.batch,
+            native_warp_helper_path=str(native_helper),
+            native_warp_helper_sha256=hashlib.sha256(native_helper.read_bytes()).hexdigest(),
+        ),
+    )
+    monkeypatch.setattr(
+        planner.subprocess,
+        "check_output",
+        lambda *a, **k: json.dumps(
+            dict(
+                gdal_version=rasterio.__gdal_version__,
+                source_code_sha256=planner.planner_source_sha256(),
+            )
+        ),
+    )
+
+    class Child:
+        pid = 999999
+        returncode = None
+        terminated = False
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+            self.returncode = -15
+
+        def wait(self, **kwargs):
+            return self.returncode
+
+    child = Child()
+    monkeypatch.setattr(planner.subprocess, "Popen", lambda *a, **k: child)
+    monkeypatch.setattr(
+        planner.psutil,
+        "Process",
+        lambda pid=None: SimpleNamespace(
+            memory_info=lambda: SimpleNamespace(rss=parent_bytes if pid is None else child_bytes)
+        ),
+    )
+    with pytest.raises(RuntimeError, match="stopped at RSS/time/log cap"):
+        planner.generate_native_warp_chunk_plan(
+            app, source, from_origin(500000, 5400000, 30, 30), 40, 40, kind="dem"
+        )
+    assert child.terminated
+    assert len(list(tmp_path.rglob("native-*.log"))) == 1
+    assert not list(tmp_path.rglob("plan.json"))

@@ -23,7 +23,7 @@ from .transmission_tiles import run_tile_preparation, verified_inputs
 
 def checked_store(config: TransmissionTileConfig) -> tuple[Any, dict[str, Any], dict[str, Any]]:
     metadata, _ = verified_inputs(config)
-    store = PreparedTileStore(config.store_dir)
+    store = PreparedTileStore(config.store_dir, cache_bytes=config.decoded_cache_bytes)
     identity = store.manifest["identity"]
     if (
         identity["code"] != implementation_identity()

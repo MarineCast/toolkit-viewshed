@@ -28,6 +28,7 @@ def test_checked_store_compares_inventory_membership_not_parent_traversal(monkey
         source_policy="full",
         max_distance_m=120.0,
         census_sources=1,
+        decoded_cache_bytes=5 * 1024**2,
     )
     identity = dict(
         code={"c": "stable"},
@@ -56,7 +57,13 @@ def test_checked_store_compares_inventory_membership_not_parent_traversal(monkey
             return json.dumps(plan).encode()
 
     monkeypatch.setattr(workflow, "verified_inputs", lambda cfg: ({}, {}))
-    monkeypatch.setattr(workflow, "PreparedTileStore", lambda root: Store())
+
+    def open_store(root, *, cache_bytes):
+        assert root == config.store_dir
+        assert cache_bytes == config.decoded_cache_bytes
+        return Store()
+
+    monkeypatch.setattr(workflow, "PreparedTileStore", open_store)
     monkeypatch.setattr(workflow, "implementation_identity", lambda: {"c": "stable"})
     monkeypatch.setattr(workflow, "store_runtime_identity", lambda: {"r": "stable"})
     assert workflow.checked_store(config)[1] == plan

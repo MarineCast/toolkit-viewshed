@@ -72,8 +72,9 @@ def score_prepared_source(
     ):
         raise ValueError("Source H3 tile lookup differs from complete window support")
     data = store.window(grid, tuple(source["window_shape"]))
+    prefetch_seconds = getattr(store, "last_window_prefetch_seconds", 0.0)
     mask = required_support_mask
-    if getattr(config, "calculation_mode", "reference") == "exact_fast":
+    if getattr(config, "calculation_mode", "reference") in {"exact_fast", "block_jump"}:
         identity = (id(reporting_water), config.max_distance_m)
         if getattr(store, "_support_identity", None) != identity:
             store._support_cache = SupportMaskCache(
@@ -100,6 +101,7 @@ def score_prepared_source(
         raise ValueError("Incomplete target coverage")
     info: dict[str, Any] = {
         "source_h3": source["source_h3"],
+        "raster_batch_assembly_seconds": prefetch_seconds,
         "source_outdoor_land": outdoor,
         "observers": observers.tolist(),
         "target_water_points": len(targets),
@@ -107,7 +109,10 @@ def score_prepared_source(
         "source_state": "complete",
     }
     if not len(targets):
+        elapsed = time.perf_counter() - started + prefetch_seconds
         info.update(
+            preparation_seconds=elapsed,
+            total_seconds=elapsed,
             source_state="no_target_population",
             sampled_result_used=None,
             sampling_error=None,
@@ -133,13 +138,17 @@ def score_prepared_source(
     info["canopy_imputation"] = prepared.canopy_imputation
     del data, support
     distance = config.distance_config()
-    info["preparation_seconds"] = time.perf_counter() - started
+    info["preparation_seconds"] = time.perf_counter() - started + prefetch_seconds
+    shared = census and getattr(config, "calculation_mode", "reference") in {
+        "exact_fast",
+        "block_jump",
+    }
     result, seconds = calculate_prepared(
         prepared,
         observers,
-        targets[selected],
-        codes[selected],
-        weights,
+        targets if shared else targets[selected],
+        codes if shared else codes[selected],
+        np.ones(len(targets)) if shared else weights,
         cells,
         config.max_distance_m,
         distance_config=distance,
@@ -147,7 +156,15 @@ def score_prepared_source(
         calculation_mode=getattr(config, "calculation_mode", "reference"),
         target_chunks=getattr(config, "target_chunks", 4),
         pool=getattr(store, "scoring_pool", None),
+        **({"sampled_subset": (selected, weights)} if shared else {}),
     )
+    if shared:
+        reference = result
+        result = reference.pop("sampled_result")
+        sample_seconds = reference.pop("sampled_reduction_seconds")
+        info["shared_census_traversal"] = True
+        info["reference_seconds"] = seconds - sample_seconds
+        seconds = sample_seconds
     info.update(
         scoring_seconds=seconds,
         sampled_target_points=len(selected),
@@ -156,22 +173,24 @@ def score_prepared_source(
         census_checked=census,
     )
     if census:
-        reference, seconds = calculate_prepared(
-            prepared,
-            observers,
-            targets,
-            codes,
-            np.ones(len(targets)),
-            cells,
-            config.max_distance_m,
-            distance_config=distance,
-            observer_workers=config.observer_workers,
-            calculation_mode=getattr(config, "calculation_mode", "reference"),
-            target_chunks=getattr(config, "target_chunks", 4),
-            pool=getattr(store, "scoring_pool", None),
-        )
+        if not shared:
+            reference, seconds = calculate_prepared(
+                prepared,
+                observers,
+                targets,
+                codes,
+                np.ones(len(targets)),
+                cells,
+                config.max_distance_m,
+                distance_config=distance,
+                observer_workers=config.observer_workers,
+                calculation_mode=getattr(config, "calculation_mode", "reference"),
+                target_chunks=getattr(config, "target_chunks", 4),
+                pool=getattr(store, "scoring_pool", None),
+            )
+            info["reference_seconds"] = seconds
         error = sampling_difference(result, reference)
-        info.update(sampling_error=error, reference_seconds=seconds)
+        info["sampling_error"] = error
         if (
             error["maximum"] > config.maximum_sampling_error
             or error["p95"] > config.p95_sampling_error
@@ -190,6 +209,7 @@ def score_prepared_source(
         for i, cell in enumerate(cells)
     }
     counts = np.bincount(codes, minlength=len(cells))
+    sampled_counts = np.bincount(codes[selected], minlength=len(cells))
     rows = [
         dict(
             **result["diagnostics"][i],
@@ -205,7 +225,7 @@ def score_prepared_source(
             input_unknown_fraction=float(result["unknown"][i]),
             out_of_range_fraction=float(result["out_of_range"][i]),
             target_water_pixel_count=int(counts[i]),
-            sampled_target_points=int((codes[selected] == i).sum()),
+            sampled_target_points=int(sampled_counts[i]),
             observer_count=len(observers),
             max_distance_m=config.max_distance_m,
             sampling=f"stride{config.target_stride}",
@@ -241,5 +261,5 @@ def score_prepared_source(
         distance_weight_expr(distance, distance.hard_cutoff_km)
     )
     frame = frame.select(list(TRANSMISSION_PAIR_SCHEMA)).cast(pl.Schema(TRANSMISSION_PAIR_SCHEMA))
-    info["total_seconds"] = time.perf_counter() - started
+    info["total_seconds"] = time.perf_counter() - started + prefetch_seconds
     return frame, info

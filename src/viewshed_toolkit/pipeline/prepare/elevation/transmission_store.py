@@ -12,8 +12,9 @@ import math
 import os
 import re
 import stat
+import time
 import uuid
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict, deque
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -204,15 +205,20 @@ def _tile_receipt(root: Path, row: int, col: int, spec_hash: str) -> Any:
     return receipt
 
 
-def _load_tile(root: Path, row: int, col: int, spec_hash: str) -> tuple[Any, Any]:
-    receipt = _tile_receipt(root, row, col, spec_hash)
+def _decode_tile(root: Path, row: int, col: int) -> Any:
+    """Decode only after the caller validates this load's durable receipt."""
     path = root / (tile_name(row, col) + ".npz")
     with np.load(path, allow_pickle=False) as loaded:
         arrays = {name: loaded[name] for name in loaded.files}
     _arrays(arrays)
     for value in arrays.values():
         value.flags.writeable = False
-    return arrays, receipt
+    return arrays
+
+
+def _load_tile(root: Path, row: int, col: int, spec_hash: str) -> tuple[Any, Any]:
+    receipt = _tile_receipt(root, row, col, spec_hash)
+    return _decode_tile(root, row, col), receipt
 
 
 class PreparedTileWriter:
@@ -421,6 +427,37 @@ class PreparedTileStore:
         self.cache_bytes = cache_bytes
         self.cache: OrderedDict[tuple[int, int], xr.Dataset] = OrderedDict()
         self.bytes = 0
+        self._prefetched: dict[Any, tuple[dict[str, Any], float]] = {}
+        self.last_window_prefetch_seconds = 0.0
+        self._window_uses: dict[Any, Any] = {}
+        self._window_number = 0
+        self.telemetry = dict(
+            hash_seconds=0.0,
+            decode_seconds=0.0,
+            hash_checks=0,
+            cache_hits=0,
+            cache_misses=0,
+            decoded_bytes=0,
+        )
+
+    def plan_windows(self, windows: Any) -> None:
+        """Hint upcoming read sets without changing order, bytes or integrity checks.
+
+        Stale/skipped hints affect only eviction priority. All reads still validate
+        durable receipts. The schedule holds keys/indices, never raster arrays.
+        """
+        uses: dict[Any, Any] = defaultdict(deque)
+        for i, keys in enumerate(windows):
+            for key in set(tuple(k) for k in keys):
+                if key not in self.keys:
+                    raise ValueError("Planned tile absent from completed store")
+                uses[key].append(i)
+        self._window_uses = dict(uses)
+        self._window_number = 0
+
+    def _next_use(self, key: Any) -> float:
+        uses = self._window_uses.get(key)
+        return uses[0] if uses else math.inf
 
     def _tile(self, row: int, col: int) -> xr.Dataset:
         tile_name(row, col)
@@ -428,14 +465,22 @@ class PreparedTileStore:
         if key not in self.keys:
             raise ValueError("Tile not present in completed store")
         # Validate durable bytes even on a RAM hit; never hide external corruption.
+        started = time.perf_counter()
         receipt = _tile_receipt(self.root, row, col, self.spec_hash)
+        self.telemetry["hash_seconds"] += time.perf_counter() - started
+        self.telemetry["hash_checks"] += 1
         if receipt != self.receipts[key]:
             raise ValueError("Tile differs from completion manifest")
         if key in self.cache:
+            self.telemetry["cache_hits"] += 1
             dataset = self.cache.pop(key)
             self.cache[key] = dataset
             return dataset
-        arrays, _ = _load_tile(self.root, row, col, self.spec_hash)
+        self.telemetry["cache_misses"] += 1
+        started = time.perf_counter()
+        arrays = _decode_tile(self.root, row, col)
+        self.telemetry["decode_seconds"] += time.perf_counter() - started
+        self.telemetry["decoded_bytes"] += sum(value.nbytes for value in arrays.values())
         transform = self.grid * Affine.translation(col, row)
         dataset = xr.Dataset(
             {name: (("y", "x"), value) for name, value in arrays.items()},
@@ -449,7 +494,13 @@ class PreparedTileStore:
             value.values.flags.writeable = False
         size = sum(value.nbytes for value in dataset.variables.values())
         while self.cache and self.bytes + size > self.cache_bytes:
-            _, old = self.cache.popitem(last=False)
+            if self._window_uses:
+                victim = max(self.cache, key=self._next_use)
+                if self._next_use(key) >= self._next_use(victim):
+                    return dataset
+                old = self.cache.pop(victim)
+            else:
+                _, old = self.cache.popitem(last=False)
             self.bytes -= sum(value.nbytes for value in old.variables.values())
         if size <= self.cache_bytes:
             self.cache[key] = dataset
@@ -484,7 +535,7 @@ class PreparedTileStore:
                 raise ValueError("Tile differs from completed manifest")
             del arrays
 
-    def window(self, grid: Affine, shape: tuple[int, int]) -> dict[str, Any]:
+    def _window_spec(self, grid: Affine, shape: tuple[int, int]) -> Any:
         height, width = shape
         if any(type(n) is not int or n <= 0 or n % 3 for n in shape):
             raise ValueError("30m-nested source shape required")
@@ -504,19 +555,99 @@ class PreparedTileStore:
             or col0 + width > self.shape[1]
         ):
             raise ValueError("Source window outside or shifted off canonical lattice")
-        arrays = {name: np.empty(shape, dtype=dtype) for name, dtype in DTYPES.items()}
-        for row in range(math.floor(row0 / TILE_SIZE) * TILE_SIZE, row0 + height, TILE_SIZE):
-            for col in range(math.floor(col0 / TILE_SIZE) * TILE_SIZE, col0 + width, TILE_SIZE):
-                dataset = self._tile(row, col)
+        keys = {
+            (row, col)
+            for row in range(row0 // TILE_SIZE * TILE_SIZE, row0 + height, TILE_SIZE)
+            for col in range(col0 // TILE_SIZE * TILE_SIZE, col0 + width, TILE_SIZE)
+        }
+        if not keys <= self.keys:
+            raise ValueError("Tile not present in completed store")
+        return grid, shape, row0, col0, keys
+
+    def _advance_windows(self, count: int) -> None:
+        if self._window_uses:
+            last = self._window_number + count - 1
+            for uses in self._window_uses.values():
+                while uses and uses[0] <= last:
+                    uses.popleft()
+            self._window_number += count
+
+    def _assemble_windows(self, specs: Any) -> list[dict[str, Any]]:
+        outputs: list[dict[str, Any]] = [
+            {name: np.empty(spec[1], dtype=dtype) for name, dtype in DTYPES.items()}
+            for spec in specs
+        ]
+        keys = sorted(set().union(*(spec[4] for spec in specs)))
+        keys.sort(key=lambda key: key not in self.cache)
+        self._advance_windows(len(specs))
+        for row, col in keys:
+            dataset = self._tile(row, col)
+            for spec, arrays in zip(specs, outputs, strict=True):
+                _, (height, width), row0, col0, required = spec
+                if (row, col) not in required:
+                    continue
                 r0, c0 = max(row, row0), max(col, col0)
-                r1, c1 = min(row + TILE_SIZE, row0 + height), min(col + TILE_SIZE, col0 + width)
+                r1 = min(row + TILE_SIZE, row0 + height)
+                c1 = min(col + TILE_SIZE, col0 + width)
                 for name in DTYPES:
                     arrays[name][r0 - row0 : r1 - row0, c0 - col0 : c1 - col0] = dataset[
                         name
                     ].values[r0 - row : r1 - row, c0 - col : c1 - col]
-        for value in arrays.values():
-            value.flags.writeable = False
-        return dict(arrays, transform=grid)
+        for spec, arrays in zip(specs, outputs, strict=True):
+            for value in arrays.values():
+                value.flags.writeable = False
+            arrays["transform"] = spec[0]
+        return outputs
+
+    def prefetch_windows(self, windows: Any, *, max_bytes: int) -> None:
+        """Decode overlapping tiles once for a bounded batch of owned windows.
+
+        Every consumed window rechecks its durable tile receipts. No prefetched
+        array can hide corruption introduced after batch assembly.
+        """
+        if self._prefetched:
+            raise ValueError("Previous raster batch has not been consumed")
+        if type(max_bytes) is not int or max_bytes < 0:
+            raise ValueError("Nonnegative raster batch byte cap required")
+        specs = [self._window_spec(grid, tuple(shape)) for grid, shape in windows]
+        keys = [(spec[0], spec[1]) for spec in specs]
+        if not specs or len(specs) > 2 or len(set(keys)) != len(keys):
+            raise ValueError("One or two distinct source windows required")
+        pixels = sum(spec[1][0] * spec[1][1] for spec in specs)
+        required = pixels * sum(np.dtype(dtype).itemsize for dtype in DTYPES.values())
+        if required > max_bytes:
+            raise ValueError("Raster batch exceeds its byte cap")
+        started = time.perf_counter()
+        outputs = self._assemble_windows(specs)
+        elapsed = time.perf_counter() - started
+        self._prefetched = {
+            key: (output, elapsed * spec[1][0] * spec[1][1] / pixels)
+            for key, spec, output in zip(keys, specs, outputs, strict=True)
+        }
+
+    def discard_prefetched(self) -> None:
+        """Release only in-memory batch buffers; never touch durable artifacts."""
+        self._prefetched.clear()
+
+    def window(self, grid: Affine, shape: tuple[int, int]) -> dict[str, Any]:
+        self.last_window_prefetch_seconds = 0.0
+        height, width = shape
+        shape = height, width
+        spec = self._window_spec(grid, shape)
+        key = grid, shape
+        if key not in self._prefetched:
+            return self._assemble_windows([spec])[0]
+        # Keep integrity checks at the point of consumption, including tiles
+        # evicted from the decoded cache since the batch was assembled.
+        for row, col in sorted(spec[4]):
+            started = time.perf_counter()
+            receipt = _tile_receipt(self.root, row, col, self.spec_hash)
+            self.telemetry["hash_seconds"] += time.perf_counter() - started
+            self.telemetry["hash_checks"] += 1
+            if receipt != self.receipts[row, col]:
+                raise ValueError("Tile differs from completion manifest")
+        output, self.last_window_prefetch_seconds = self._prefetched.pop(key)
+        return output
 
 
 def recover_prepared_store(root: Any, expected_identity: dict[str, Any]) -> dict[str, Any]:

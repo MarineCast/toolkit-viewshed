@@ -34,10 +34,12 @@ class TransmissionTileConfig(BaseModel):
     maximum_sampling_error: float = Field(default=0.10, ge=0, le=0.10)
     p95_sampling_error: float = Field(default=0.05, ge=0, le=0.05)
     observer_workers: int = Field(default=1, ge=1, le=8)
-    calculation_mode: Literal["reference", "exact_fast"] = "exact_fast"
+    calculation_mode: Literal["reference", "exact_fast", "block_jump"] = "block_jump"
     target_chunks: int = Field(default=4, ge=1, le=4)
+    source_batch_size: int = Field(default=2, ge=1, le=2)
     max_store_bytes: int = Field(default=2 * 1024**3, gt=0, le=2 * 1024**3)
     max_memory_bytes: int = Field(default=4 * 1024**3, gt=0, le=4 * 1024**3)
+    decoded_cache_bytes: int = Field(default=64 * 1024**2, ge=0, le=256 * 1024**2)
     wall_seconds: float = Field(default=180.0, gt=0, le=180)
     distance_weight: dict[str, Any] = Field(
         default_factory=lambda: dict(
@@ -59,6 +61,8 @@ class TransmissionTileConfig(BaseModel):
         store, score = Path(self.store_dir).resolve(), Path(self.score_dir).resolve()
         if store.is_relative_to(score) or score.is_relative_to(store):
             raise ValueError("Store and score roots must be disjoint")
+        if self.decoded_cache_bytes > self.max_memory_bytes // 4:
+            raise ValueError("Decoded tile cache must fit within one quarter of the memory cap")
         load_distance_weight_config({"distance_weight": self.distance_weight})
         return self
 

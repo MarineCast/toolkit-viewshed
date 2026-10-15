@@ -28,29 +28,52 @@ def target_design(
         or census_threshold < 0
     ):
         raise ValueError("Nonnegative integer census threshold required")
+    rows, cols, codes = np.asarray(rows), np.asarray(cols), np.asarray(codes)
     counts = np.bincount(codes)
     effective = np.where(counts[codes] < census_threshold, 1, stride)
     rg = rows // effective
     cg = cols // effective
-    sort = np.lexsort((cg, rg, codes))
-    new = np.ones(len(sort), bool)
-    if len(sort) > 1:
-        new[1:] = (
-            (codes[sort[1:]] != codes[sort[:-1]])
-            | (rg[sort[1:]] != rg[sort[:-1]])
-            | (cg[sort[1:]] != cg[sort[:-1]])
-        )
-    inverse = np.empty(len(sort), dtype=np.int64)
-    inverse[sort] = np.cumsum(new) - 1
-    weights = np.bincount(inverse)
+    # At stride 1 or 2 every point in a block has equal centre distance.
+    # Canonical populations arrive in row/column order, so a stable packed-key
+    # sort also selects the original row/column tie winner. Bound the key using
+    # Python integers before doing fixed-width arithmetic; generic callers fall
+    # back to the full lexicographic design below.
+    ordered = len(rows) < 2 or np.all(
+        (rows[1:] > rows[:-1]) | ((rows[1:] == rows[:-1]) & (cols[1:] >= cols[:-1]))
+    )
+    if (
+        stride in (1, 2)
+        and len(rows)
+        and ordered
+        and rg.dtype.kind in "iu"
+        and cg.dtype.kind in "iu"
+    ):
+        rmin, cmin = int(rg.min()), int(cg.min())
+        nr, nc = int(rg.max()) - rmin + 1, int(cg.max()) - cmin + 1
+        if (int(codes.max()) + 1) * nr * nc <= np.iinfo(np.int64).max:
+            key = (codes.astype(np.int64) * nr + (rg - rmin)) * nc + (cg - cmin)
+            order = np.argsort(key, kind="stable")
+            new = np.ones(len(order), bool)
+            new[1:] = key[order[1:]] != key[order[:-1]]
+            starts = np.flatnonzero(new)
+            return order[starts], np.diff(np.append(starts, len(order)))
     d = ((rows % effective) + 0.5 - effective / 2) ** 2 + (
         (cols % effective) + 0.5 - effective / 2
     ) ** 2
-    order = np.lexsort((cols, rows, d, inverse))
-    start = np.ones(len(order), bool)
+    # Sort groups and their deterministic representative together. The leading
+    # code/row-block/column-block order is identical to the original two sorts;
+    # distance, row and column still break ties within each group.
+    order = np.lexsort((cols, rows, d, cg, rg, codes))
+    new = np.ones(len(order), bool)
     if len(order) > 1:
-        start[1:] = inverse[order[1:]] != inverse[order[:-1]]
-    selected = order[np.flatnonzero(start)]
+        new[1:] = (
+            (codes[order[1:]] != codes[order[:-1]])
+            | (rg[order[1:]] != rg[order[:-1]])
+            | (cg[order[1:]] != cg[order[:-1]])
+        )
+    starts = np.flatnonzero(new)
+    selected = order[starts]
+    weights = np.diff(np.append(starts, len(order)))
     assert weights.sum() == len(rows)
     return selected, weights
 
@@ -241,8 +264,15 @@ class WaterTargetProvider:
         rr, cc = self.points[index, 0] - int(dr), self.points[index, 1] - int(dc)
         x, y = coarse * (cc + 0.5, rr + 0.5)
         within = np.zeros(len(index), bool)
+        pending = np.arange(len(index))
         for ox, oy, _ in observers:
-            within |= np.hypot(x - ox, y - oy) <= max_distance_m
+            # A union needs only one successful observer. Retain the original
+            # hypot comparison (including its boundary rounding) for every test.
+            reached = np.hypot(x[pending] - ox, y[pending] - oy) <= max_distance_m
+            within[pending[reached]] = True
+            pending = pending[~reached]
+            if not len(pending):
+                break
         targets = np.column_stack((x[within], y[within]))
         rr, cc, index = rr[within], cc[within], index[within]
         inside = (
@@ -251,7 +281,14 @@ class WaterTargetProvider:
             & (targets[:, 1] <= original_grid.f)
             & (targets[:, 1] > original_grid.f - grid_shape[0] * 10)
         )
-        cells, codes = np.unique(self.cells[self.points[index, 2]], return_inverse=True)
+        # Group the large population using integer dictionary codes. Only the
+        # small output dictionary crosses the original lexical H3 boundary.
+        labels = self.points[index, 2]
+        dictionary = np.flatnonzero(np.bincount(labels, minlength=len(self.cells)))
+        order = np.argsort(self.cells[dictionary])
+        remap = np.empty(len(self.cells), dtype=np.intp)
+        remap[dictionary[order]] = np.arange(len(order))
+        cells, codes = self.cells[dictionary[order]], remap[labels]
         return targets, rr, cc, inside, cells, codes
 
 

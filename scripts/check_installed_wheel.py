@@ -67,21 +67,27 @@ from affine import Affine
 import numpy as np
 from viewshed_toolkit.pipeline.weights.transmission import prepare_calculation, calculate_prepared
 from viewshed_toolkit.pipeline.config.transmission_tiles import TransmissionTileConfig
-assert TransmissionTileConfig.model_fields['calculation_mode'].default == 'exact_fast'
-shape = (8, 16)
+assert TransmissionTileConfig.model_fields['calculation_mode'].default == 'block_jump'
+shape = (128, 256)
 zero = np.zeros(shape, np.float32)
 mask = np.zeros(shape, bool)
 data = dict(ground=zero,canopy=np.zeros(shape,np.uint8),canopy_unknown=mask,
             building=zero,building_unknown=mask,building_present=mask,
-            qualified_water=mask,transform=Affine(10,0,0,0,-10,80))
+            qualified_water=mask,transform=Affine(10,0,0,0,-10,1280))
 prepared = prepare_calculation(data,np.full(shape,30,np.uint8))
-args = (prepared,np.array([[15.,65.,0.]]),np.array([[145.,15.]]),
+args = (prepared,np.array([[15.,1265.,0.]]),np.array([[2545.,15.]]),
         np.array([0]),np.array([1]),['target'],5000.)
 reference,_ = calculate_prepared(*args,calculation_mode='reference')
 fast,_ = calculate_prepared(*args,calculation_mode='exact_fast',observer_workers=8,target_chunks=4)
 for key in ['lower','upper','unknown','out_of_range']:
     assert reference[key].tobytes() == fast[key].tobytes()
 assert reference['score'] == fast['score']
+profile = {}
+jumped,_ = calculate_prepared(*args,calculation_mode='block_jump',observer_workers=8,target_chunks=4,profile=profile)
+assert profile['block_jumps']
+for key in ['lower','upper','unknown','out_of_range']:
+    np.testing.assert_allclose(reference[key],jumped[key],atol=1e-12,rtol=0)
+assert reference['score'] == jumped['score']
 
 assert callable(viewshed_toolkit.run_transmission_tiles)
 assert callable(viewshed_toolkit.load_transmission_tile_config)

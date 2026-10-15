@@ -38,6 +38,7 @@ def _rays_block_cached(
     row_offset: Any,
     col_offset: Any,
     block_max: Any,
+    terrain_blocked: Any = None,
 ) -> Any:
     out = np.full(len(targets), -1, dtype=np.int8)
     height, width = ground.shape
@@ -155,6 +156,16 @@ def _rays_block_cached(
                         > 1e-7
                     ):
                         blocked = True
+                        # Reuse this same interval only if ground alone blocks.
+                        if terrain_blocked is not None:
+                            terrain_blocked[n] = (
+                                ground[row - row_offset, col - col_offset]
+                                + 0.0
+                                - eye
+                                - slope * d
+                                - curve * d * d
+                                > 1e-7
+                            )
                         break
             if exited >= distance:
                 break
@@ -168,6 +179,12 @@ def _rays_block_cached(
                 next_y += delta_y
         out[n] = 0 if blocked else -1 if uncertain else 1
     return out
+
+
+@_native
+def _patch_clear(clearance: Any, row: Any, col: Any, r0: Any, c0: Any) -> Any:
+    r, c = row - r0, col - c0
+    return 0 <= r < clearance.shape[0] and 0 <= c < clearance.shape[1] and clearance[r, c]
 
 
 @_native
@@ -191,6 +208,8 @@ def _path_depth_zero(
     row_offset: Any,
     col_offset: Any,
     zero_blocks: Any,
+    clearance_row: Any = 0,
+    clearance_col: Any = 0,
 ) -> Any:
     """Return weighted canopy-intersection metres; negative states stay distinct."""
     output = baseline.astype(np.float64)
@@ -208,9 +227,8 @@ def _path_depth_zero(
             continue
         tr = math.floor((origin_y - ty) / pixel)
         tc = math.floor((tx - origin_x) / pixel)
-        if (
-            missing_height[tr - row_offset, tc - col_offset]
-            and not clearance[tr - row_offset, tc - col_offset]
+        if missing_height[tr - row_offset, tc - col_offset] and not _patch_clear(
+            clearance, tr - row_offset, tc - col_offset, clearance_row, clearance_col
         ):
             output[n] = -1
             continue
@@ -250,7 +268,9 @@ def _path_depth_zero(
                 exited > entered + 1e-9
                 and (row != source_row or col != source_col)
                 and (row != tr or col != tc)
-                and not clearance[row - row_offset, col - col_offset]
+                and not _patch_clear(
+                    clearance, row - row_offset, col - col_offset, clearance_row, clearance_col
+                )
             ):
                 if missing_height[row - row_offset, col - col_offset]:
                     uncertain = True
@@ -284,15 +304,20 @@ def _path_depth_zero(
 
 
 class ClearBlockPruner:
-    def __init__(self, native: Any, block: Any = 128, expected: Any = None) -> None:
+    def __init__(
+        self, native: Any, block: Any = 128, expected: Any = None, *, kernel: Any = None
+    ) -> None:
         self.native = native
+        self.kernel = _rays_block_cached if kernel is None else kernel
         self.expected = expected
         self.cache: dict[Any, Any] = {}
         self.roles: dict[Any, Any] = {}
         self.lock = threading.Lock()
         self.pruned = self.total = 0
 
-    def __call__(self, *args: Any) -> Any:
+    def __call__(self, *args: Any, terrain_blocked: Any = None) -> Any:
+        if terrain_blocked is not None:
+            terrain_blocked[:] = False
         ground, lower, unknown, clearance = args[:4]
         support = args[14]
         if (
@@ -342,7 +367,7 @@ class ClearBlockPruner:
                     maximum[row // 128] = a.reshape(128, wp // 128, 128).max(axis=(0, 2))
                 self.cache[key] = (ground, support, maximum, lower, unknown)
             maximum = self.cache[key][2]
-        out = cast(Callable[..., Any], _rays_block_cached)(*args, maximum)
+        out = cast(Callable[..., Any], self.kernel)(*args, maximum, terrain_blocked)
         if self.expected is not None:
             assert np.array_equal(
                 out,
@@ -357,13 +382,14 @@ class ClearBlockPruner:
 
 
 class DepthZeroBlocks:
-    def __init__(self, native: Any, expected: Any = None) -> None:
+    def __init__(self, native: Any, expected: Any = None, *, kernel: Any = None) -> None:
         self.native = native
+        self.kernel = _path_depth_zero if kernel is None else kernel
         self.cache: dict[Any, Any] = {}
         self.lock = threading.Lock()
         self.expected = expected
 
-    def __call__(self, *args: Any) -> Any:
+    def __call__(self, *args: Any, clearance_origin: Any = None) -> Any:
         canopy, missing = args[1:3]
         coefficient, missing_class = args[3:5]
         key = (id(canopy), id(missing), id(coefficient), id(missing_class))
@@ -371,6 +397,12 @@ class DepthZeroBlocks:
             a.flags.writeable or not a.flags.owndata
             for a in [canopy, missing, coefficient, missing_class]
         ):
+            if clearance_origin is not None:
+                full = np.zeros(args[0].shape, bool)
+                r0, c0 = clearance_origin
+                patch = args[5]
+                full[r0 : r0 + patch.shape[0], c0 : c0 + patch.shape[1]] = patch
+                args = (*args[:5], full, *args[6:])
             return self.native(*args)
         with self.lock:
             if key not in self.cache:
@@ -389,7 +421,8 @@ class DepthZeroBlocks:
                     zero[row // 128] = skip.reshape(128, wp // 128, 128).all(axis=(0, 2))
                 self.cache[key] = (canopy, missing, zero, coefficient, missing_class)
             zero = self.cache[key][2]
-        out = cast(Callable[..., Any], _path_depth_zero)(*args, zero)
+        origin = (0, 0) if clearance_origin is None else clearance_origin
+        out = cast(Callable[..., Any], self.kernel)(*args, zero, *origin)
         if self.expected is not None:
             assert (
                 out.tobytes() == self.expected[(args[7], args[8])].tobytes()

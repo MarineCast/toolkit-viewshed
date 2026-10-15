@@ -618,3 +618,103 @@ def test_compact_writer_never_truncates_fractional_canopy_or_persists_sentinel(t
         fields["canopy"][0, 0] = 255
         with pytest.raises(ValueError, match="Reserved canopy255"):
             owner.write_tile(0, 0, fields)
+
+
+@pytest.mark.parametrize("cache_bytes", [0, 4 * 1024**2])
+def test_each_tile_read_hashes_once_and_cache_hits_still_validate(
+    tmp_path, monkeypatch, cache_bytes
+):
+    from viewshed_toolkit.pipeline.prepare.elevation import transmission_store as module
+
+    root = tmp_path / "store"
+    completed(root)
+    store = PreparedTileStore(root, cache_bytes=cache_bytes)
+    original = module._hash
+    paths = []
+
+    def record(path):
+        paths.append(path)
+        return original(path)
+
+    monkeypatch.setattr(module, "_hash", record)
+    store.tile(0, 0)
+    store.tile(0, 0)
+    assert paths == [root / "tile-0-0.npz"] * 2
+    assert store.telemetry["hash_checks"] == 2
+    assert store.telemetry["cache_hits"] == (1 if cache_bytes else 0)
+    assert store.telemetry["cache_misses"] == (1 if cache_bytes else 2)
+    assert store.bytes <= cache_bytes
+    (root / "tile-0-0.npz").write_bytes(b"corrupted")
+    with pytest.raises(ValueError, match="checksum"):
+        store.tile(0, 0)
+
+
+@pytest.mark.parametrize("corrupt", [False, True])
+def test_window_consumes_cached_overlap_before_eviction_and_checks_its_bytes(tmp_path, corrupt):
+    root = tmp_path / "store"
+    with PreparedTileWriter(
+        root, IDENTITY, GRID, (384, 1152), [(0, 0), (0, 384), (0, 768)], max_bytes=20 * 1024**2
+    ) as owner:
+        for col in [0, 384, 768]:
+            fields = arrays()
+            fields["observer_ground"][:] = col
+            owner.write_tile(0, col, fields)
+        owner.complete()
+    reference = PreparedTileStore(root, cache_bytes=0).window(GRID, (384, 1152))
+    store = PreparedTileStore(root, cache_bytes=4 * 1024**2)
+    store.tile(0, 768)
+    if corrupt:
+        path = root / "tile-0-768.npz"
+        path.write_bytes(path.read_bytes() + b"changed")
+        with pytest.raises(ValueError, match="checksum"):
+            store.window(GRID, (384, 1152))
+        assert store.telemetry["cache_misses"] == 1
+        return
+    actual = store.window(GRID, (384, 1152))
+    for name in DTYPES:
+        assert actual[name].tobytes() == reference[name].tobytes()
+        assert not actual[name].flags.writeable
+    assert store.telemetry["cache_hits"] == 1
+    assert store.telemetry["cache_misses"] == 3  # priming plus two window misses
+    assert store.telemetry["hash_checks"] == 4
+    assert store.bytes <= store.cache_bytes
+
+
+def test_future_tile_reuse_preserves_bytes_budget_and_corruption_checks(tmp_path):
+    root = tmp_path / "planned"
+    keys = [(0, i * 384) for i in range(4)]
+    with PreparedTileWriter(
+        root, IDENTITY, GRID, (384, 1536), keys, max_bytes=20 * 1024**2
+    ) as owner:
+        for i, key in enumerate(keys):
+            a = arrays()
+            a["ground"][:] = i
+            owner.write_tile(*key, a)
+        owner.complete()
+    size = sum(a.nbytes for a in arrays().values()) + 384 * 16
+    regular = PreparedTileStore(root, cache_bytes=size)
+    planned = PreparedTileStore(root, cache_bytes=size)
+    windows = [keys, [keys[0]], [keys[0]], [keys[0]]]
+    planned.plan_windows(windows)
+    for ks in windows:
+        grid = GRID * Affine.translation(ks[0][1], 0)
+        shape = (384, len(ks) * 384)
+        actual, expected = planned.window(grid, shape), regular.window(grid, shape)
+        for field in DTYPES:
+            assert actual[field].tobytes() == expected[field].tobytes()
+        assert planned.bytes <= size
+    assert planned.telemetry["cache_misses"] < regular.telemetry["cache_misses"]
+    assert planned.telemetry["hash_checks"] == regular.telemetry["hash_checks"] == 7
+    from viewshed_toolkit.pipeline.contracts.transmission_store import tile_name
+
+    path = root / (tile_name(*keys[0]) + ".npz")
+    with path.open("ab") as stream:
+        stream.write(b"changed")
+    with pytest.raises(ValueError, match="checksum"):
+        planned.window(GRID, (384, 384))
+
+
+def test_invalid_lookahead_cannot_reference_missing_tile(tmp_path):
+    store = completed(tmp_path / "store")
+    with pytest.raises(ValueError, match="absent"):
+        store.plan_windows([[(0, 384)]])

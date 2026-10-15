@@ -8,6 +8,7 @@ as zero vegetation. Terrain and roofs retain their separate direct-ray model.
 import math
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -21,6 +22,18 @@ CLASSIFIED_CANOPY_CONTRACT = "worldcover_chm_intersection_transmission_v2"
 HEIGHT_BREAKS_M = (2.0, 5.0, 15.0)
 HEIGHT_OBSTRUCTION = (0.0, 0.25, 0.65, 1.0)
 DEFAULT_BETA_PER_M = 0.002
+
+
+@lru_cache(maxsize=1)
+def _compact_class_tables():
+    """One immutable table for all uint8 height/class combinations (~576 KiB)."""
+    height = np.broadcast_to(np.arange(256, dtype=np.float64)[:, None], (256, 256))
+    classes = np.broadcast_to(np.arange(256, dtype=np.int16)[None, :], (256, 256))
+    # The generic formula is the authority; float heights avoid this fast branch.
+    coefficient, missing = class_obstruction(height, classes)
+    coefficient.flags.writeable = False
+    missing.flags.writeable = False
+    return coefficient, missing
 
 
 def class_obstruction(canopy: np.ndarray, landcover: np.ndarray):
@@ -38,6 +51,9 @@ def class_obstruction(canopy: np.ndarray, landcover: np.ndarray):
         or not np.issubdtype(landcover.dtype, np.integer)
     ):
         raise ValueError("Aligned finite nonnegative canopy and integer WorldCover required")
+    if canopy.dtype == np.uint8 and landcover.dtype == np.uint8:
+        coefficient, missing = _compact_class_tables()
+        return coefficient[canopy, landcover], missing[canopy, landcover]
     # Bin indices are lossless;0.65 and resulting coefficients stay float64.
     height_band = np.zeros(canopy.shape, dtype="uint8")
     for index, threshold in enumerate(HEIGHT_BREAKS_M, start=1):
