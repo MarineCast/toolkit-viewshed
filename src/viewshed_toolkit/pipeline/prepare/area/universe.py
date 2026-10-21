@@ -188,6 +188,32 @@ def _build_source_universe(
 ) -> SourceUniverse:
     resolution = int(lookup_cfg.h3_resolution or runtime.source_resolution)
 
+    from ...config.shared_study import runtime_memberships
+
+    shared = runtime_memberships(runtime.raw_config)
+    if shared is not None:
+        if resolution != 7:
+            raise ValueError("Shared source-target selection requires native R7")
+        land_ids = list(shared["land_source"]["cells"]) if lookup_cfg.include_land_sources else []
+        water_ids = (
+            list(shared["water_source"]["cells"]) if lookup_cfg.include_water_sources else []
+        )
+        target_ids = set(shared["water_reporting"]["cells"])
+        if not target_ids or not (land_ids or water_ids):
+            raise ValueError("Shared study requires reporting targets and observer sources")
+        if land_ids:
+            prepared = build_land_cells_for_config(
+                config_path, overwrite=overwrite, h3_resolution=7
+            )
+            if set(_read_land_source_cells(prepared.land_h3_path)) != set(land_ids):
+                raise ValueError("Prepared land sources differ from the shared membership")
+        ids = sorted(set(land_ids) | set(water_ids) | target_ids)
+        classified = _classify_bbox_cells(runtime, lookup_cfg, cells=ids, extent="source")
+        if set(classified.h3_cell) != set(ids):
+            raise ValueError("Physical source context does not cover all shared cells")
+        attributes = _physical_cell_type_frame(classified, lookup_cfg)
+        return SourceUniverse(land_ids, water_ids, target_ids, attributes)
+
     source_cells = domains.bbox_h3_cells(
         domains.source_domain_polygon(runtime).bounds,
         resolution,

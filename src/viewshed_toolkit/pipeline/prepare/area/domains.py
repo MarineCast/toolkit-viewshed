@@ -223,6 +223,17 @@ def target_domain_polygon(runtime: Any) -> Any:
     shared = domain_polygons_from_raw(runtime.raw_config, runtime.projected_crs)
     if shared is not None:
         return shared[0]
+
+    from ...config.shared_study import runtime_memberships
+
+    shared = runtime_memberships(runtime.raw_config)
+    if shared is not None:
+        return (
+            gpd.read_parquet(shared["water_reporting"]["mask_path"])
+            .to_crs(4326)
+            .geometry.union_all()
+        )
+
     source_polygon = box(*runtime.bbox_wgs84)
     viewshed = runtime.raw_config.get("viewshed", {}) or {}
     max_distance_m = float(viewshed.get("max_distance_m", 30_000.0))
@@ -338,7 +349,9 @@ def load_land_water_domains(
     else:
         land_domain = _land_domain_geometry(bbox_polygon, land_union, water_union)
 
-    if land_domain.is_empty and not shared_mode:
+    if land_domain.is_empty and not (
+        shared_mode or (extent == "target" and runtime.raw_config.get("shared_study"))
+    ):
         raise ValueError("Land domain is empty after clipping/intersection.")
     if water_domain.is_empty:
         raise ValueError("Water domain is empty after clipping/intersection.")

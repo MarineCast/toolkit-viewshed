@@ -152,3 +152,10 @@ explicit resume validates receipts, and explicit recovery refuses live owners or
 The [persistent workflow](direct-transmission.md#persistent-xarray-tile-preparation-and-scoring) retains
 full-source observer support, source-relative sampling, original ray coordinates, conservative terrain
 support and numerical census gates. Final source evidence and one prepared store remain local.
+
+An explicit `shared_study.config_path` profile selects native R7 reporting targets independently
+from `land_source` and `water_source` observer memberships. Mixed source cells can appear in both
+roles. The owner-declared source extent and physical context are verified before preparation;
+source raster paths still need full coverage across the configured LOS/AOI margin. The historical
+standalone bbox policy applies when no shared study is selected. Shared selection changes cache
+identity and does not change cleanup or promotion scope.

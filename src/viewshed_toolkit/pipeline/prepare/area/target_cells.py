@@ -33,8 +33,13 @@ def build_target_cells(app: AppConfig, *, overwrite: bool = False) -> Path:
     runtime = load_distance_runtime(app.config_path)
     settings = _lookup_config(app.raw_config, runtime, load_distance_weight_config(app.raw_config))
     polygon = domains.target_domain_polygon(runtime)
+    from ...config.shared_study import runtime_memberships
+
+    shared = runtime_memberships(app.raw_config)
     candidates = (
-        list(support.cells)
+        list(shared["water_reporting"]["cells"])
+        if shared is not None
+        else list(support.cells)
         if "marinecast_study" in app.raw_config
         else domains.bbox_h3_cells(
             tuple(polygon.bounds),
@@ -51,6 +56,10 @@ def build_target_cells(app: AppConfig, *, overwrite: bool = False) -> Path:
     if settings.include_mixed_as_water_targets:
         allowed.append("mixed")
     cells = roles.loc[roles["cell_type"].isin(allowed), "h3_cell"]
+    if shared is not None:
+        cells = list(shared["water_reporting"]["cells"])
+        if set(classified.h3_cell) != set(cells):
+            raise ValueError("Shared reporting targets lack physical context")
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
     try:

@@ -114,7 +114,9 @@ def ensure_h3_geometry_artifact(
     # Geometry is shared by source and target stages, so its water intersection
     # must cover the complete buffered target domain rather than the smaller
     # observer-source bbox.
-    domain_geometries = domains.load_land_water_domains(runtime, extent="target")
+    domain_geometries = domains.load_land_water_domains(
+        runtime, extent="source" if runtime.raw_config.get("shared_study") else "target"
+    )
     inputs = _artifact_inputs(
         runtime,
         cells=cell_ids,

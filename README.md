@@ -257,3 +257,7 @@ configuration, execution and regional qualification limits.
 Provisioned explicit-v2 inputs can also use a persistent xarray tile workflow: plan and preprocess one
 compressed current store, then run weights from read-only prepared tiles. See
 [prepare-then-score commands and limits](docs/direct-transmission.md#persistent-xarray-tile-preparation-and-scoring).
+
+Optional [shared-study selection](docs/api.md#explicit-coastal-shared-study) consumes pinned native
+R7 target and separate observer-source memberships. It is independent of sibling checkouts and
+retains the existing standalone configuration workflow.

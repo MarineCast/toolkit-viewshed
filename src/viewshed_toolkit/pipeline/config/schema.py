@@ -42,11 +42,14 @@ def load_yaml_config(config_path: str | Path, *, apply_study: bool = True) -> di
     if not isinstance(raw, dict):
         raise ValueError(f"Config file must parse to a dictionary: {config_path}")
     normalized = normalize_viewshed_config(raw)
+    from .shared_study import apply_shared_study
     from .study import adapt_raw_config, load_study_config, selected_study_path
 
     if apply_study and selected_study_path() is not None:
+        if "shared_study" in normalized:
+            raise ValueError("Select one shared study through the CLI or the YAML profile")
         return adapt_raw_config(normalized, load_study_config())
-    return normalized
+    return apply_shared_study(normalized, config_path)
 
 
 def normalize_viewshed_config(raw: dict[str, Any]) -> dict[str, Any]:
