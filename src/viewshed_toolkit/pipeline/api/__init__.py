@@ -6,6 +6,7 @@ from ..weights.distance.products import (
     build_pair_distances,
     validate_distance_product,
 )
+from ..contracts.study import load_study_config, load_study_membership
 from .pipeline import (
     DEFAULT_STAGES,
     ViewshedRunResult,
@@ -25,6 +26,8 @@ __all__ = [
     "ViewshedRunResult",
     "build_distance_profile",
     "build_pair_distances",
+    "load_study_config",
+    "load_study_membership",
     "process",
     "run_stage",
     "run_viewshed",

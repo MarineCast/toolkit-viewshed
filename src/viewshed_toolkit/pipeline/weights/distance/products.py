@@ -63,8 +63,11 @@ def _target_resolution(app: AppConfig) -> int:
 def _pair_content_identity(frame: pl.DataFrame) -> str:
     """Hash canonical pair values without depending on input serialization order."""
 
-    row_hashes = frame.hash_rows(seed=0, seed_1=1, seed_2=2, seed_3=3).to_numpy()
+    row_hashes = frame.hash_rows(seed=0).to_numpy()
     digest = hashlib.sha256()
+    digest.update(b"polars-seed0-pair-hash-v2\0")
+    digest.update(pl.__version__.encode("ascii"))
+    digest.update(b"\0")
     digest.update(str(frame.height).encode("ascii"))
     digest.update(b"\0")
     digest.update(row_hashes.tobytes())

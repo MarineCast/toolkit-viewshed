@@ -156,6 +156,29 @@ def build_land_cells_for_config(
     if not ne_path.exists():
         raise FileNotFoundError(f"Configured land polygon does not exist: {ne_path}")
 
+    if "shared_study" in raw:
+        if resolution != 7:
+            raise ValueError("Shared land-source preparation requires native R7")
+        from .study import shared_land_frame, write_shared_land_frame
+
+        frame = shared_land_frame(raw, projected_crs=projected_crs)
+        frame["run_version"] = get_run_version(raw)
+        frame["config_hash"] = stable_config_hash(raw)
+        if land_h3_path.exists() and not overwrite:
+            existing = gpd.read_parquet(land_h3_path)
+            if (
+                set(existing.h3_cell) != set(frame.h3_cell)
+                or "config_hash" not in existing
+                or not existing.config_hash.eq(stable_config_hash(raw)).all()
+                or not existing.equals(frame)
+            ):
+                raise ValueError(
+                    "Shared land cache identity mismatch; use a fresh run or overwrite"
+                )
+        else:
+            write_shared_land_frame(frame, land_h3_path)
+        return LandCellsResult(land_polygon_path, land_h3_path, ne_path, 1, len(frame), resolution)
+
     if land_h3_path.exists() and not overwrite:
         h3_gdf = gpd.read_parquet(land_h3_path)
         validate_existing_land_h3_file(

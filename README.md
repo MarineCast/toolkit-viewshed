@@ -198,3 +198,7 @@ formatting/import-order debt remains outside those incremental gates.
 
 Code is Apache-2.0 licensed. Source data and derived products retain their original terms and
 are not redistributed with the package.
+
+Optional [shared-study selection](docs/api.md#explicit-coastal-shared-study) consumes pinned native
+R7 target and separate observer-source memberships. It is independent of sibling checkouts and
+retains the existing standalone configuration workflow.

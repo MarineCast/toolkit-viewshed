@@ -86,3 +86,10 @@ final tables, and manifests live in the separate durable component namespace. Ke
 work inputs until required validation/reproduction is complete. Existing legacy cleanup tests and
 rollback-safe legacy land/water promotion remain unchanged. Do not run legacy cleanup against a
 custom root that also contains the new durable namespace.
+
+An explicit `shared_study.config_path` profile selects native R7 reporting targets independently
+from `land_source` and `water_source` observer memberships. Mixed source cells can appear in both
+roles. The owner-declared source extent and physical context are verified before preparation;
+source raster paths still need full coverage across the configured LOS/AOI margin. The historical
+standalone bbox policy applies when no shared study is selected. Shared selection changes cache
+identity and does not change cleanup or promotion scope.

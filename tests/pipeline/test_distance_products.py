@@ -477,3 +477,12 @@ def test_cli_profile_and_validation_match_api(
     result = json.loads(capsys.readouterr().out)
     assert result["valid"] is True
     assert result["product_type"] == "distance_profile"
+
+
+def test_pair_identity_binds_hash_library_version(monkeypatch):
+    from viewshed_toolkit.pipeline.weights.distance.products import _pair_content_identity
+
+    frame = pl.DataFrame({"source_h3": ["a"], "target_h3": ["b"], "distance_m": [1.0]})
+    original = _pair_content_identity(frame)
+    monkeypatch.setattr(pl, "__version__", pl.__version__ + "+different-hash-runtime")
+    assert _pair_content_identity(frame) != original

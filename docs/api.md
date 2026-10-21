@@ -206,3 +206,30 @@ The component API has no implicit cleanup. Its final tables and maps use a separ
 the original public `process` and `run_viewshed` retain the legacy paired/cleanup contract above.
 See [pipeline stages](pipelines.md) for exact dependencies and [configuration](configuration.md)
 for the intentionally preserved scientific model.
+
+## Explicit coastal shared study
+
+```python
+from viewshed_toolkit import load_study_config, load_study_membership
+
+reporting = load_study_membership("/path/to/study.v1.json", role="water_reporting")
+land = load_study_membership("/path/to/study.v1.json", role="land_source")
+water = load_study_membership("/path/to/study.v1.json", role="water_source")
+```
+
+Each reader validates the packaged schema, production status, exact mask/manifest bytes and
+sorted native R7 IDs. Source roles require a separately pinned owner extent and matching LOS/AOI
+policy. No sibling package, workspace validator import or bbox fallback is used.
+
+Add `shared_study: {config_path: path/to/study.v1.json}` to a Viewshed YAML profile to use these
+roles in source-cell, target-cell and canonical pair-universe preparation. The path resolves from
+that YAML file. The physical land/water context is checksum-bound to the selected manifest;
+conflicting configured context paths and mismatched R7/LOS settings fail. Configuration loading
+remains read-only. Reporting targets use the exact registry; land and water sources use their
+separate memberships and can share a mixed H3 cell. The source planning bbox covers the explicit
+owner extent. Terrain, canopy, LOS and distance formulas retain their existing contracts.
+
+Shared identity, source memberships and source extent enter runtime/cache provenance. Prepared
+land geometry retains positive source-land support and validates its cache against current input
+identity and content. A regional registry does not establish complete native DEM/CHM coverage or
+validate a regional viewability-weight rebuild.

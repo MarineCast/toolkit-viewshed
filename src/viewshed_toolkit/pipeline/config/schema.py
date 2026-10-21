@@ -41,7 +41,9 @@ def load_yaml_config(config_path: str | Path) -> dict[str, Any]:
         raw = viewshed_raw
     if not isinstance(raw, dict):
         raise ValueError(f"Config file must parse to a dictionary: {config_path}")
-    return normalize_viewshed_config(raw)
+    from .shared_study import apply_shared_study
+
+    return apply_shared_study(normalize_viewshed_config(raw), config_path)
 
 
 def normalize_viewshed_config(raw: dict[str, Any]) -> dict[str, Any]:

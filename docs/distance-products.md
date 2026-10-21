@@ -183,3 +183,8 @@ An H3-centroid curve is not generally interchangeable with a joint observer/targ
 `D(mean distance)` and `mean(D(sample distance))` need not agree, and neither may replace
 `mean(LOS × D(sample distance))`. Distance-free LOS plus late sample-level composition would
 require a new scientific model and durable sample-level LOS contract; that is future work.
+
+Pair-content identity v2 uses the single-seed Polars row-hash API and binds the Polars version
+because row hashes are not guaranteed stable across versions. The distance-product algorithm
+revision invalidates earlier cache identities. Great-circle distances and attenuation formulas
+retain their existing definitions.

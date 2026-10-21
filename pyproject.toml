@@ -63,7 +63,7 @@ viewshed-toolkit = "viewshed_toolkit.pipeline.cli.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"viewshed_toolkit.resources" = ["*.yaml"]
+"viewshed_toolkit.resources" = ["*.yaml", "*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
