@@ -415,6 +415,8 @@ def write_metadata_sidecar(
         "dem": get_dem_settings(config),
         "config": config,
     }
+    if "marinecast_study" in config:
+        metadata["marinecast_study"] = config["marinecast_study"]
     if extra_metadata:
         metadata.update(extra_metadata)
     metadata_path.parent.mkdir(parents=True, exist_ok=True)

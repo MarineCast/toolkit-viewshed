@@ -109,3 +109,15 @@ def invocations_for_stage(stage: str) -> tuple[StageInvocation, ...]:
 
 
 __all__ = ["STAGES", "STAGE_SPECS", "StageInvocation", "StageSpec", "invocations_for_stage"]
+
+# Separate, explicit method workflow; legacy defaults and schemas remain unchanged.
+TRANSMISSION_STAGES = ("prepare", "score", "run", "validate")
+
+TRANSMISSION_TILE_STAGES = (
+    "plan",
+    "prepare",
+    "recover-store",
+    "validate-store",
+    "score",
+    "validate",
+)

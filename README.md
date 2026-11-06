@@ -237,3 +237,23 @@ See [CONTRIBUTING](CONTRIBUTING.md), the [change history](CHANGELOG.md), and
 [CITATION.cff](CITATION.cff). Cite the exact commit or release used with the separate source-data
 attributions. Software checks are not field validation; see the
 [acceptance matrix](docs/development/acceptance.md).
+
+
+Retained land-pilot comparison counts can be exported with
+`viewshed_toolkit.export_comparison_maps(payload, output_directory)`. This produces distinct
+target/source aggregates and a selected-source map, with actual-count arithmetic visibility,
+unknown intervals and secondary exact-point diagnostics. See the
+[API contract](docs/api.md#retained-sample-comparison-maps) and
+[scientific definitions](docs/scientific-methodology.md#retained-sample-comparison-maps).
+
+### Supported direct-ray transmission scenario
+
+The demonstrated WorldCover/CHM method is now available as `viewshed-toolkit transmission` and
+`viewshed_toolkit.run_transmission`. Select the explicit v2 method and a fresh provisioned-input
+workspace. It retains partial-water coverage, uncertainty bounds and conditional factors; old
+GDAL outputs retain their meaning. See [direct transmission](docs/direct-transmission.md) for
+configuration, execution and regional qualification limits.
+
+Provisioned explicit-v2 inputs can also use a persistent xarray tile workflow: plan and preprocess one
+compressed current store, then run weights from read-only prepared tiles. See
+[prepare-then-score commands and limits](docs/direct-transmission.md#persistent-xarray-tile-preparation-and-scoring).

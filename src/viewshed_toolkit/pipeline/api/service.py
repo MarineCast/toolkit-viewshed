@@ -32,6 +32,7 @@ class ViewshedRequest:
     force: bool = False
     resume: bool = False
     identity: WorkflowIdentity | None = None
+    study_config: Path | None = None
 
 
 def _stage_signature(
@@ -215,6 +216,14 @@ def _partial_input_refs(app: AppConfig, request: ViewshedRequest) -> tuple[Artif
 
 
 def process(request: ViewshedRequest) -> StageResult:
+    """Execute with an explicit portable study selection scoped to this request."""
+    from ..config.study import study_selection
+
+    with study_selection(request.study_config):
+        return _process(request)
+
+
+def _process(request: ViewshedRequest) -> StageResult:
     validate_run_id(request.run_id)
     unknown = sorted(set(request.stages) - set(STAGES))
     if unknown:

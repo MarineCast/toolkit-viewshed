@@ -9,16 +9,17 @@ from viewshed_toolkit.resources import default_config_path
 
 from ..config import load_app_config
 from ..config.paths import bbox_from_config
+from ..config.schema import load_yaml_config
 from ..contracts.components import cache_matches, component_path, component_root, provenance
 from ..finalize.composition import validate_composed
 
 
 def validate_region(config: str | Path, *, require_outputs: bool = True) -> dict[str, Any]:
     app = load_app_config(config)
-    canonical = load_app_config(default_config_path())
+    canonical = load_yaml_config(default_config_path(), apply_study=False)
     bbox = bbox_from_config(app.raw_config)
-    matches_canonical = bbox == bbox_from_config(canonical.raw_config)
-    explicit_case_study = "case_study" in app.raw_config
+    matches_canonical = bbox == bbox_from_config(canonical)
+    explicit_case_study = "case_study" in app.raw_config or "marinecast_study" in app.raw_config
     if not matches_canonical and not explicit_case_study:
         raise ValueError("Regional validation requires the canonical OrcaCast SRKW model_area bbox")
     required = {
@@ -32,7 +33,11 @@ def validate_region(config: str | Path, *, require_outputs: bool = True) -> dict
         "bbox": list(bbox),
         "canonical_domain": app.region.name if explicit_case_study else "OrcaCast SRKW model_area",
         "matches_canonical_model_area": matches_canonical,
-        "bbox_policy": "explicit_case_study" if explicit_case_study else "canonical_model_area",
+        "bbox_policy": (
+            "marinecast_study"
+            if "marinecast_study" in app.raw_config
+            else "explicit_case_study" if explicit_case_study else "canonical_model_area"
+        ),
         "missing_inputs": missing,
         "valid": not missing,
         "outputs": {},

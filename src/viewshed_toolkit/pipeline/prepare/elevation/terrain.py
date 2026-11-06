@@ -539,6 +539,55 @@ def canonical_endpoint_repair(endpoint_dem_path: Path, source_dem_path: Path) ->
     return {"exact": exact, "neighborhood": neighborhood_count}
 
 
+OBSERVER_GROUND_CONTRACT = "unflattened_land_observer_ground_v1"
+
+
+def sample_observer_ground_elevation(
+    projected_ground_path: Path,
+    source_dem_path: Path,
+    observer_x: float,
+    observer_y: float,
+) -> float:
+    """Read source ground independently of the water-target elevation surface.
+
+    Prefer the unflattened projected cell. A projected void uses the same fixed
+    grid-centre source sample / immediate-neighbour repair as endpoint repair.
+    Never substitute sea level or an opaque LOS barrier for missing source ground.
+    """
+    from pyproj import Transformer
+
+    with rasterio.open(projected_ground_path) as ground:
+        row, col = ground.index(observer_x, observer_y)
+        if not (0 <= row < ground.height and 0 <= col < ground.width):
+            raise ValueError("Observer lies outside the unflattened ground grid")
+        value = ground.read(1, window=((row, row + 1), (col, col + 1)), masked=True)[0, 0]
+        if not np.ma.is_masked(value) and np.isfinite(value):
+            return float(value)
+        x, y = rasterio.transform.xy(ground.transform, row, col)
+        ground_crs = ground.crs
+    with rasterio.open(source_dem_path) as source:
+        x, y = Transformer.from_crs(ground_crs, source.crs, always_xy=True).transform(x, y)
+        row, col = source.index(x, y)
+        if not (0 <= row < source.height and 0 <= col < source.width):
+            raise ValueError("Observer ground is outside the authoritative DEM")
+        block = source.read(
+            1,
+            window=(
+                (max(0, row - 1), min(source.height, row + 2)),
+                (max(0, col - 1), min(source.width, col + 2)),
+            ),
+            masked=True,
+        )
+        exact = block[row - max(0, row - 1), col - max(0, col - 1)]
+        if not np.ma.is_masked(exact) and np.isfinite(exact):
+            return float(exact)
+        valid = np.asarray(block.compressed(), dtype=float)
+        valid = valid[np.isfinite(valid)]
+        if len(valid) >= 3:
+            return float(np.median(valid))
+    raise ValueError("Observer ground remains unresolved in the authoritative DEM")
+
+
 def repair_observer_endpoint_nodata(
     endpoint_dem_path: Path,
     source_dem_path: Path,

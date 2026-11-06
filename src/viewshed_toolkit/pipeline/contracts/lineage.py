@@ -96,6 +96,7 @@ def factor_contract(
         configured = raw.get("paths", {})
         names = ["land_polygon_path", "water_polygon_path"]
         if role == "land":
+            settings["observer_ground_contract"] = "unflattened_land_observer_ground_v1"
             names += ["land_h3_path", "source_cells_path", "regional_dem_path"]
             if kind in {"canopy", "vegetation"}:
                 names += ["canopy_height_path"]
