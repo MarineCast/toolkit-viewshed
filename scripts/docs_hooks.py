@@ -76,7 +76,8 @@ def on_page_markdown(markdown, page, config, files):
 
     markdown = re.sub(r"\]\((\.\./[^)]+)\)", source_link, markdown)
     sys.path.insert(0, str(ROOT / "scripts"))
-    from render_source_examples import cases, markdown as source_markdown, tabs
+    from render_source_examples import cases, tabs
+    from render_source_examples import markdown as source_markdown
 
     selected = next(
         (key for key, case in cases().items() if case["page"] == page.file.src_uri), None
