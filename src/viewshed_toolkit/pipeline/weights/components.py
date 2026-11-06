@@ -71,6 +71,19 @@ def _lookup(app: AppConfig, source_type: str) -> tuple[Path, pl.DataFrame]:
     return path, frame
 
 
+def _surface_variant(app: AppConfig, surface: str, source_type: str) -> AppConfig:
+    from .canopy_visibility import make_terrain_variant_app
+
+    return apply_source_type_policy(
+        make_terrain_variant_app(
+            app,
+            surface_model=surface,
+            terrain_dir=app.paths.output_dir / "components" / source_type / surface,
+        ),
+        source_type,
+    )
+
+
 def build_distance_component(
     app: AppConfig, *, source_type: str = "land", overwrite: bool = False
 ) -> Path:
@@ -100,7 +113,6 @@ def build_distance_component(
 def _surface_component(
     app: AppConfig, surface: str, *, source_type: str, overwrite: bool
 ) -> tuple[pl.DataFrame, dict[str, Any]]:
-    from .canopy_visibility import make_terrain_variant_app
     from .terrain.runner import run_source_cells
 
     lookup_path, lookup = _lookup(app, source_type)
@@ -130,16 +142,16 @@ def _surface_component(
         )
     # Separate stage execution uses the same deterministic observer design and
     # the same backend as paired execution. It never invokes the water policy for land.
-    variant = make_terrain_variant_app(
-        app,
-        surface_model=surface,
-        terrain_dir=app.paths.output_dir / "components" / source_type / surface,
-    )
-    variant = apply_source_type_policy(variant, source_type)
+    variant = _surface_variant(app, surface, source_type)
     variant = replace(
         variant, run=replace(variant.run, overwrite=overwrite, combine_final_parquet=False)
     )
     completed = run_source_cells(initialize_app_config(variant))
+    return _dense_surface_result(variant, lookup, completed), contract
+
+
+def _dense_surface_result(variant: AppConfig, lookup: pl.DataFrame, completed: Any) -> pl.DataFrame:
+    """Validate completion before absent sparse pairs can represent observed zero."""
     expected_sources = set(lookup["source_h3"].unique().to_list())
     if (
         "source_h3_cell" not in completed.columns
@@ -156,7 +168,7 @@ def _surface_component(
         raise ValueError("LOS sources must each have one successful completion record")
     paths = [
         variant.paths.partitioned_visibility_dir
-        / f"source={source_type}"
+        / f"source={variant.source_type}"
         / f"source_h3_cell={source}.parquet"
         for source in sorted(expected_sources)
     ]
@@ -188,13 +200,16 @@ def _surface_component(
         ),
         pl.lit("computed").alias("support_state"),
     )
-    return dense.drop("__observed"), contract
+    return dense.drop("__observed")
 
 
 def _surface_contract(app: AppConfig, source_type: str, canopy: bool = False) -> dict[str, Any]:
     from ..contracts.lineage import factor_contract
+    from .terrain.gdal import expected_partition_metadata
 
-    lookup_path, _ = _lookup(app, source_type)
+    lookup_path = final_artifact_paths_from_raw(
+        app.raw_config, app.config_path.parent
+    ).source_target_lookup
     inputs = {
         "lookup": lookup_path,
         "land": app.paths.land_polygon_path,
@@ -210,6 +225,10 @@ def _surface_contract(app: AppConfig, source_type: str, canopy: bool = False) ->
         app.raw_config, app.config_path.parent, source_type, "canopy" if canopy else "terrain"
     )
     contract["source_type"] = source_type
+    surface = "canopy" if canopy and source_type == "land" else "bare_earth"
+    contract["terrain_partition_identity"] = expected_partition_metadata(
+        _surface_variant(app, surface, source_type)
+    )
     return contract
 
 
@@ -243,26 +262,84 @@ def build_chm_component(
             raise ValueError("DEM component missing or stale; run build-dem-weights first")
         bare = pl.read_parquet(dem_path).select(*PAIR_KEYS, "weight_terrain")
         canopy, _ = _surface_component(app, "canopy", source_type="land", overwrite=overwrite)
-        validate_pairs(bare, ("weight_terrain",))
-        frame = bare.join(
-            canopy.select(
-                *PAIR_KEYS,
-                pl.col("weight_terrain").alias("canopy_los_raw"),
-                pl.col("terrain_visibility").alias("canopy_visibility"),
-            ),
-            on=PAIR_KEYS,
-            validate="1:1",
-        )
-        if frame.height != bare.height:
-            raise ValueError("Canopy and DEM pair universes differ")
-        frame = frame.with_columns(
-            pl.when(pl.col("weight_terrain") > 0)
-            .then(pl.min_horizontal("canopy_los_raw", "weight_terrain") / pl.col("weight_terrain"))
-            .otherwise(1.0)
-            .alias("weight_vegetation"),
-            pl.when(pl.col("weight_terrain") > 0)
-            .then(pl.lit("computed"))
-            .otherwise(pl.lit("no_baseline_support_neutral"))
-            .alias("canopy_support"),
-        ).drop("weight_terrain")
+        frame = _conditional_canopy(bare, canopy)
     return write_component(frame, path, contract, weights=("weight_vegetation",))
+
+
+def _conditional_canopy(bare: pl.DataFrame, canopy: pl.DataFrame) -> pl.DataFrame:
+    validate_pairs(bare, ("weight_terrain",))
+    frame = bare.select(*PAIR_KEYS, "weight_terrain").join(
+        canopy.select(
+            *PAIR_KEYS,
+            pl.col("weight_terrain").alias("canopy_los_raw"),
+            pl.col("terrain_visibility").alias("canopy_visibility"),
+        ),
+        on=PAIR_KEYS,
+        validate="1:1",
+    )
+    if frame.height != bare.height:
+        raise ValueError("Canopy and DEM pair universes differ")
+    return frame.with_columns(
+        pl.when(pl.col("weight_terrain") > 0)
+        .then(pl.min_horizontal("canopy_los_raw", "weight_terrain") / pl.col("weight_terrain"))
+        .otherwise(1.0)
+        .alias("weight_vegetation"),
+        pl.when(pl.col("weight_terrain") > 0)
+        .then(pl.lit("computed"))
+        .otherwise(pl.lit("no_baseline_support_neutral"))
+        .alias("canopy_support"),
+    ).drop("weight_terrain")
+
+
+def build_land_surface_components(app: AppConfig, *, overwrite: bool = False) -> dict[str, Path]:
+    """Build requested land surfaces together only when both require computation.
+
+    Reuse the paired runner within the existing component scratch namespace;
+    independent stages and component promotion/cleanup behavior stay unchanged.
+    """
+    from .terrain.runner import run_paired_surface_source_cells
+
+    variants = {
+        surface: replace(
+            variant,
+            run=replace(variant.run, overwrite=overwrite, combine_final_parquet=False),
+        )
+        for surface in ("bare_earth", "canopy")
+        for variant in (_surface_variant(app, surface, "land"),)
+    }
+    dem_path = component_path(app, "dem")
+    chm_path = component_path(app, "chm")
+    dem_contract = _surface_contract(app, "land")
+    dem_current = not overwrite and cache_matches(dem_path, dem_contract)
+    chm_current = (
+        not overwrite
+        and dem_path.is_file()
+        and cache_matches(chm_path, _surface_contract(app, "land", canopy=True))
+    )
+    if dem_current or chm_current:
+        return {
+            "build-dem-weights": build_dem_component(app, overwrite=overwrite),
+            "build-chm-weights": build_chm_component(app, overwrite=overwrite),
+        }
+    _, lookup = _lookup(app, "land")
+    if lookup.is_empty():
+        return {
+            "build-dem-weights": build_dem_component(app, overwrite=overwrite),
+            "build-chm-weights": build_chm_component(app, overwrite=overwrite),
+        }
+    bare_app = initialize_app_config(variants["bare_earth"])
+    canopy_app = initialize_app_config(variants["canopy"])
+    bare_completed, canopy_completed = run_paired_surface_source_cells(bare_app, canopy_app)
+    bare = _dense_surface_result(bare_app, lookup, bare_completed)
+    write_component(bare, dem_path, dem_contract, weights=("weight_terrain",))
+    # Retain only the matching denominator while reading the second sparse surface.
+    bare = bare.select(*PAIR_KEYS, "weight_terrain")
+    canopy = _dense_surface_result(canopy_app, lookup, canopy_completed)
+    frame = _conditional_canopy(bare, canopy)
+    write_component(
+        frame,
+        chm_path,
+        _surface_contract(app, "land", canopy=True),
+        weights=("weight_vegetation",),
+    )
+    return {"build-dem-weights": dem_path, "build-chm-weights": chm_path}

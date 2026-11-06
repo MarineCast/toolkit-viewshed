@@ -6,11 +6,74 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 
 import numpy as np
+import polars as pl
 
 from .summarize import (
     DISTANCE_SUM_SCALE,
+    DISTANCE_WEIGHT_SUM_SCALE,
+    WaterPixelH3Index,
     _accumulate_visible,
     _init_cumulative_arrays,
+    njit,
+)
+
+
+def _reduce_target_tile(
+    counts,
+    minimum,
+    maximum,
+    distance_sums,
+    weight_sums,
+    observer_masks,
+    codes,
+    code_to_target,
+    row_start,
+    col_start,
+    stride,
+    pixels,
+    pairs,
+    weights,
+    max_counts,
+    nearest,
+    farthest,
+    mean_sums,
+    masks,
+):
+    """Accumulate one tile into small target arrays without pixel-table materialization."""
+    for row in range(counts.shape[0]):
+        if (row + row_start) % stride:
+            continue
+        for col in range(counts.shape[1]):
+            count = counts[row, col]
+            if count == 0 or (col + col_start) % stride:
+                continue
+            code = codes[row, col]
+            if code == -1:
+                continue
+            if code < -1 or code >= len(code_to_target):
+                raise ValueError("Visible pixel has an invalid target code")
+            target = code_to_target[code]
+            if target < 0:
+                continue
+            pixels[target] += 1
+            pairs[target] += count
+            weights[target] += weight_sums[row, col]
+            max_counts[target] = max(max_counts[target], count)
+            near_km = np.float32(minimum[row, col] / np.float32(1_000.0))
+            far_km = np.float32(maximum[row, col] / np.float32(1_000.0))
+            # Preserve the existing per-pixel float32 distance normalization before
+            # averaging pixels. Integer LOS/weight numerators never enter float math.
+            mean_m = np.float32(distance_sums[row, col] / float(DISTANCE_SUM_SCALE) / count)
+            mean_km = np.float32(mean_m / np.float32(1_000.0))
+            nearest[target] = min(nearest[target], near_km)
+            farthest[target] = max(farthest[target], far_km)
+            mean_sums[target] += mean_km
+            if observer_masks.size:
+                masks[target] |= observer_masks[row, col]
+
+
+_reduce_target_tile_compiled = (
+    njit(cache=True, nogil=True)(_reduce_target_tile) if njit is not None else None
 )
 
 
@@ -205,6 +268,112 @@ class TiledAccumulator:
     def iter_tiles(self) -> Iterator[tuple[tuple[int, int], TileAccumulator]]:
         for key in sorted(self.tiles):
             yield key, self.tiles[key]
+
+    def grouped_h3(
+        self,
+        pixel_h3_index: WaterPixelH3Index,
+        *,
+        allowed_target_h3: set[str] | None = None,
+        stride: int = 1,
+        use_compiled: bool = True,
+    ) -> pl.DataFrame:
+        """Reduce tiles directly to target numerators with bounded extra storage.
+
+        Retains full target and observer denominators downstream. No pixel sampling
+        changes occur: the same global stride is applied as in ``sparse_arrays``.
+        """
+        if stride < 1:
+            raise ValueError("stride must be positive")
+        grid = pixel_h3_index.code_grid
+        if (
+            self.row_offset < 0
+            or self.col_offset < 0
+            or self.row_offset + self.shape[0] > grid.shape[0]
+            or self.col_offset + self.shape[1] > grid.shape[1]
+        ):
+            raise ValueError("Accumulator window exceeds the target-code grid")
+        cells = pixel_h3_index.h3_cells
+        selected_codes = [
+            code
+            for code, cell in enumerate(cells)
+            if allowed_target_h3 is None or cell in allowed_target_h3
+        ]
+        size = len(selected_codes)
+        code_to_target = np.full(len(cells), -1, dtype="int32")
+        code_to_target[selected_codes] = np.arange(size, dtype="int32")
+        pixels = np.zeros(size, dtype="uint64")
+        pairs = np.zeros(size, dtype="uint64")
+        weights = np.zeros(size, dtype="int64")
+        max_counts = np.zeros(size, dtype="uint16")
+        nearest = np.full(size, np.inf, dtype="float32")
+        farthest = np.zeros(size, dtype="float32")
+        mean_sums = np.zeros(size, dtype="float64")
+        masks = np.zeros(size, dtype="uint64")
+        reducer = (
+            _reduce_target_tile_compiled
+            if use_compiled and _reduce_target_tile_compiled is not None
+            else _reduce_target_tile
+        )
+        for _, tile in self.iter_tiles():
+            codes = grid[
+                tile.row_start : tile.row_start + tile.shape[0],
+                tile.col_start : tile.col_start + tile.shape[1],
+            ]
+            reducer(
+                tile.visible_count,
+                tile.min_distance,
+                tile.max_distance,
+                tile.distance_sum,
+                tile.distance_weight_sum,
+                (
+                    tile.observer_mask
+                    if tile.observer_mask is not None
+                    else np.empty((0, 0), dtype="uint64")
+                ),
+                codes,
+                code_to_target,
+                tile.row_start,
+                tile.col_start,
+                stride,
+                pixels,
+                pairs,
+                weights,
+                max_counts,
+                nearest,
+                farthest,
+                mean_sums,
+                masks,
+            )
+        selected = np.flatnonzero(pixels)
+        frame = pl.DataFrame(
+            {
+                "h3_cell": pl.Series([cells[selected_codes[i]] for i in selected], dtype=pl.String),
+                "visible_sampled_pixel_count": pixels[selected].astype("uint32"),
+                "visible_observer_pixel_count_sum": pairs[selected],
+                "los_distance_weight_sum": weights[selected],
+                "visible_from_n_points_approx": max_counts[selected],
+                "nearest_view_distance_km": nearest[selected],
+                "mean_view_distance_km": (mean_sums[selected] / pixels[selected]).astype("float32"),
+                "farthest_view_distance_km": farthest[selected],
+            }
+        ).with_columns(
+            (
+                pl.col("los_distance_weight_sum").cast(pl.Float64)
+                / float(DISTANCE_WEIGHT_SUM_SCALE)
+            ).alias("los_distance_weight_sum")
+        )
+        if self.n_observers <= 63:
+            frame = frame.with_columns(pl.Series("observer_mask", masks[selected]))
+            frame = frame.select(pl.exclude("h3_cell"), "h3_cell")
+            return frame.with_columns(
+                pl.col("observer_mask")
+                .bitwise_count_ones()
+                .cast(pl.Int64)
+                .alias("visible_from_n_points")
+            )
+        return frame.select(pl.exclude("h3_cell"), "h3_cell").with_columns(
+            pl.col("visible_from_n_points_approx").alias("visible_from_n_points")
+        )
 
     def sparse_arrays(self, *, stride: int = 1) -> SparseAccumulatorArrays:
         """Finalize tiles independently and concatenate only visible pixels."""

@@ -12,6 +12,7 @@ import geopandas as gpd
 import h3
 import numpy as np
 import pandas as pd
+import pytest
 from affine import Affine
 from shapely.geometry import Point
 
@@ -368,7 +369,7 @@ def test_source_window_plan_is_persisted_per_batch(tmp_path: Path) -> None:
     assert persisted.to_dict("records") == rows
 
 
-def test_source_coordinators_are_reduced_to_fit_memory_guardrail() -> None:
+def test_source_coordinators_are_reduced_to_fit_memory_guardrail(monkeypatch) -> None:
     app = load_app_config("configs/salish_sea.yaml")
     app = replace(
         app,
@@ -378,7 +379,10 @@ def test_source_coordinators_are_reduced_to_fit_memory_guardrail() -> None:
     context = SimpleNamespace(
         batch_id="memory-test",
         water_mask_arr=np.zeros((2001, 2001), dtype=bool),
+        water_pixel_h3_index=SimpleNamespace(h3_cells=("target",)),
+        water_pixel_area_m2=900,
     )
+    monkeypatch.setattr(runner, "_NUMBA_AVAILABLE", True)
 
     workers, estimate = runner._memory_bounded_source_worker_count(
         app,
@@ -390,6 +394,18 @@ def test_source_coordinators_are_reduced_to_fit_memory_guardrail() -> None:
 
     assert workers == 1
     assert estimate <= 400.0
+
+    # Without compact target reduction, sparse pixel arrays/grouping need enough
+    # extra headroom to reject this same budget even with one coordinator.
+    monkeypatch.setattr(runner, "_NUMBA_AVAILABLE", False)
+    with pytest.raises(ValueError, match="even with one active source"):
+        runner._memory_bounded_source_worker_count(
+            app,
+            context,
+            requested_workers=8,
+            pending_source_count=7,
+            observer_workers=8,
+        )
 
 
 def test_performance_telemetry_is_append_only(tmp_path: Path) -> None:
@@ -697,6 +713,7 @@ def test_paired_surface_runner_prepares_batch_once(
     bare_manifest, canopy_manifest = runner.run_paired_surface_source_cells(
         bare_app,
         canopy_app,
+        selected_source_cells=[cell],
     )
 
     assert prepare_calls == [(cell,)]

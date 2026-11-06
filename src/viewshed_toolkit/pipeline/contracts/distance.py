@@ -18,7 +18,7 @@ from ..config import AppConfig
 from .components import component_root, fingerprint, write_json
 
 DISTANCE_PRODUCT_SCHEMA_VERSION = "distance_products_v1"
-PAIR_DISTANCE_ALGORITHM_VERSION = "h3_centroid_pair_distance_v1"
+PAIR_DISTANCE_ALGORITHM_VERSION = "h3_centroid_pair_distance_v2"
 DISTANCE_PROFILE_ALGORITHM_VERSION = "distance_profile_from_pair_product_v1"
 PAIR_DISTANCE_SCHEMA = (
     "source_h3",

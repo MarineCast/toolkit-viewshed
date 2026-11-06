@@ -19,6 +19,8 @@ def _cmd_distance(args: argparse.Namespace) -> None:
         source_type=args.source,
         overwrite=args.overwrite,
         combine=args.combine,
+        limit=args.limit,
+        start=args.start,
         clean_intermediates=args.clean_intermediates,
     )
     _print_mapping(result.get("combined"))
@@ -179,6 +181,8 @@ def register_commands(
     ):
         parser = common(name, "Build source-target distance weights.")
         parser.add_argument("--combine", action="store_true", default=combine)
+        parser.add_argument("--limit", type=int, default=None)
+        parser.add_argument("--start", type=int, default=0)
         parser.add_argument("--source", choices=["land", "water"], default="land")
         parser.add_argument("--clean-intermediates", action="store_true")
         parser.set_defaults(func=_cmd_distance_alias if combine else _cmd_distance)

@@ -145,7 +145,7 @@ def test_endpoint_flattens_water_even_when_projected_dem_is_nodata(tmp_path: Pat
 
     assert not np.ma.is_masked(output[1, 1])
     assert output[1, 1] == 0.0
-    assert tags["algorithm_version"] == "viewshed_water_flattened_endpoint_v3"
+    assert tags["algorithm_version"] == "preserve_dem_except_explicit_marine_v1"
 
 
 def test_los_dem_nodata_is_replaced_by_conservative_opaque_barrier(

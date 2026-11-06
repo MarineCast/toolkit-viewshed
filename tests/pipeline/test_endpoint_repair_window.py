@@ -1,8 +1,39 @@
 import numpy as np
 import rasterio
+import pytest
 from rasterio.transform import from_origin
 
 from viewshed_toolkit.pipeline.prepare.elevation.terrain import canonical_endpoint_repair
+from viewshed_toolkit.pipeline.prepare.elevation.terrain import sample_observer_ground_elevation
+
+
+def test_observer_ground_repairs_source_void_and_rejects_unresolved_ground(tmp_path):
+    profile = dict(
+        driver="GTiff",
+        width=3,
+        height=3,
+        count=1,
+        dtype="float32",
+        crs="EPSG:32610",
+        transform=from_origin(0, 3, 1, 1),
+        nodata=-9999,
+    )
+    projected = tmp_path / "projected.tif"
+    source = tmp_path / "source.tif"
+    empty = np.full((3, 3), -9999, dtype="float32")
+    with rasterio.open(projected, "w", **profile) as ds:
+        ds.write(empty, 1)
+    values = empty.copy()
+    values[0] = [2, 4, 6]
+    with rasterio.open(source, "w", **profile) as ds:
+        ds.write(values, 1)
+    assert sample_observer_ground_elevation(projected, source, 1.5, 1.5) == 4
+    with rasterio.open(source, "r+") as ds:
+        ds.write(empty, 1)
+    with pytest.raises(ValueError, match="remains unresolved"):
+        sample_observer_ground_elevation(projected, source, 1.5, 1.5)
+    with pytest.raises(ValueError, match="outside"):
+        sample_observer_ground_elevation(projected, source, -1, -1)
 
 
 def test_tiled_repair_matches_source_center_and_neighbor_rule(tmp_path):

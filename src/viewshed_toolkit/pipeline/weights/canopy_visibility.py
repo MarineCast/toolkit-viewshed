@@ -29,7 +29,11 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 import polars as pl
-from viewshed_toolkit._internal.data.parquet import atomic_sink_parquet, validate_parquet_schema
+from viewshed_toolkit._internal.data.parquet import (
+    atomic_project_parquet,
+    atomic_sink_parquet,
+    validate_parquet_schema,
+)
 
 from ..config import (
     AppConfig,
@@ -38,6 +42,7 @@ from ..config import (
     stable_config_hash,
     write_metadata_sidecar,
 )
+from ..config.loader import validate_viewshed_settings
 from ..contracts.artifacts import (
     FINAL_SCHEMAS,
     VEGETATION_STATUS_COMPUTED,
@@ -107,6 +112,8 @@ def make_terrain_variant_app(
     surface_model = str(surface_model).strip().lower()
     if surface_model not in {"bare_earth", "canopy"}:
         raise ValueError("surface_model must be 'bare_earth' or 'canopy'.")
+    variant_viewshed = replace(app.viewshed, surface_model=surface_model)
+    validate_viewshed_settings(variant_viewshed)
 
     terrain_dir = Path(terrain_dir)
     run_name = f"{app.run.name}_{surface_model}"
@@ -131,7 +138,7 @@ def make_terrain_variant_app(
             manifest_path=terrain_dir / "terrain_manifest.csv",
             final_visibility_path=terrain_dir / "terrain_edges.parquet",
         ),
-        viewshed=replace(app.viewshed, surface_model=surface_model),
+        viewshed=variant_viewshed,
         source_type="land",
     )
 
@@ -338,21 +345,59 @@ def compose_dual_surface_artifacts(
             "bare-earth partitions, or canopy partitions."
         ) from exc
     validate_parquet_schema(paths.dual_surface_factors, FINAL_SCHEMAS["dual_surface_factors"])
-    persisted = pl.scan_parquet(str(paths.dual_surface_factors))
-    atomic_sink_parquet(
-        persisted.select(list(FINAL_SCHEMAS["terrain_weights"])),
-        paths.terrain_weights,
-        overwrite=True,
-    )
-    atomic_sink_parquet(
-        persisted.select(list(FINAL_SCHEMAS["canopy_los_weights"])),
-        paths.canopy_los_weights,
-        overwrite=True,
-    )
-    atomic_sink_parquet(
-        persisted.select(list(FINAL_SCHEMAS["vegetation_weights"])),
-        paths.vegetation_weights,
-        overwrite=True,
+    metrics: dict[str, float | int] = {
+        "pair_count": 0,
+        "unweighted_canopy_exceeds_bare_pair_count": 0,
+        "substantial_canopy_excess_pair_count": 0,
+        "bare_earth_visible_pair_count": 0,
+        "canopy_visible_pair_count": 0,
+        "canopy_exceeds_bare_pair_count_before_cap": 0,
+        "maximum_canopy_excess_before_cap": 0.0,
+    }
+
+    def reduce_metrics(batch: pl.DataFrame) -> None:
+        metrics["pair_count"] += batch.height
+        expressions = []
+        for name, expression in (
+            (
+                "unweighted_canopy_exceeds_bare_pair_count",
+                pl.col("canopy_los_fraction") > pl.col("bare_los_fraction") + 1e-6,
+            ),
+            (
+                "substantial_canopy_excess_pair_count",
+                pl.col("weight_canopy_los_raw") - pl.col("weight_terrain") > 1e-6,
+            ),
+            ("bare_earth_visible_pair_count", pl.col("weight_terrain") > 0.0),
+            ("canopy_visible_pair_count", pl.col("weight_canopy_los") > 0.0),
+            (
+                "canopy_exceeds_bare_pair_count_before_cap",
+                pl.col("weight_canopy_los_raw") > pl.col("weight_terrain"),
+            ),
+        ):
+            expressions.append(expression.sum().alias(name))
+        expressions.append(
+            (pl.col("weight_canopy_los_raw") - pl.col("weight_terrain"))
+            .clip(lower_bound=0.0)
+            .max()
+            .alias("maximum_canopy_excess_before_cap")
+        )
+        reduced = batch.select(expressions).row(0, named=True)
+        for name in metrics:
+            if name not in {"pair_count", "maximum_canopy_excess_before_cap"}:
+                metrics[name] += int(reduced[name])
+        excess = reduced["maximum_canopy_excess_before_cap"]
+        metrics["maximum_canopy_excess_before_cap"] = max(
+            float(metrics["maximum_canopy_excess_before_cap"]), float(excess or 0.0)
+        )
+
+    atomic_project_parquet(
+        paths.dual_surface_factors,
+        {
+            paths.terrain_weights: FINAL_SCHEMAS["terrain_weights"],
+            paths.canopy_los_weights: FINAL_SCHEMAS["canopy_los_weights"],
+            paths.vegetation_weights: FINAL_SCHEMAS["vegetation_weights"],
+        },
+        batch_observer=reduce_metrics,
     )
     for artifact_name, artifact_path in (
         ("terrain_weights", paths.terrain_weights),
@@ -361,29 +406,6 @@ def compose_dual_surface_artifacts(
     ):
         validate_parquet_schema(artifact_path, FINAL_SCHEMAS[artifact_name])
 
-    metrics = (
-        persisted.select(
-            pl.len().alias("pair_count"),
-            (pl.col("canopy_los_fraction") > pl.col("bare_los_fraction") + 1e-6)
-            .sum()
-            .alias("unweighted_canopy_exceeds_bare_pair_count"),
-            ((pl.col("weight_canopy_los_raw") - pl.col("weight_terrain")) > 1e-6)
-            .sum()
-            .alias("substantial_canopy_excess_pair_count"),
-            (pl.col("weight_terrain") > 0.0).sum().alias("bare_earth_visible_pair_count"),
-            (pl.col("weight_canopy_los") > 0.0).sum().alias("canopy_visible_pair_count"),
-            (pl.col("weight_canopy_los_raw") > pl.col("weight_terrain"))
-            .sum()
-            .alias("canopy_exceeds_bare_pair_count_before_cap"),
-            (pl.col("weight_canopy_los_raw") - pl.col("weight_terrain"))
-            .clip(lower_bound=0.0)
-            .max()
-            .fill_null(0.0)
-            .alias("maximum_canopy_excess_before_cap"),
-        )
-        .collect()
-        .row(0, named=True)
-    )
     diagnostics: dict[str, float | int | str] = {
         **{key: value for key, value in metrics.items()},
         "contract_version": CANOPY_VISIBILITY_CONTRACT_VERSION,
@@ -432,6 +454,7 @@ def run_dual_surface_canopy_weights(
     """Run both land surfaces and persist the canonical conditional canopy factor."""
 
     app = load_app_config(config_path)
+    validate_viewshed_settings(replace(app.viewshed, surface_model="canopy"))
     canopy_contract = app.raw_config.get("canopy_visibility", {}) or {}
     configured_contract = str(canopy_contract.get("contract", CANOPY_VISIBILITY_CONTRACT_VERSION))
     if configured_contract != CANOPY_VISIBILITY_CONTRACT_VERSION:

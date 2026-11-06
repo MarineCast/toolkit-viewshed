@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import shapely
 from pyproj import CRS
-from shapely.geometry import Point
+from shapely.geometry import MultiPolygon, Point
 from shapely.geometry.base import BaseGeometry
 
 from viewshed_toolkit._internal.geo.geometry import polygons_from_any, safe_make_valid
@@ -176,12 +176,6 @@ def sample_points_in_source_geometry(
         raise ValueError("projected_crs must be a projected coordinate reference system.")
 
     polygon = source_geometry.to_crs(sampling_crs).iloc[0]
-    minx, miny, maxx, maxy = polygon.bounds
-    central_point = polygon.representative_point()
-    selected: list[Point] = []
-    if include_centroid and polygon.covers(central_point):
-        selected.append(central_point)
-
     polygonal = polygons_from_any(safe_make_valid(polygon))
     if polygonal is None:
         components: list[BaseGeometry] = []
@@ -195,8 +189,18 @@ def sample_points_in_source_geometry(
             -float(component.area),
             round(float(component.centroid.x), 6),
             round(float(component.centroid.y), 6),
+            shapely.normalize(component).wkb,
         ),
     )
+    # GEOS representative_point can choose the first tied component. Build
+    # the same ordered multipart geometry before taking the initial seed.
+    # Preserve the existing point/line fallback and its no-duplicate behavior.
+    if components:
+        polygon = components[0] if len(components) == 1 else MultiPolygon(components)
+    central_point = polygon.representative_point()
+    selected: list[Point] = []
+    if include_centroid and polygon.covers(central_point):
+        selected.append(central_point)
 
     # Seed every disconnected polygon component before filling the design with
     # the global maximin sequence. The seed order is itself maximin and is

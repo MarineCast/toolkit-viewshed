@@ -9,10 +9,12 @@ from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_fi
 from ..config import AppConfig, load_app_config
 from ..config.datasets import DatasetConfig
 from ..config.paths import bbox_from_config
+from ..config.study import with_study_config
 from ..contracts.components import component_root, input_checksums, write_json
 from ..providers import DownloadResult, get_provider
 
 
+@with_study_config
 def download_dataset(
     config: str | Path | AppConfig, dataset: str, *, overwrite: bool = False
 ) -> DownloadResult:

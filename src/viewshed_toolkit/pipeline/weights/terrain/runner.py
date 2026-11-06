@@ -73,7 +73,7 @@ from .los import (
     load_xrspatial_analysis_dem_dataarray,
     xrspatial_source_worker_count,
 )
-from .summarize import domain_target_water_area_by_h3
+from .summarize import _NUMBA_AVAILABLE, domain_target_water_area_by_h3
 
 
 class _FallbackProgress:
@@ -179,7 +179,23 @@ def _estimated_runtime_peak_memory_mb(
         for active in range(1, coordinator_count + 1)
     )
     result_queue_bytes = source_window_pixels * maximum_inflight_results
-    return float(base_bytes + accumulator_bytes + result_queue_bytes) / (1024.0 * 1024.0)
+    index = getattr(context, "water_pixel_h3_index", None)
+    target_count = len(index.h3_cells) if index is not None else 0
+    # The compiled reducer retains target-sized state, not a concatenated pixel
+    # table. Include its code map/counters plus the per-source aggregation mask.
+    # The NumPy compatibility route still needs sparse-array/table headroom.
+    reduction_bytes = target_count * 80 * max(1, int(source_workers))
+    compact_reduction = (
+        _NUMBA_AVAILABLE
+        and index is not None
+        and getattr(context, "water_pixel_area_m2", None) is not None
+    )
+    reduction_bytes += active_window_pixels * (1 if compact_reduction else 128)
+    if app.run.write_cumulative_rasters:
+        reduction_bytes += active_window_pixels * 12
+    return float(base_bytes + accumulator_bytes + result_queue_bytes + reduction_bytes) / (
+        1024.0 * 1024.0
+    )
 
 
 def _memory_bounded_source_worker_count(
@@ -226,7 +242,8 @@ def _memory_bounded_source_worker_count(
         "with one active source coordinator: "
         f"estimated_memory_mb={minimum_estimate:.1f} "
         f"max_estimated_batch_memory_mb={float(maximum_mb):.1f} "
-        f"batch_id={context.batch_id}. Reduce batch radius/resolution or raise the "
+        f"batch_id={context.batch_id}. Reduce batch.batch_size_cells or "
+        "batch.max_batch_aoi_pixels, or raise the "
         "guardrail after validating available memory."
     )
 
@@ -1004,6 +1021,7 @@ def run_paired_surface_source_cells(
     *,
     limit: int | None = None,
     start: int = 0,
+    selected_source_cells: Sequence[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     snapshots = [
         expected_partition_metadata(app, refresh=True) for app in (bare_earth_app, canopy_app)
@@ -1012,7 +1030,9 @@ def run_paired_surface_source_cells(
         replace(app, partition_metadata_snapshot=snapshot)
         for app, snapshot in zip((bare_earth_app, canopy_app), snapshots, strict=True)
     ]
-    result = _run_paired_surface_source_cells(*apps, limit=limit, start=start)
+    result = _run_paired_surface_source_cells(
+        *apps, limit=limit, start=start, selected_source_cells=selected_source_cells
+    )
     if any(
         expected_partition_metadata(app, refresh=True) != snapshot
         for app, snapshot in zip(apps, snapshots, strict=True)
@@ -1024,7 +1044,12 @@ def run_paired_surface_source_cells(
 
 
 def _run_paired_surface_source_cells(
-    bare_earth_app: AppConfig, canopy_app: AppConfig, *, limit: int | None = None, start: int = 0
+    bare_earth_app: AppConfig,
+    canopy_app: AppConfig,
+    *,
+    limit: int | None = None,
+    start: int = 0,
+    selected_source_cells: Sequence[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run matched bare-earth and canopy surfaces from one prepared batch.
 
@@ -1060,6 +1085,20 @@ def _run_paired_surface_source_cells(
             _area_lookup_path_for_app(canopy_app),
         )
 
+    if selected_source_cells is not None:
+        requested = list(selected_source_cells)
+        if start or limit is not None:
+            raise ValueError("Explicit paired sources cannot be combined with start/limit")
+        if not requested or len(set(requested)) != len(requested):
+            raise ValueError("Explicit paired source selection must be nonempty and unique")
+        available = set(source_cells_gdf["h3_cell"].astype(str))
+        if not set(requested).issubset(available):
+            raise ValueError(
+                "Explicit paired source selection is absent from the prepared universe"
+            )
+        source_cells_gdf = source_cells_gdf[
+            source_cells_gdf["h3_cell"].astype(str).isin(requested)
+        ].copy()
     if start:
         source_cells_gdf = source_cells_gdf.iloc[start:].copy()
     if limit is not None:

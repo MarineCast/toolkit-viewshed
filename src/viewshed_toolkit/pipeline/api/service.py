@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from viewshed_toolkit._internal.artifacts import ArtifactRef, RunManifest, checksum_path
+from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
 from viewshed_toolkit._internal.data import StageResult, ValidationReport
 
-from ..config import AppConfig, load_app_config
+from ..config import AppConfig, load_app_config, metadata_sidecar_candidates
 from ..contracts import (
     DEFAULT_WORKFLOW_IDENTITY,
     WorkflowIdentity,
@@ -32,6 +34,61 @@ class ViewshedRequest:
     force: bool = False
     resume: bool = False
     identity: WorkflowIdentity | None = None
+    study_config: Path | None = None
+
+
+def _numerical_algorithm_identity(stages: Iterable[str]) -> dict[str, str]:
+    """Use the maintained producer versions, not only user configuration, for reuse."""
+
+    selected = set(stages)
+    versions: dict[str, str] = {}
+    if "prepare-source-target-lookup" in selected:
+        from ..contracts import pairs
+
+        versions["source_target_lookup"] = pairs.LOOKUP_ALGORITHM_VERSION
+    if "build-distance-weights" in selected:
+        from ..weights.distance import compute
+
+        versions.update(
+            distance_partition=compute.DISTANCE_PARTITION_ALGORITHM_VERSION,
+            distance_combination=compute.DISTANCE_COMBINATION_ALGORITHM_VERSION,
+        )
+    if selected.intersection({"terrain-weight", "build-dual-surface-canopy-weights"}):
+        from ..config import loader
+        from ..prepare.area import domains, geometry, raster_stack
+        from ..weights.terrain import gdal, land_mask, pixel_index
+
+        versions.update(
+            source_sampling=loader.SOURCE_SAMPLING_ALGORITHM_VERSION,
+            terrain_partition=gdal.TERRAIN_PARTITION_SCHEMA_VERSION,
+            grid_alignment=gdal.GRID_ALIGNMENT_ALGORITHM_VERSION,
+            water_terrain=gdal.WATER_TERRAIN_ALGORITHM_VERSION,
+            water_terrain_prefilter=gdal.WATER_TERRAIN_PREFILTER_VERSION,
+            canonical_pixel_h3=pixel_index.CANONICAL_PIXEL_H3_INDEX_VERSION,
+            canonical_raster_stack=raster_stack.CANONICAL_RASTER_STACK_ALGORITHM_VERSION,
+            h3_geometry=geometry.H3_GEOMETRY_ALGORITHM_VERSION,
+            domain_geometry=domains.DOMAIN_GEOMETRY_ALGORITHM_VERSION,
+            water_land_exclusion=land_mask.LAND_EXCLUSION_ALGORITHM_VERSION,
+        )
+    if "build-dual-surface-canopy-weights" in selected:
+        from ..prepare.elevation import canopy
+        from ..weights import canopy_visibility
+
+        versions.update(
+            canopy_visibility=canopy_visibility.CANOPY_VISIBILITY_CONTRACT_VERSION,
+            canopy_alignment=canopy.CANOPY_ALIGNMENT_ALGORITHM_VERSION,
+            canopy_surface=canopy.CANOPY_SURFACE_ALGORITHM_VERSION,
+            canopy_base=canopy.CANONICAL_CANOPY_BASE_ALGORITHM_VERSION,
+            canopy_observer=canopy.OBSERVER_GROUNDED_CANOPY_ALGORITHM_VERSION,
+        )
+    if "finalize-viewshed-lookups" in selected:
+        from ..contracts import artifacts
+
+        versions.update(
+            static_artifact_schema=artifacts.STATIC_ARTIFACT_SCHEMA_VERSION,
+            observation_geometry_schema=artifacts.OBSERVATION_GEOMETRY_SCHEMA_VERSION,
+        )
+    return versions
 
 
 def _stage_signature(
@@ -40,10 +97,12 @@ def _stage_signature(
     *,
     identity: WorkflowIdentity = DEFAULT_WORKFLOW_IDENTITY,
 ) -> str:
+    stages = tuple(stages)
     payload = json.dumps(
         {
             "config_hash": config_hash,
             "stages": list(stages),
+            "numerical_algorithms": _numerical_algorithm_identity(stages),
             "workflow_identity": {
                 "workflow": identity.workflow,
                 "dataset_id": identity.dataset_id,
@@ -148,6 +207,98 @@ def _artifact_refs(
     )
 
 
+def _run_input_fingerprints(app: AppConfig, stages: Iterable[str]) -> dict[str, Any]:
+    """Snapshot local stage dependencies, including missing paths and vector companions.
+
+    This is a local reuse check, not a provider freshness claim. A completed full
+    workflow snapshots its post-cleanup state, so removed intermediates need not
+    be recreated merely to resume; reintroduced or changed inputs invalidate reuse.
+    """
+
+    paths = final_artifact_paths_from_raw(app.raw_config, app.config_path.parent)
+    geometry = (
+        app.paths.land_polygon_path,
+        app.paths.water_polygon_path,
+        app.paths.land_h3_path,
+        app.paths.source_cells_path,
+    )
+    physical: tuple[Path, ...] = (
+        *geometry,
+        app.paths.regional_dem_path,
+        app.paths.canopy_height_path,
+    )
+    if app.source_type == "land" and app.paths.marine_water_mask_path is not None:
+        physical = (*physical, app.paths.marine_water_mask_path)
+    weights = (
+        paths.source_target_lookup,
+        paths.target_water_area,
+        paths.distance_weights,
+        paths.ocean_distance_weights,
+        paths.terrain_weights,
+        paths.canopy_los_weights,
+        paths.dual_surface_factors,
+        paths.vegetation_weights,
+        paths.source_target_clear_sky,
+        paths.ocean_terrain_weights,
+        paths.ocean_source_target_clear_sky,
+        paths.ocean_vegetation_weights,
+    )
+    dependencies = {
+        "download-data": (app.paths.land_polygon_path,),
+        "build-land-cells": geometry[:2],
+        "prepare-source-target-lookup": geometry,
+        "build-distance-weights": (paths.source_target_lookup,),
+        "build-dual-surface-canopy-weights": (*physical, paths.source_target_lookup),
+        "terrain-weight": (*geometry, paths.source_target_lookup),
+        "build-vegetation-path-weights": (
+            *geometry,
+            paths.source_target_lookup,
+            paths.ocean_terrain_weights,
+        ),
+        "finalize-viewshed-lookups": (*physical, *weights),
+        "export-static-maps": (
+            *geometry,
+            paths.land_static_weights,
+            paths.water_static_weights,
+            paths.land_observation_geometry,
+            paths.water_observation_geometry,
+        ),
+    }
+    selected = {Path(path).resolve() for stage in stages for path in dependencies[stage]}
+    result: dict[str, Any] = {}
+    for path in sorted(selected):
+        if not path.exists():
+            result[str(path)] = {"missing": True}
+            continue
+        members = (
+            sorted(member for member in path.parent.glob(path.stem + ".*") if member.is_file())
+            if path.suffix.lower() == ".shp"
+            else [path]
+        )
+        members = sorted(
+            {
+                *members,
+                *(
+                    member
+                    for member in (
+                        *metadata_sidecar_candidates(path),
+                        path.with_suffix(path.suffix + ".json"),
+                    )
+                    if member.is_file()
+                ),
+            }
+        )
+        result[str(path)] = {
+            "members": {
+                member.name: (
+                    checksum_unchanged_file(member) if member.is_file() else checksum_path(member)
+                )
+                for member in members
+            }
+        }
+    return result
+
+
 def _resume_refs(
     manifest_path: Path,
     *,
@@ -155,18 +306,31 @@ def _resume_refs(
     config_hash: str,
     stage_signature: str,
     expected_paths: tuple[Path, ...],
+    input_fingerprints: Mapping[str, Any] | None = None,
 ) -> tuple[ArtifactRef, ...] | None:
     if not manifest_path.exists():
         return None
-    existing = json.loads(manifest_path.read_text())
+    try:
+        existing = json.loads(manifest_path.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(existing, dict):
+        return None
+    if input_fingerprints is None or existing.get("input_fingerprints") != input_fingerprints:
+        return None
+    if existing.get("status") != "complete":
+        return None
     if existing.get("config_hash") != config_hash:
         return None
     if existing.get("stage_signature") != stage_signature:
         return None
     if existing.get("run_id") != request.run_id:
         return None
-    refs = tuple(ArtifactRef.from_dict(item) for item in existing.get("outputs", ()))
-    if {item.path.resolve() for item in refs} != set(expected_paths):
+    try:
+        refs = tuple(ArtifactRef.from_dict(item) for item in existing.get("outputs", ()))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not refs or {item.path.resolve() for item in refs} != set(expected_paths):
         return None
     if not all(ref.path.exists() and ref.checksum == checksum_path(ref.path) for ref in refs):
         return None
@@ -215,6 +379,15 @@ def _partial_input_refs(app: AppConfig, request: ViewshedRequest) -> tuple[Artif
 
 
 def process(request: ViewshedRequest) -> StageResult:
+    """Execute with an explicit portable study selection scoped to this request."""
+    from ..config.study import study_selection
+
+    with study_selection(request.study_config):
+        return _process(request)
+
+
+def _process(request: ViewshedRequest) -> StageResult:
+    """Validate retained lineage before executing the registered stages."""
     validate_run_id(request.run_id)
     unknown = sorted(set(request.stages) - set(STAGES))
     if unknown:
@@ -238,29 +411,26 @@ def process(request: ViewshedRequest) -> StageResult:
         config_hash=app.config_hash,
         stage_signature=signature,
     )
-    if manifest_path.exists() and not (request.force or same_logical_run):
+    if manifest_path.exists() and not same_logical_run:
         raise FileExistsError(
             "Refusing to replace a viewshed manifest from a different logical run. "
-            f"path={manifest_path}. Use a new run.version/run-id or pass --force."
+            f"path={manifest_path}. Explicitly rebuild affected stages with overwrite=True "
+            "and use a new run_id. force cannot verify or rebuild cached scientific "
+            "products and cannot bypass this check."
         )
-    if request.resume and tuple(request.stages) != STAGES and manifest_path.exists():
+    if same_logical_run:
+        # Legacy producers do not all validate their input content before reuse.
+        # Merely invoking them cannot certify a changed source or corrupt output.
+        # Refuse before mutation rather than silently blessing old stage caches.
+        current_inputs = _run_input_fingerprints(app, request.stages)
         previous = json.loads(manifest_path.read_text())
-        current_inputs = _partial_input_refs(app, request)
-        if previous.get("schema_version") != "3":
+        if previous.get("input_fingerprints") != current_inputs:
             raise ValueError(
-                "Partial resume requires input-aware manifest v3; rebuild the stage inputs"
+                "Run input provenance is missing or changed. Explicitly rebuild affected "
+                "stages with overwrite=True and use a new run_id; resume/force cannot "
+                f"certify existing stage caches: {manifest_path}"
             )
-        recorded = {item["path"]: item.get("checksum") for item in previous.get("inputs", ())}
-        current = {str(item.path): item.checksum for item in current_inputs}
-        if recorded != current:
-            raise ValueError(
-                "Partial run inputs changed or are missing; rebuild affected stages before reuse"
-            )
-    if request.resume and not request.force and tuple(request.stages) == STAGES:
-        # A manifest alone cannot prove current scientific identity. Partial runs
-        # re-enter stage-specific cache checks; only a validated retained paired
-        # generation can bypass execution (including after permitted cleanup).
-        if manifest_path.exists():
+        if request.resume and tuple(request.stages) == STAGES:
             from ..finalize.final_artifacts import validate_static_viewability_outputs
 
             validate_static_viewability_outputs(request.config)
@@ -270,8 +440,15 @@ def process(request: ViewshedRequest) -> StageResult:
             config_hash=app.config_hash,
             stage_signature=signature,
             expected_paths=expected_paths,
+            input_fingerprints=current_inputs,
         )
-        if refs is not None:
+        if refs is None:
+            raise ValueError(
+                "Recorded run outputs are missing, corrupt, or incompatible. Explicitly "
+                "rebuild affected stages with overwrite=True and use a new run_id; "
+                f"resume/force cannot certify existing stage caches: {manifest_path}"
+            )
+        if request.resume:
             report = ValidationReport(
                 True,
                 identity.dataset_id,
@@ -318,6 +495,7 @@ def process(request: ViewshedRequest) -> StageResult:
         stages=tuple({"name": stage, "status": "complete"} for stage in request.stages),
         stage_signature=signature,
         schema_version="3",
+        input_fingerprints=_run_input_fingerprints(app, request.stages),
     )
     manifest.write(
         manifest_path,
@@ -327,6 +505,7 @@ def process(request: ViewshedRequest) -> StageResult:
 
 
 def validate(artifacts: tuple[ArtifactRef, ...]) -> ValidationReport:
+    """Report artifact presence and count. Checksum and schema checks live at their use sites."""
     missing = tuple(item.path for item in artifacts if not item.path.exists())
     dataset_ids = {item.dataset_id for item in artifacts if item.dataset_id}
     dataset_id = (

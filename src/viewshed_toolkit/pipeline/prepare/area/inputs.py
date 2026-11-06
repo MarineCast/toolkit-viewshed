@@ -80,4 +80,13 @@ def validate_viewshed_inputs(app: AppConfig) -> None:
                 f"{app.paths.canopy_height_path}"
             )
 
+    if (
+        str(getattr(app, "source_type", "land") or "land") == "land"
+        and app.paths.marine_water_mask_path is not None
+    ):
+        _require_existing_file(
+            app.paths.marine_water_mask_path,
+            "marine water mask",
+            "Set paths.marine_water_mask_path to an aligned binary marine-only raster.",
+        )
     source_cells_input_path(app)

@@ -21,9 +21,11 @@ Do not transfer cleanup or promotion behavior between workflows. Successful comp
 the established paired workflow may clean intermediates and uses rollback-safe paired land/water
 promotion. The explicit component workflow writes its separate component namespace, performs no
 implicit cleanup, and uses per-role manifests rather than a combined atomic generation pointer.
-For water builds, read the role-aware dependencies in `docs/pipelines.md`: opaque-land
-component builds omit DEM/CHM acquisition and preparation. Preserve those independent geometry
-inputs and do not restore unrelated raster dependencies.
+The established workflow retains reusable caches by default; `run.cleanup_policy: compact`
+selects compact cleanup. Both protect configured inputs and validate durable outputs first.
+Water component build plans use geometry for the opaque-land model and omit DEM/CHM acquisition
+and preparation. Explicit raster stage requests still execute their named operation. Preserve
+these source-role dependencies and the independent-stage scope documented in `docs/pipelines.md`.
 
 - Never broaden a cleanup root or bypass containment checks.
 - Never clean the repository root, current working directory, or a path outside the configured

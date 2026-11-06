@@ -11,6 +11,7 @@ run:
   name: model_area_viewshed
   version: model_area_h3r7_30km_clearance30_v002
   overwrite: false
+  cleanup_policy: retain_reusable
   skip_existing_partitions: true
   combine_final_parquet: false
   keep_intermediate_rasters: false

@@ -82,15 +82,3 @@ def bbox_from_config(
     if out["min_lon"] >= out["max_lon"] or out["min_lat"] >= out["max_lat"]:
         raise ValueError(f"Invalid bbox mapping: {out}")
     return out
-
-
-def ranges_for_area(
-    area_name_value: str,
-    *,
-    common_config_path: str | Path | None = None,
-) -> tuple[tuple[float, float], tuple[float, float]]:
-    bbox = bbox_for_area(area_name_value, common_config_path=common_config_path)
-    return (
-        (bbox["min_lat"], bbox["max_lat"]),
-        (bbox["min_lon"], bbox["max_lon"]),
-    )

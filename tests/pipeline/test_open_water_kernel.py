@@ -14,6 +14,11 @@ from viewshed_toolkit.pipeline.config.distance import DistanceWeightConfig
 from viewshed_toolkit.pipeline.weights.terrain import gdal
 
 
+@pytest.fixture(autouse=True)
+def _isolate_relative_fixture_cache(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+
 def _app(*, curvature_coefficient: float) -> SimpleNamespace:
     return SimpleNamespace(
         config_path=Path("fixture.yaml"),
@@ -32,6 +37,7 @@ def _app(*, curvature_coefficient: float) -> SimpleNamespace:
             target_height_m=1.0,
             curvature_coefficient=curvature_coefficient,
             earth_radius_m=6_371_008.8,
+            max_distance_m=30_000.0,
             crs_projected="EPSG:3857",
         ),
     )
@@ -137,7 +143,7 @@ def test_open_water_kernel_persists_recomputable_sample_numerators(
     )
 
     assert kernel is not None
-    assert kernel["aggregation_method"] == "water_land_mask_sample_kernel_v1"
+    assert kernel["aggregation_method"] == "water_land_mask_sample_kernel_v2"
     assert kernel["n_observers"] == 2
     assert kernel["target_water_sample_count"] == 2
     assert kernel["visible_observer_pixel_count_sum"] == 4
@@ -492,3 +498,33 @@ def test_water_prefilter_cache_is_bounded(monkeypatch):
         gdal._cache_water_prefilter_result((key,), result)
     assert list(gdal._WATER_TERRAIN_PREFILTER_CACHE) == [(1,), (2,)]
     assert gdal._WATER_TERRAIN_PREFILTER_CACHE[(2,)][0].equals(result[0])
+
+
+def test_cache_id_collision_cannot_reuse_different_target_samples(monkeypatch):
+    app = SimpleNamespace(
+        config_path=Path("fixture.yaml"),
+        config_hash="fixture",
+        paths=SimpleNamespace(output_dir=Path("missing-test-geometry")),
+        viewshed=SimpleNamespace(crs_projected="EPSG:3857"),
+    )
+    monkeypatch.setattr(gdal, "_cached_h3_geometry_for_app", lambda *_: None)
+    monkeypatch.setattr(gdal, "cell_to_polygon", lambda _: box(0.005, -0.01, 0.25, 0.01))
+    # Deterministically simulate reuse of freed object IDs; no physics is patched.
+    monkeypatch.setattr(gdal, "id", lambda _: 123, raising=False)
+    gdal._PROJECTED_WATER_TARGET_SAMPLE_CACHE.clear()
+    first = box(-1, -1, 1, 1)
+    monkeypatch.setattr(
+        gdal, "_water_geometry_sample_points", lambda *_args, **_kwargs: [Point(0.01, 0)]
+    )
+    near = gdal._projected_water_target_samples_for_app(
+        app, "target", water_domain=first, max_samples=1
+    )
+    second = box(-1, -1, 1, 1)
+    monkeypatch.setattr(
+        gdal, "_water_geometry_sample_points", lambda *_args, **_kwargs: [Point(0.2, 0)]
+    )
+    far = gdal._projected_water_target_samples_for_app(
+        app, "target", water_domain=second, max_samples=1
+    )
+    assert far[0].x == pytest.approx(22263.898158654716)
+    assert far[0].x > near[0].x

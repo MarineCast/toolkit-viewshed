@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,8 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
+import shapely
+from pyproj import proj_version_str
 from PIL import Image
 from rasterio.features import rasterize
 from rasterio.transform import array_bounds, from_origin
@@ -17,6 +21,9 @@ from rasterio.warp import Resampling, calculate_default_transform, reproject, tr
 from scipy.ndimage import gaussian_filter
 from shapely.geometry import box, mapping
 from shapely.ops import unary_union
+
+from viewshed_toolkit._internal.artifacts import atomic_write_json
+from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
 
 from .data import ViewshedMapConfig, _MapContext, _SmoothedMetricRender, _SmoothingGrid
 from .styling import _display_max, _map_colors, _resolve_colormap
@@ -154,10 +161,89 @@ def _masked_gaussian_filter(
     return output
 
 
+def _water_mask_for_grid(
+    path: Path, crs: str, shape: tuple[int, int], transform: Any, *, cache_dir: Path | None = None
+) -> np.ndarray:
+    contract = dict(
+        algorithm="map_water_center_raster_v1",
+        source=str(path.resolve()),
+        sha256=checksum_unchanged_file(path, raw_bytes=True),
+        crs=str(crs),
+        shape=list(shape),
+        transform=list(transform),
+        gdal=rasterio.__gdal_version__,
+        geopandas=gpd.__version__,
+        proj=proj_version_str,
+        shapely=shapely.__version__,
+    )
+    fingerprint = hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()
+    cache = cache_dir / f"{fingerprint}.tif" if cache_dir is not None else None
+    receipt = cache.with_suffix(".json") if cache is not None else None
+    if cache is not None and receipt is not None:
+        try:
+            metadata = json.loads(receipt.read_text())
+            if (
+                isinstance(metadata, dict)
+                and metadata.get("contract") == contract
+                and metadata.get("sha256") == checksum_unchanged_file(cache, raw_bytes=True)
+            ):
+                with rasterio.open(cache) as source:
+                    if (
+                        source.shape == shape
+                        and source.transform == transform
+                        and source.crs == rasterio.crs.CRS.from_user_input(crs)
+                    ):
+                        return source.read(1)
+        except (OSError, ValueError, rasterio.errors.RasterioError):
+            pass
+    west, south, east, north = array_bounds(*shape, transform)
+    water = gpd.read_parquet(path).to_crs(crs)
+    water = water.loc[water.geometry.notna() & ~water.geometry.is_empty].copy()
+    water = water.loc[water.geometry.intersects(box(west, south, east, north))]
+    if water.empty:
+        raise ValueError("Water polygon does not overlap the viewshed map footprint.")
+    result = rasterize(
+        [(mapping(geometry), 1) for geometry in water.geometry],
+        out_shape=shape,
+        transform=transform,
+        fill=0,
+        all_touched=False,
+        dtype="uint8",
+    )
+    if cache is not None and receipt is not None:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        temporary = cache.with_name(f".{cache.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            with rasterio.open(
+                temporary,
+                "w",
+                driver="GTiff",
+                width=shape[1],
+                height=shape[0],
+                count=1,
+                dtype="uint8",
+                crs=crs,
+                transform=transform,
+                compress="deflate",
+            ) as output:
+                output.write(result, 1)
+            temporary.replace(cache)
+        finally:
+            temporary.unlink(missing_ok=True)
+        atomic_write_json(
+            receipt,
+            dict(contract=contract, sha256=checksum_unchanged_file(cache, raw_bytes=True)),
+            overwrite=True,
+        )
+    return result
+
+
 def _build_smoothing_grid(
     context: _MapContext,
     water_polygon_path: Path | None,
     config: ViewshedMapConfig,
+    *,
+    cache_dir: Path | None = None,
 ) -> _SmoothingGrid:
     target_projected = context.target_gdf.to_crs(config.projected_crs)
     min_x, min_y, max_x, max_y = target_projected.total_bounds
@@ -187,18 +273,12 @@ def _build_smoothing_grid(
     if water_polygon_path is None:
         valid_mask = footprint_mask.astype("uint8")
     else:
-        water = gpd.read_parquet(water_polygon_path).to_crs(config.projected_crs)
-        water = water.loc[water.geometry.notna() & ~water.geometry.is_empty].copy()
-        water = water.loc[water.geometry.intersects(box(west, south, east, north))]
-        if water.empty:
-            raise ValueError("Water polygon does not overlap the viewshed map footprint.")
-        water_mask = rasterize(
-            [(mapping(geometry), 1) for geometry in water.geometry],
-            out_shape=(height, width),
-            transform=transform,
-            fill=0,
-            all_touched=False,
-            dtype="uint8",
+        water_mask = _water_mask_for_grid(
+            water_polygon_path,
+            config.projected_crs,
+            (height, width),
+            transform,
+            cache_dir=cache_dir,
         )
         valid_mask = (footprint_mask.astype(bool) & water_mask.astype(bool)).astype("uint8")
     if not valid_mask.any():
@@ -301,6 +381,29 @@ def _metric_support(
     return support_mask, output_support_mask, support_wgs84, int(len(cells))
 
 
+def _smoothed_rgba(output: np.ndarray, vmax: float, config: ViewshedMapConfig) -> np.ndarray:
+    """Color a raster in bounded strips, with NaN pixels outside its support."""
+    colormap = _resolve_colormap(config.colormap_name)
+    transparent = (*colormap(0.0, bytes=True)[:3], 0)
+    opacity = np.uint8(np.clip(config.smoothed_fill_opacity * 255.0, 0.0, 255.0))
+    threshold = max(vmax * 1e-6, 1e-12)
+    rgba = np.empty((*output.shape, 4), dtype="uint8")
+    rows_per_strip = max(1, 1_048_576 // output.shape[1])
+    for start in range(0, output.shape[0], rows_per_strip):
+        rows = output[start : start + rows_per_strip]
+        colors = rgba[start : start + rows_per_strip]
+        present = ~np.isnan(rows)
+        colors[:] = transparent
+        if present.any():
+            values = rows[present]
+            visible = np.isfinite(values) & (values > threshold)
+            normalized = np.clip(np.nan_to_num(values, copy=False) / vmax, 0.0, 1.0)
+            painted = colormap(normalized, bytes=True)
+            painted[:, 3] = np.where(visible, opacity, 0)
+            colors[present] = painted
+    return rgba
+
+
 def _render_smoothed_metric(
     aggregate: pd.DataFrame,
     grid: _SmoothingGrid,
@@ -362,15 +465,7 @@ def _render_smoothed_metric(
     )
     output[~output_support_mask.astype(bool)] = np.nan
     vmax = _display_max(output, config.display_quantile)
-    normalized = np.clip(np.nan_to_num(output, nan=0.0) / vmax, 0.0, 1.0)
-    rgba = _resolve_colormap(config.colormap_name)(normalized)
-    positive_support = np.isfinite(output) & (output > max(vmax * 1e-6, 1e-12))
-    rgba[..., 3] = np.where(
-        output_support_mask.astype(bool) & positive_support,
-        config.smoothed_fill_opacity,
-        0.0,
-    )
-    rgba_u8 = np.clip(rgba * 255.0, 0, 255).astype("uint8")
+    rgba_u8 = _smoothed_rgba(output, vmax, config)
 
     png_path.parent.mkdir(parents=True, exist_ok=True)
     tif_path.parent.mkdir(parents=True, exist_ok=True)

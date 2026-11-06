@@ -59,6 +59,11 @@ nav:
       - Scientific contracts: scientific-methodology.md
       - Configuration: configuration.md
       - Python and CLI: api.md
+      - Shared study and R7 reporting: shared-study.md
+      - Bounded native raster windows: BOUNDED_WINDOWS.md
+      - Building obstruction pilot: building-obstruction-pilot.md
+      - Direct-ray transmission: direct-transmission.md
+      - Retained weight diagnostics: regional-weight-diagnostics.md
       - Pipeline stages: pipelines.md
       - Data sources: data-acquisition.md
       - San Juan dataset card: dataset-card.md

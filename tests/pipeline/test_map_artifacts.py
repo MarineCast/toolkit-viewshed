@@ -23,7 +23,9 @@ from viewshed_toolkit.pipeline.visualization import (
 )
 from viewshed_toolkit.pipeline.visualization.static_maps import (
     _masked_gaussian_filter,
+    _smoothed_rgba,
 )
+from viewshed_toolkit.pipeline.visualization.styling import _display_max, _resolve_colormap
 
 
 def _h3_polygon(cell: str) -> Polygon:
@@ -157,6 +159,27 @@ def test_masked_gaussian_filter_does_not_leak_or_attenuate_at_boundary() -> None
 
     assert np.isnan(smoothed[support == 0]).all()
     assert np.allclose(smoothed[support == 1], 1.0, atol=1e-6)
+
+
+@pytest.mark.parametrize("colormap", ["visibility_heat", "viridis"])
+def test_sparse_map_coloring_preserves_rgba_and_display_quantile(colormap: str) -> None:
+    raster = np.full((3, 400_000), np.nan, dtype="float32")
+    raster[0, :9] = [0, -1, 1e-8, 1e-6, 0.15, 0.61, 1.03, -np.inf, np.inf]
+    raster[2, -2:] = [0.15, 0.72]
+    config = ViewshedMapConfig(colormap_name=colormap, smoothed_fill_opacity=0.82)
+    positive = raster[np.isfinite(raster) & (raster > 0)].astype("float64")
+    vmax = float(np.quantile(positive, 0.73))
+    assert _display_max(raster, 0.73) == vmax
+    with np.errstate(over="ignore"):
+        normalized = np.clip(np.nan_to_num(raster, nan=0.0) / vmax, 0.0, 1.0)
+        actual = _smoothed_rgba(raster, vmax, config)
+    expected = _resolve_colormap(colormap)(normalized)
+    expected[..., 3] = np.where(
+        np.isfinite(raster) & (raster > max(vmax * 1e-6, 1e-12)),
+        config.smoothed_fill_opacity,
+        0.0,
+    )
+    np.testing.assert_array_equal(actual, (expected * 255).astype("uint8"))
 
 
 def test_click_to_copy_coordinates_is_embedded_in_map_html() -> None:

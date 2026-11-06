@@ -153,9 +153,18 @@ def _classify_bbox_cells(
         .to_crs(projected_crs)
         .area.to_numpy(dtype="float64")
     )
-    water_area = np.asarray(
-        [water_geometries_projected[cell].area for cell in active_cells], dtype="float64"
-    )
+    if "marinecast_study" in runtime.raw_config:
+        water_area = (
+            gpd.GeoSeries(
+                gdf.geometry.intersection(domain_geoms.water_domain), crs=domains.CRS_WGS84
+            )
+            .to_crs(projected_crs)
+            .area.to_numpy(dtype="float64")
+        )
+    else:
+        water_area = np.asarray(
+            [water_geometries_projected[cell].area for cell in active_cells], dtype="float64"
+        )
 
     with np.errstate(divide="ignore", invalid="ignore"):
         land_fraction = np.where(cell_area > 0, land_area / cell_area, 0.0)
@@ -179,8 +188,34 @@ def _build_source_universe(
 ) -> SourceUniverse:
     resolution = int(lookup_cfg.h3_resolution or runtime.source_resolution)
 
+    from ...config.shared_study import runtime_memberships
+
+    shared = runtime_memberships(runtime.raw_config)
+    if shared is not None:
+        if resolution != 7:
+            raise ValueError("Shared source-target selection requires native R7")
+        land_ids = list(shared["land_source"]["cells"]) if lookup_cfg.include_land_sources else []
+        water_ids = (
+            list(shared["water_source"]["cells"]) if lookup_cfg.include_water_sources else []
+        )
+        target_ids = set(shared["water_reporting"]["cells"])
+        if not target_ids or not (land_ids or water_ids):
+            raise ValueError("Shared study requires reporting targets and observer sources")
+        if land_ids:
+            prepared = build_land_cells_for_config(
+                config_path, overwrite=overwrite, h3_resolution=7
+            )
+            if set(_read_land_source_cells(prepared.land_h3_path)) != set(land_ids):
+                raise ValueError("Prepared land sources differ from the shared membership")
+        ids = sorted(set(land_ids) | set(water_ids) | target_ids)
+        classified = _classify_bbox_cells(runtime, lookup_cfg, cells=ids, extent="source")
+        if set(classified.h3_cell) != set(ids):
+            raise ValueError("Physical source context does not cover all shared cells")
+        attributes = _physical_cell_type_frame(classified, lookup_cfg)
+        return SourceUniverse(land_ids, water_ids, target_ids, attributes)
+
     source_cells = domains.bbox_h3_cells(
-        runtime.bbox_wgs84,
+        domains.source_domain_polygon(runtime).bounds,
         resolution,
         buffer_rings=lookup_cfg.bbox_buffer_rings,
         strict_intersection=lookup_cfg.strict_bbox_intersection,
@@ -194,12 +229,19 @@ def _build_source_universe(
     source_type_df = _physical_cell_type_frame(source_classification, lookup_cfg)
 
     target_polygon = domains.target_domain_polygon(runtime)
-    target_candidates = domains.bbox_h3_cells(
-        tuple(float(v) for v in target_polygon.bounds),
-        resolution,
-        buffer_rings=lookup_cfg.bbox_buffer_rings,
-        strict_intersection=False,
-    )
+    if "marinecast_study" in runtime.raw_config:
+        from ...config.reporting import load_reporting_support
+
+        target_candidates = list(
+            load_reporting_support(runtime.raw_config, runtime.projected_crs).cells
+        )
+    else:
+        target_candidates = domains.bbox_h3_cells(
+            tuple(float(v) for v in target_polygon.bounds),
+            resolution,
+            buffer_rings=lookup_cfg.bbox_buffer_rings,
+            strict_intersection=False,
+        )
     target_classification = _classify_bbox_cells(
         runtime,
         lookup_cfg,
