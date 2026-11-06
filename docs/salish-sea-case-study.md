@@ -1,5 +1,10 @@
 # Salish Sea: Columbia River to northern Vancouver Island
 
+For the completed November 5, 2026 delivery, see the
+[regional viewshed example](regional-viewshed-example.md). The instructions below describe the
+standalone case-study recipe and its own source and output configuration. The delivered run
+used pinned shared-study membership and separately qualified regional inputs.
+
 The case study uses `configs/salish_sea_case_study.yaml`, with bounds 128.6°W–121.6°W and
 46.0°N–51.1°N. The configured projected 31 km input buffer supports the 30 km visibility radius.
 This intentionally extends beyond the separate OrcaCast `model_area` default; the packaged default

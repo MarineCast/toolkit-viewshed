@@ -35,6 +35,9 @@ For conda, use `conda env create -n viewshed -f .github/environment.yml`, then `
 and the same pip command. Initialize the environment manager's shell integration if activation
 is unavailable. The YAML is an environment specification, not a complete dependency lock.
 
+The toolkit's package requirements select Polars 1.x. The distance-product cache uses
+row-hash seed arguments that Polars 2 removed. [Polars 2.0 migration guide](https://docs.pola.rs/releases/upgrade/2/)
+
 If you already have a compatible isolated environment, install from the repository root:
 
 ```bash
@@ -65,8 +68,9 @@ Continue with the [quick start](quick-start.md). For exact public calls, see
 | Windows | No native acceptance run recorded in this improvement pass |
 | Other Python/dependency combinations | Allowed package constraints do not imply every combination was tested |
 
-A wheel installation check verifies the toolkit package, resources and CLI outside the source
-checkout. It reuses scientific dependencies; it does not prove a fresh native environment solve.
+A wheel installation check builds with the declared build-system dependencies and verifies the
+toolkit package, resources and CLI outside the source checkout. It reuses installed scientific
+dependencies for the runtime check.
 The commands above follow the checked-in CI specification; a new conda/micromamba solve was not
 performed during the local improvement pass.
 

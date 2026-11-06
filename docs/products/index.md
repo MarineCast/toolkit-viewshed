@@ -20,6 +20,9 @@ See the [same pair in the visual walkthrough](../examples.md#one-pair).
 The walkthrough’s per-target maximum is an example-derived summary across **land** sources;
 it is not a new supported product or the visibility of a union of viewpoints.
 
+The [completed regional example](../regional-viewshed-example.md) compares both source roles
+for the same H3 pair and shows a per-target mean over each role's recorded pairs.
+
 ## Keep the pair and its evidence together
 
 Within a source role, the key is `source_h3 × target_h3`. A table combining roles must retain

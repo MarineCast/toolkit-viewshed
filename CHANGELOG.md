@@ -13,6 +13,7 @@
 - Add a synthetic offline distance example, read-only `doctor`, troubleshooting, artifact dictionary,
   contribution guide and scientific acceptance checklist.
 - Require browser-tested documentation before uploading the Pages deployment artifact.
+- Keep Polars on 1.x to preserve compatibility with the distance-product cache fingerprint.
 
 Scientific formulas and current final-product schema versions are unchanged. These are unreleased
 changes; this file does not imply a package publication, deployed documentation or regional rebuild.

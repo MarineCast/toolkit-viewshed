@@ -51,6 +51,7 @@ nav:
       - Distance products: distance-products.md
   - Examples:
       - One sightline to regional support: examples.md
+      - Completed regional viewshed: regional-viewshed-example.md
       - Choose a workflow: workflows/index.md
       - San Juan model setup: san-juan-demo.md
       - Salish Sea case study: salish-sea-case-study.md
