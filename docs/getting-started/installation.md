@@ -35,6 +35,9 @@ For conda, use `conda env create -n viewshed -f .github/environment.yml`, then `
 and the same pip command. Initialize the environment manager's shell integration if activation
 is unavailable. The YAML is an environment specification, not a complete dependency lock.
 
+The toolkit's package requirements select Polars 1.x. The distance-product cache uses
+row-hash seed arguments that Polars 2 removed. [Polars 2.0 migration guide](https://docs.pola.rs/releases/upgrade/2/)
+
 If you already have a compatible isolated environment, install from the repository root:
 
 ```bash
