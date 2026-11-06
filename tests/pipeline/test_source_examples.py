@@ -125,7 +125,12 @@ def test_html_map_preserves_native_boundaries_values_and_valid_geojson_rings():
         assert all(props[key] == value for key, value in rows[feature["id"]].items())
         ring = feature["geometry"]["coordinates"][0]
         expected = [[lon, lat] for lat, lon in h3.cell_to_boundary(feature["id"])]
-        assert ring == [*expected, expected[0]]
+        assert ring[0] == ring[-1]
+        # Native H3/libm may differ by a few ulps between macOS and Linux.
+        # This absolute tolerance is about 0.1 micrometre in latitude; values,
+        # identity, vertex order and stored ring closure remain exact checks.
+        for actual, vertex in zip(ring, [*expected, expected[0]], strict=True):
+            assert actual == pytest.approx(vertex, rel=0, abs=1e-12)
         assert all(-180 <= lon <= 180 and -90 <= lat <= 90 for lon, lat in ring)
 
 
