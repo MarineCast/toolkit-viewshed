@@ -128,7 +128,8 @@ def check():
         if digest((OUTPUT / name).read_bytes()) != sha:
             raise ValueError(f"Stale regional HTML map: {name}")
     features = read(OUTPUT / "map-targets.geojson")["features"]
-    rows = {r["target_h3"]: r for r in evidence()["rows"]}
+    data = evidence()
+    rows = {r["target_h3"]: r for r in data["rows"]}
     if len(features) != len(rows) or {f["id"] for f in features} != rows.keys():
         raise ValueError("Regional HTML map target population mismatch")
     for feature in features:
@@ -137,7 +138,33 @@ def check():
             properties[key] != value for key, value in rows[feature["id"]].items()
         ):
             raise ValueError("Regional HTML map changed original values")
-    return {"regional_targets": evidence()["target_count"], "maps": 4}
+    components = read(OUTPUT / "map-components.json")
+    if (
+        "map-components.json" not in receipt["files"]
+        or components["contract"] != "regional_land_component_maxima_v1"
+        or components["source_type"] != "land"
+        or components["target_summary_sha256"] != receipt["inputs"]["targets.json"]
+        or not components["source_sha256"]
+        or any(data["source_sha256"].get(k) != v for k, v in components["source_sha256"].items())
+        or components["rows"].keys() != rows.keys()
+    ):
+        raise ValueError("Regional component provenance or target population mismatch")
+    for target, metrics in components["rows"].items():
+        candidates = rows[target]["candidate_count"]
+        if metrics.keys() != {"terrain", "vegetation", "distance"}:
+            raise ValueError("Regional component layers incomplete")
+        for key, metric in metrics.items():
+            valid = metric["valid_count"]
+            maximum = metric["maximum"]
+            eligible = metric["eligible_count"] if key == "vegetation" else candidates
+            limit = metrics["terrain"]["valid_count"] if key == "vegetation" else candidates
+            if (
+                not 0 <= valid <= eligible <= limit
+                or (maximum is None) != (valid == 0)
+                or (maximum is not None and not 0 <= maximum <= 1)
+            ):
+                raise ValueError(f"Invalid regional {key} maximum or coverage for {target}")
+    return {"regional_targets": data["target_count"], "maps": 4}
 
 
 def values():

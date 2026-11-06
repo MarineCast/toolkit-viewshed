@@ -12,22 +12,60 @@
 </head>
 <body>
 <header>
-  <div class="title"><strong>Regional land viewing support</strong><span>Strongest combined weight per water cell</span></div>
+  <div class="title"><strong>Regional land viewing support</strong><span>Vancouver Island to the Columbia River</span></div>
   <div class="controls">
-    <button type="button" id="reset" disabled>Full region</button>
     <label for="place">Explore</label>
-    <select id="place" disabled><option value="region">Whole region</option><option value="lime">Lime Kiln area</option><option value="everett">Everett waterfront</option><option value="larrabee">Larrabee woods</option></select>
+    <select id="place" disabled>
+      <option value="region">Whole region</option>
+      <option value="lime">Lime Kiln area</option>
+      <option value="everett">Everett waterfront</option>
+      <option value="larrabee">Larrabee woods</option>
+    </select>
+    <button type="button" id="reset" disabled>Full region</button>
   </div>
 </header>
 <main id="map" aria-label="Interactive regional viewshed map" role="region" tabindex="0"></main>
 <footer>
-  <div class="legend"><strong>Maximum combined weight</strong><div class="ramp" aria-hidden="true"></div><div class="ticks"><span>0</span><span>0.5</span><span>1</span></div></div>
-  <p class="key"><span class="zero"></span> Gray: computed zero · Blank: no delivered target<br> Land-source maximum · not detection probability</p>
-  <p id="status" role="status">Loading 13,461 water cells…</p>
-  <p id="tile-status" hidden>Street tiles could not load. The local coastline and viewing weights remain available; choose “Coastline” in the layers control.</p>
-  <p class="help">Drag to pan · Scroll or pinch to zoom · Select a cell for details · Arrow keys and +/− work with the map focused.</p>
-  <p id="error" hidden>Interactive map unavailable. <a href="combined.svg">Open the static map</a> or <a href="targets.json">read the target summary</a>.</p>
-  <noscript><p>JavaScript is required for this interactive map. <a href="combined.svg">Open the static map</a>.</p></noscript>
+  <div class="legend">
+    <fieldset id="weight-options" disabled>
+      <legend>Weight layer</legend>
+      <div class="layer-options">
+        <label><input type="radio" name="weight" value="combined" checked><span>Combined</span></label>
+        <label><input type="radio" name="weight" value="terrain"><span>Terrain</span></label>
+        <label><input type="radio" name="weight" value="vegetation"><span>Vegetation</span></label>
+        <label><input type="radio" name="weight" value="distance"><span>Distance</span></label>
+      </div>
+    </fieldset>
+    <div class="scale" aria-label="Weight scale from zero to one">
+      <div class="ramp" aria-hidden="true"></div>
+      <div class="ticks"><span>0</span><span>0.5</span><span>1</span></div>
+    </div>
+    <p id="layer-description" aria-live="polite">Highest combined viewing weight across land sources for each water cell.</p>
+  </div>
+  <div class="appearance">
+    <fieldset id="palette-options" disabled>
+      <legend>Color palette</legend>
+      <div class="palette-options">
+        <label><input type="radio" name="palette" value="teal" checked><span><i aria-hidden="true"></i>Teal</span></label>
+        <label><input type="radio" name="palette" value="ocean"><span><i aria-hidden="true"></i>Ocean</span></label>
+        <label><input type="radio" name="palette" value="amber"><span><i aria-hidden="true"></i>Amber</span></label>
+        <label><input type="radio" name="palette" value="plum"><span><i aria-hidden="true"></i>Plum</span></label>
+      </div>
+    </fieldset>
+    <ul class="key" aria-label="Cell states">
+      <li><i class="zero"></i>Computed zero</li>
+      <li><i class="missing"></i>Unavailable</li>
+      <li id="ineligible-key" hidden><i class="ineligible"></i>No positive terrain</li>
+      <li><i class="blank"></i>Outside target set</li>
+    </ul>
+  </div>
+  <div class="map-notes">
+    <p id="status" role="status">Loading 13,461 water cells…</p>
+    <p id="tile-status" hidden>Street tiles could not load. Choose “Coastline” in the layers control for the local basemap.</p>
+    <p class="help">Pan or zoom to explore. Select a cell for its weight and source coverage. Arrow keys and +/− work with the map focused.</p>
+    <p id="error" hidden>Interactive map unavailable. <a href="combined.svg">Open the static map</a> or <a href="targets.json">read the target summary</a>.</p>
+    <noscript><p>JavaScript is required for this interactive map. <a href="combined.svg">Open the static map</a>.</p></noscript>
+  </div>
 </footer>
 </body>
 </html>

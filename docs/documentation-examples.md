@@ -280,13 +280,23 @@ The page retains an expandable static fallback and direct SVG/summary links.
 
 The GeoJSON export uses longitude/latitude coordinates for the same native H3 R7 boundaries and
 copies each original target ID, maximum combined weight, candidate counts and coverage state.
-It does not reaggregate results or run the model. Leaflet projects only the display into Web
-Mercator. The fixed teal color scale is retained, drawn at 85% opacity over the basemap. `map-source.json`
-binds the GeoJSON payloads to the retained aggregate and context geometry with SHA-256 checksums.
+Leaflet projects the display into Web Mercator. The legend offers four palettes on a fixed 0–1
+scale at 85% fill opacity. The browser uses the precomputed component maxima in `map-components.json`
+and joins them to the same H3 IDs. The display receipt binds the map payloads to their inputs
+with SHA-256 checksums.
 
-Regenerate or verify the geographic display export from the existing checked excerpt:
+The component exporter validates the original land artifact checksum and reproduces the
+combined maximum and coverage for every target before calculating independent terrain and
+distance maxima. The vegetation maximum uses only candidates with positive terrain support.
+The export keeps valid counts for every component and eligible counts for vegetation.
+Missing terrain leaves vegetation eligibility unknown. Known zero terrain makes a pair
+ineligible for the vegetation maximum. These maxima can come from different sources.
+
+Regenerate or verify the component values and geographic display from the retained delivery:
 
 ```bash
+python scripts/build_regional_overview.py /path/to/Data/Viewshed --components-only
+python scripts/build_regional_overview.py /path/to/Data/Viewshed --components-only --check
 python scripts/export_regional_html_map.py
 python scripts/export_regional_html_map.py --check
 python -m pytest -q tests/pipeline/test_source_examples.py
