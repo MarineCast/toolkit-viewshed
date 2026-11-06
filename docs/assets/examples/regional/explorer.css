@@ -1,0 +1,49 @@
+#regional-explorer fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem 1rem;
+  padding: .5rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  margin: 0 0 .5rem;
+}
+
+#regional-explorer select {
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  border: 1px solid var(--md-default-fg-color--light);
+  padding: .2rem;
+  max-width: 100%;
+  font: inherit;
+}
+
+#regional-explorer svg {
+  display: block;
+  width: 100%;
+  background: #fff;
+  border: 1px solid #b9c9d5;
+  border-radius: .3rem;
+}
+
+#regional-explorer .regional-target {
+  fill: #fff0c2;
+  stroke: #8a3e00;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+#regional-explorer .regional-target[aria-pressed="true"] {
+  fill: #ffa83a;
+  stroke: #472100;
+}
+
+#regional-explorer .regional-target:hover,
+#regional-explorer .regional-target:focus {
+  stroke: #101f38;
+  stroke-width: 4;
+}
+
+#regional-explorer .md-typeset__scrollwrap {
+  overflow-x: auto;
+  max-width: 100%;
+}

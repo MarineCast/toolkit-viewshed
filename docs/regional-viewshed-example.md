@@ -19,6 +19,39 @@ blocking the sightline. The full workflow took **3h 4m 9s** with retained inputs
 preparation, computation, finalization, map export and validation. Source acquisition was
 completed earlier.
 
+## Explore four water targets
+
+Switch observer roles, then click a gold target cell or choose its H3 ID from the list.
+The blue and gray hexagons show all recorded source cells for that target and role.
+The summary includes every recorded pair. The table lists the five strongest modeled
+source pairs. The [example data](assets/examples/regional/targets.json){ #regional-example-data }
+contains four worked targets from the full delivery.
+
+<p id="regional-explorer-status" role="status" hidden>The interactive map could not load. The worked comparison and figure below are still available.</p>
+
+<section id="regional-explorer" aria-label="Regional viewshed explorer" hidden>
+  <fieldset>
+    <legend>Observer role</legend>
+    <label><input type="radio" name="regional-role" value="land" checked> Land observers</label>
+    <label><input type="radio" name="regional-role" value="water"> Water observers</label>
+    <label>Water target <select aria-label="Water target"></select></label>
+  </fieldset>
+  <p data-summary role="status"></p>
+  <svg viewBox="-460 -350 850 830" role="group" aria-label="Candidate source cells and four clickable water targets">
+    <g data-sources aria-hidden="true"></g>
+  </svg>
+  <p>Gray shows a computed zero. Blue bins end at 0.01, 0.05, 0.20, 0.50 and 1.00, from light to dark. Blank areas have no recorded pair.</p>
+  <p id="regional-pair-table-title"><strong>Five strongest source pairs</strong> for the selected target. Scroll the table sideways on narrow screens.</p>
+  <div class="md-typeset__scrollwrap" role="region" aria-labelledby="regional-pair-table-title" tabindex="0">
+    <table aria-labelledby="regional-pair-table-title">
+      <thead>
+        <tr><th scope="col">Source H3</th><th scope="col">Combined</th><th scope="col">Terrain with distance</th><th scope="col">Vegetation</th><th scope="col">Centroid-distance diagnostic</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
 ## One source area, two observer roles
 
 Use source **A** (`8728d1064ffffff`) and target **B** (`8728d1061ffffff`) in the Haro Strait area.
@@ -103,6 +136,10 @@ The two companion `*_OBSERVATION_GEOMETRY_R7.parquet` files contain LOS support,
 distance diagnostics and explicit component states. Read the
 [artifact dictionary](products/artifacts.md) for how these quantities differ. The local
 `regional-delivery.json` identifies the exact files, checksums, run scope and validation report.
+To check the interactive excerpt from a toolkit checkout, run
+`python scripts/build_regional_example.py /path/to/MarineCast/Data/Viewshed --check`
+with H3, PyArrow and PyProj installed. The exporter verifies the static table checksums before
+reading the four targets.
 
 ## Inputs and interpretation
 
