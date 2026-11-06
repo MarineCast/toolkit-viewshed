@@ -40,6 +40,19 @@ def on_pre_build(config):
         capture_output=True,
     )
 
+    subprocess.run(
+        [sys.executable, "-S", str(ROOT / "scripts/render_lime_kiln.py"), "--check"],
+        check=True,
+        capture_output=True,
+    )
+
+    for script in ("render_source_examples.py", "render_regional_overview.py"):
+        subprocess.run(
+            [sys.executable, "-S", str(ROOT / "scripts" / script), "--check"],
+            check=True,
+            capture_output=True,
+        )
+
 
 def on_page_markdown(markdown, page, config, files):
     def source_link(match):
@@ -62,7 +75,21 @@ def on_page_markdown(markdown, page, config, files):
         return match.group(0)
 
     markdown = re.sub(r"\]\((\.\./[^)]+)\)", source_link, markdown)
-    if page.file.src_uri not in {"examples.md", "products/index.md"}:
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from render_source_examples import cases, markdown as source_markdown, tabs
+
+    selected = next(
+        (key for key, case in cases().items() if case["page"] == page.file.src_uri), None
+    )
+    if selected:
+        return markdown.replace("{{source_walkthrough}}", source_markdown(selected))
+    if page.file.src_uri == "examples-region.md":
+        from render_regional_overview import values
+
+        for key, value in {"example_tabs": tabs("region"), **values()}.items():
+            markdown = markdown.replace("{{" + key + "}}", str(value))
+        return markdown
+    if page.file.src_uri not in {"sightline-details.md", "products/index.md"}:
         return markdown
     # Standard-library presentation renderer is shared by the build and offline checks.
     sys.path.insert(0, str(ROOT / "scripts"))

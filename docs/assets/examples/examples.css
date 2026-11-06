@@ -312,3 +312,46 @@
 }
 
 .walkthrough figcaption { max-width: none; margin: 0; text-align: left; font-style: normal; }
+
+/* Concept figures stay readable as cards; each has its own concise caption. */
+.explain-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem; }
+.walkthrough .explain-grid figure { margin-top: .5rem; }
+.walkthrough .explain-distance { max-width: 32rem; }
+/* Native MathML keeps display equations available offline and without scripts. */
+.walkthrough .explain-equation { margin: 1.2rem 0; padding: 1.1rem .7rem; overflow-x: auto; border-left: 3px solid var(--md-accent-fg-color); background: var(--md-code-bg-color); border-radius: .25rem; }
+.walkthrough .explain-equation math { font-size: 1.2em; color: var(--md-default-fg-color); }
+.walkthrough .chapter-route a { display: inline-block; padding: .35rem 0; }
+.walkthrough .chapter-route a:focus-visible { outline: 3px solid #168497; outline-offset: 4px; }
+@media (max-width: 700px) { .explain-grid { grid-template-columns: 1fr; gap: 0; } }
+
+/* Two eye-level views, with one independently located camera. */
+.walkthrough .shore-detail { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.5rem; align-items: start; }
+.walkthrough .shore-detail > * { min-width: 0; }
+.walkthrough .shore-detail h3 { margin-top: .5rem; }
+.walkthrough .shore-photo { scroll-margin-top: 5rem; }
+.walkthrough .shore-detail figure { margin-top: .7rem; }
+.walkthrough .shore-locator { max-width: 28rem; }
+.walkthrough .shore-panorama a:focus-visible, .walkthrough .shore-detail figure a:focus-visible { display: block; outline: 3px solid #168497; outline-offset: -3px; }
+@media (max-width: 700px) { .walkthrough .shore-detail { grid-template-columns: 1fr; gap: .5rem; } }
+
+/* Location navigation shares stable URLs and works without JavaScript. */
+.example-tabs { display: flex; flex-wrap: wrap; gap: .4rem; border-bottom: 1px solid var(--md-default-fg-color--lightest); margin: .4rem 0 1.8rem; padding-bottom: .5rem; }
+.example-tabs p { display: contents; }
+.example-tabs .example-tab { padding: .65rem 1rem; border-radius: .35rem .35rem 0 0; font-weight: 600; color: var(--md-default-fg-color--light); border-bottom: 3px solid transparent; }
+.example-tabs .example-tab[aria-current="page"] { color: var(--md-accent-fg-color); border-color: var(--md-accent-fg-color); background: var(--md-code-bg-color); }
+.example-tabs .example-tab:focus-visible { outline: 3px solid var(--md-accent-fg-color); outline-offset: 2px; }
+.walkthrough .example-hero { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(15rem, 1fr); gap: 2rem; align-items: start; }
+.walkthrough .example-hero h1 { margin: .2rem 0 1rem; }
+.walkthrough .example-hero .place-photo { margin: .2rem 0 0; }
+.walkthrough .example-hero .place-photo figcaption { font-size: .7em; padding: .6rem .75rem; }
+.walkthrough .example-hero .place-photo img { max-height: 17rem; object-fit: contain; }
+.walkthrough .example-hero .example-lead { font-size: 1.1em; }
+@media (max-width: 760px) {
+  .walkthrough .example-hero { grid-template-columns: 1fr; gap: .5rem; }
+  .walkthrough .example-hero .place-photo { max-width: 24rem; }
+  .example-tabs { gap: .2rem; }
+  .example-tabs .example-tab { padding: .55rem .65rem; font-size: .85em; }
+}
+
+/* The interactive regional map is a standalone local HTML document. */
+.viewshed-examples .regional-html-map iframe { display: block; width: 100%; height: min(82vh, 850px); min-height: 640px; border: 0; }

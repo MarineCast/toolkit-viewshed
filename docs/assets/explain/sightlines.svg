@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 380" role="img" aria-labelledby="title desc">
+<title id="title">A person looking over terrain toward water</title><desc id="desc">Two schematic sections: a low headland allows a line of sight, while a higher ridge intercepts it. Not a real terrain profile; not to scale.</desc>
+<rect width="480" height="380" rx="12" fill="#f3f6f1"/>
+<style>text{font:18px system-ui,sans-serif;fill:#253f46}.title{font-size:22px;font-weight:650}.small{font-size:16px}</style>
+<defs><g id="person"><circle cx="0" cy="-33" r="6" fill="#253f46"/><path d="M0-26v15m0-12 11-7m-11 19-7 11m7-11 7 11" fill="none" stroke="#253f46" stroke-width="4" stroke-linecap="round"/></g></defs>
+<text x="24" y="34" class="title">01 / Ground shapes the view</text>
+<text x="24" y="66">A clear path</text>
+<path d="M20 145L20 125 75 125 115 140 160 150 200 130 240 156 455 156 455 175 20 175Z" fill="#c5c0ad"/>
+<path d="M240 156H455V175H240Z" fill="#b4d9df"/>
+<use href="#person" transform="translate(62 125)"/>
+<path d="M65 92L430 151" stroke="#087c6c" stroke-width="3"/>
+<circle cx="430" cy="151" r="5" fill="#087c6c"/>
+<text x="250" y="117" class="small">Sightline clears ground</text>
+<text x="24" y="220">A blocked path</text>
+<path d="M20 310L20 290 75 290 115 305 160 310 200 239 240 321 455 321 455 340 20 340Z" fill="#b6b09e"/>
+<path d="M240 321H455V340H240Z" fill="#b4d9df"/>
+<use href="#person" transform="translate(62 290)"/>
+<path d="M65 257L188 277" stroke="#bd562d" stroke-width="3"/><path d="M188 277L430 316" stroke="#bd562d" stroke-width="3" stroke-dasharray="6 6"/>
+<path d="M182 271l12 12m0-12-12 12" stroke="#bd562d" stroke-width="3"/>
+<text x="270" y="277" class="small">Ridge interrupts view</text>
+<text x="24" y="367" class="small">Illustrative sections · not to scale</text>
+</svg>

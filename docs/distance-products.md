@@ -94,25 +94,26 @@ viewshed-toolkit build-pair-distances \
 Generate two coexisting profiles without reopening geometry or rebuilding distances:
 
 ```bash
-PAIR=data/processed/domain/human/viewshed/RES7/components/distance/land/pair_distances.parquet
+PAIR=$(viewshed-toolkit build-pair-distances \
+  --config configs/salish_sea.yaml --source-type land)
 
-viewshed-toolkit build-distance-profile \
+NEAR=$(viewshed-toolkit build-distance-profile \
   --pair-distances "$PAIR" \
   --profile-id near \
   --model exponential \
   --exponential-lambda-km 5 \
-  --hard-cutoff-km 20
+  --hard-cutoff-km 20)
 
-viewshed-toolkit build-distance-profile \
+BROAD=$(viewshed-toolkit build-distance-profile \
   --pair-distances "$PAIR" \
   --profile-id broad \
   --model exponential \
   --exponential-lambda-km 15 \
-  --hard-cutoff-km 30
+  --hard-cutoff-km 30)
 
 viewshed-toolkit validate-distance-product "$PAIR"
-viewshed-toolkit validate-distance-product \
-  outputs/final/components/distance/land/profiles/near-<scientific-id-prefix>.parquet
+viewshed-toolkit validate-distance-product "$NEAR"
+viewshed-toolkit validate-distance-product "$BROAD"
 ```
 
 Use the path printed by each build command instead of guessing its identity suffix. `--overwrite`

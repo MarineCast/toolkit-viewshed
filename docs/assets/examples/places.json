@@ -1,0 +1,122 @@
+{
+  "lime-kiln": {
+    "page": "examples.md",
+    "tab": "Lime Kiln",
+    "title": "A view from Lime Kiln",
+    "lead": "Stand on the west side of San Juan Island. What nearby water has modeled viewing support\u2014and how do distance, terrain and trees change the answer?",
+    "text": "[Lime Kiln Point State Park](https://parks.wa.gov/find-parks/state-parks/lime-kiln-point-state-park)\nis on San Juan Island's rocky western coast. Here, its lighthouse anchors an end-to-end reading\nof the model: locate the source, compare four weights, see the shoreline, then inspect the exact records.\nNo installation is needed. For the ideas behind the maps, start with [How it works](understand/index.md).\n\n",
+    "intro": "The diamond marks the lighthouse at approximately **48.5158\u00b0 N, 123.1525\u00b0 W**. Its native R7\ncell is `{{lime_source}}`. Orange shading shows the model's active land within that cell;\nthe {{lime_observers}} brown dots are its retained regional observer samples (some overlap at this map scale). The source cell includes land beyond the park.\n**These are area-level results for the cell containing Lime Kiln, not a calculation from the\nlighthouse railing or from the photograph's camera position.**\n\n",
+    "hero_html": "<figure class=\"place-photo\"><img src=\"{{lime_photo_src}}\" width=\"4752\" height=\"3168\" alt=\"Lime Kiln lighthouse above a rocky shore, with people near the water and distant land across the strait\"><figcaption><strong>Start with the place.</strong> Shore height, nearby obstructions and distance all matter to a view. Photograph: <a href=\"https://www.flickr.com/photos/21683557@N00/5048325304\">Dave Sizer</a>, September 14, 2010, via <a href=\"https://commons.wikimedia.org/wiki/File:Lime_Kiln_Light_-_US-WA.jpg\">Wikimedia Commons</a>, <a href=\"https://creativecommons.org/licenses/by/2.0/\">CC BY 2.0</a>. Unmodified; displayed scaled. This is location context, not a model input or a validation photograph.</figcaption></figure>",
+    "center_note": "The source center is marked separately from the lighthouse, about 1.1 km southeast of it.",
+    "selection_note": "The table selects the highest combined score among this source's **non-self** target pairs:",
+    "result_note": ""
+  },
+  "everett": {
+    "page": "examples-everett.md",
+    "tab": "Everett, WA",
+    "name": "Everett port area",
+    "source": "8728d0a74ffffff",
+    "place": [
+      557898.7801150865,
+      5318264.945682498
+    ],
+    "lat": 48.015053349529104,
+    "lon": -122.22360180178434,
+    "title": "A view from Everett",
+    "lead": "Look across the working waterfront of Everett. How do distance, low coastal terrain and vegetation shape modeled support over Port Gardner and Possession Sound?",
+    "text": "An urban waterfront offers a different setting from Lime Kiln: marinas, developed shore and nearby lowlands. The example uses the land part of a mixed coastal cell near the port; it does not represent a particular pier or viewing platform.\n\nNo installation is needed. For the ideas behind the maps, start with [How it works](understand/index.md).",
+    "center_note": "The diamond locates the selected source cell center; it is not a camera position or an additional modeled observer.",
+    "selection_note": "The table selects the highest combined score among this source's **non-self** target pairs:",
+    "result_note": "Buildings, cranes, vessels and fences in the photographs are not explicitly modeled as built obstructions by this ground-plus-canopy workflow.",
+    "intro": "The diamond locates the center of native R7 source cell `{{lime_source}}`, approximately **48.0151\u00b0 N, 122.2236\u00b0 W**. Orange shading shows its retained active land; the {{lime_observers}} brown dots are the regional observer samples. **These are area-level results, not a calculation from a photograph's camera or a particular platform.**",
+    "photos": [
+      {
+        "file": "marina-emersb.jpg",
+        "author": "Emersb",
+        "date": "2007-07-14",
+        "source": "https://commons.wikimedia.org/wiki/File:Everett_Marina.jpg",
+        "license": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "license_label": "CC BY-SA 3.0",
+        "width": 1280,
+        "height": 960,
+        "alt": "Everett marina, boats and buildings below Grand Avenue Park, with open water and distant land beyond",
+        "camera": null,
+        "changes": "Commons resized thumbnail; no crop or other edits",
+        "sha256": "0b5e0c726395fde5bb4e03378a20eeee5a33a1594bfb6b5d899f4596c712e33b",
+        "checked": "2026-11-06",
+        "download": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Everett_Marina.jpg/1280px-Everett_Marina.jpg"
+      },
+      {
+        "file": "wharf-sounderbruce.jpg",
+        "author": "SounderBruce",
+        "date": "2021-04-04",
+        "source": "https://commons.wikimedia.org/wiki/File:Port_Gardner_Wharf_view,_April_2021.jpg",
+        "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "license_label": "CC BY-SA 4.0",
+        "width": 4912,
+        "height": 3264,
+        "alt": "Boats, waterfront buildings and construction at Port Gardner Wharf, viewed northwest from Grand Avenue Bridge",
+        "camera": null,
+        "changes": "none; original displayed scaled",
+        "sha256": "f94c811e5cd8358a075688fad0bf04d5196c52bf70001041df755539f976190c",
+        "checked": "2026-11-06",
+        "download": "https://upload.wikimedia.org/wikipedia/commons/2/2d/Port_Gardner_Wharf_view%2C_April_2021.jpg"
+      }
+    ],
+    "shore_reading": "The marina view looks across boats and developed shore. The waterfront photograph shows nearer structures and changing sightlines. Ground and canopy weights cannot certify a clear line past a building, crane or moored vessel."
+  },
+  "larrabee": {
+    "page": "examples-larrabee.md",
+    "tab": "Larrabee woods",
+    "name": "Larrabee inland",
+    "source": "8728d1473ffffff",
+    "place": [
+      539434.2779947828,
+      5389810.630120338
+    ],
+    "lat": 48.660103922927306,
+    "lon": -122.46449044235241,
+    "title": "A view from the Larrabee woods",
+    "lead": "Move a little inland from the wooded coast of Larrabee State Park. Nearby water can have strong distance support while trees remove the modeled sightlines.",
+    "text": "This example selects an inland cell in the Larrabee / Chuckanut landscape, rather than the beach. The photographs show the wider park setting, not verified camera positions in the selected cell. Compare its canopy effect with the coastal Lime Kiln and Everett examples.\n\nNo installation is needed. For the ideas behind the maps, start with [How it works](understand/index.md).",
+    "center_note": "The diamond locates the selected source cell center; it is not a camera position or an additional modeled observer.",
+    "selection_note": "All combined scores are zero. To show why, the table selects the **non-self pair with the highest terrain weight**:",
+    "result_note": "**All 285 combined weights are computed zeros.** Terrain support is positive for 201 targets, but the matched canopy factor removes it. This describes the retained inland observer samples under the recorded settings; it does not mean there are no open viewpoints elsewhere in the park.",
+    "intro": "The diamond locates the center of native R7 source cell `{{lime_source}}`, approximately **48.6601\u00b0 N, 122.4645\u00b0 W**. Orange shading shows its retained active land; the {{lime_observers}} brown dots are the regional observer samples. **These are area-level results, not a calculation from a photograph's camera or a particular platform.**",
+    "photos": [
+      {
+        "file": "coast-cody-logan.jpg",
+        "author": "Cody Logan",
+        "date": "2007-01-20",
+        "source": "https://commons.wikimedia.org/wiki/File:Larrabee_State_Park_coastline.jpg",
+        "license": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "license_label": "CC BY-SA 3.0",
+        "width": 1280,
+        "height": 960,
+        "alt": "Dense trees above the rocky coastline at Larrabee State Park",
+        "camera": null,
+        "changes": "Commons resized thumbnail; no crop or other edits",
+        "sha256": "d3316c1ec853abdface601707a01b060d3f511dcb09d778947f8c4fedcd3b7ba",
+        "checked": "2026-11-06",
+        "download": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/66/Larrabee_State_Park_coastline.jpg/1280px-Larrabee_State_Park_coastline.jpg"
+      },
+      {
+        "file": "amphitheater-joe-mabel.jpg",
+        "author": "Joe Mabel",
+        "date": "2020-01-01",
+        "source": "https://commons.wikimedia.org/wiki/File:Amphitheater,_Larrabee_State_Park,_Washington_(state).jpg",
+        "license": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "license_label": "CC BY-SA 3.0",
+        "width": 1280,
+        "height": 853,
+        "alt": "Larrabee State Park amphitheater surrounded by tall trees",
+        "camera": null,
+        "changes": "Commons resized thumbnail; no crop or other edits",
+        "sha256": "4eb58553e11730522f6917f93b91b987ba5c64ae08182a4c9d795a79770a2de8",
+        "checked": "2026-11-06",
+        "download": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8d/Amphitheater%2C_Larrabee_State_Park%2C_Washington_%28state%29.jpg/1280px-Amphitheater%2C_Larrabee_State_Park%2C_Washington_%28state%29.jpg"
+      }
+    ],
+    "shore_reading": "The coast photograph shows openings along the water, while the amphitheater view shows tall trees around an inland clearing. Neither image depicts a retained observer sample. An open coastal viewpoint can coexist with zero combined support for the selected inland cell."
+  }
+}

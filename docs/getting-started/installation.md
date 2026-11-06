@@ -1,28 +1,33 @@
 # Installation
 
-Choose the environment for what you want to do. Reading the example and running the model have
-different requirements.
+Choose setup by the result you want. The [Lime Kiln visual walkthrough](../examples.md) and
+[How it works](../understand/index.md) need only a browser.
 
-## Read the documentation
+## Run the offline example {#offline-example}
 
-The [San Juan guided example](../examples.md) uses committed model results. You can explore it in
-your browser without Python, GDAL, credentials or source-data downloads.
-
-To build the site locally from a clone:
+Use **Python 3.11 or later**. Start in the directory where you keep projects:
 
 ```bash
-python -m venv .venv-docs
-source .venv-docs/bin/activate
-python -m pip install -r requirements-docs.txt
-python -m mkdocs serve
+git clone https://github.com/MarineCast/toolkit-viewshed.git
+cd toolkit-viewshed
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+python examples/offline_distance.py --output work/my-first-distance
 ```
 
-The docs build checks the existing example bundle; it does not acquire data or run the model.
+On Windows, activate with `.venv\Scripts\Activate.ps1` in PowerShell. Native Windows model
+acceptance is not established here. The package still installs geospatial dependencies, including
+Rasterio; **the offline example does not require the `osgeo` GDAL Python bindings**, optional
+acquisition extras or source downloads. It creates synthetic geometry and a distance product.
 
-## Run the toolkit
+Success prints JSON with `valid: true`, a positive row count and product paths.
+Use a new output directory each time. Continue to [inspect your first result](quick-start.md#what-success-looks-like).
 
-Use **Python 3.11 or later** with binary-compatible GDAL Python bindings and Rasterio.
-From a clone, a concrete micromamba setup using the same specification as geospatial CI is:
+## Calculate a real terrain and canopy viewshed
+
+Use compatible GDAL Python bindings and Rasterio. From the cloned repository root, a concrete
+micromamba setup follows the checked-in geospatial CI specification:
 
 ```bash
 micromamba create -y -n viewshed -f .github/environment.yml python=3.11
@@ -35,44 +40,24 @@ For conda, use `conda env create -n viewshed -f .github/environment.yml`, then `
 and the same pip command. Initialize the environment manager's shell integration if activation
 is unavailable. The YAML is an environment specification, not a complete dependency lock.
 
-The toolkit's package requirements select Polars 1.x. The distance-product cache uses
-row-hash seed arguments that Polars 2 removed. [Polars 2.0 migration guide](https://docs.pola.rs/releases/upgrade/2/)
-
-If you already have a compatible isolated environment, install from the repository root:
+`analysis` supplies optional plotting tools; `acquisition` supplies the USGS py3dep downloader.
+Prepared local inputs do not require live acquisition. Polars is constrained to 1.x by the package.
+Inspect commands without executing a model:
 
 ```bash
-python -m pip install -e '.[dev,analysis,acquisition]'
 viewshed-toolkit --help
-```
-
-`analysis` supplies optional analysis/plotting tools; `acquisition` supplies the USGS py3dep
-downloader. Local, already prepared inputs do not require live acquisition. Native GDAL support
-is required for the GDAL-backed land workflow.
-
-Inspecting help does not execute a stage:
-
-```bash
 viewshed-toolkit stage --help
-python -m viewshed_toolkit --help
 ```
 
-Continue with the [quick start](quick-start.md). For exact public calls, see
-[Python and CLI](../api.md).
+Next: [Run the San Juan model](../san-juan-demo.md), including input requirements and output paths.
 
-## Tested support and limits
+## Setup evidence and limits
 
-| Environment | Evidence |
-| --- | --- |
-| Linux, Python 3.11 and 3.14 | Configured geospatial CI matrix; inspect the check for your commit |
-| macOS, Python 3.14.6 | Local reliability review and regression suite; see current validation evidence |
-| Windows | No native acceptance run recorded in this improvement pass |
-| Other Python/dependency combinations | Allowed package constraints do not imply every combination was tested |
+The documentation improvement checks the offline sequence in a fresh environment; its exact
+platform, dependency versions and outcome are recorded in the
+[documentation validation note](../development/lime-kiln-validation.md).
+The native recipe follows `.github/environment.yml`; no fresh native environment solve or
+regional run is implied by the offline check. Consult CI for the selected revision and
+[troubleshooting](troubleshooting.md) for native imports or stale artifacts.
 
-A wheel installation check builds with the declared build-system dependencies and verifies the
-toolkit package, resources and CLI outside the source checkout. It reuses installed scientific
-dependencies for the runtime check.
-The commands above follow the checked-in CI specification; a new conda/micromamba solve was not
-performed during the local improvement pass.
-
-Run the [offline first result](quick-start.md) next. See [troubleshooting](troubleshooting.md)
-for native imports, missing inputs and stale artifacts.
+To work on this website, see [Build the documentation](../development/index.md#build-the-documentation).

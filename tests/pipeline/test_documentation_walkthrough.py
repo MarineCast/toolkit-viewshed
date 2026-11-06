@@ -126,7 +126,7 @@ def test_presentation_check_rejects_changed_artifacts(tmp_path, name):
 
 
 def test_guided_page_has_no_hidden_essential_chapters_or_execution():
-    source = (ROOT / "docs/examples.md").read_text()
+    source = (ROOT / "docs/sightline-details.md").read_text()
     assert source.count('<section class="chapter"') == 3
     assert source.count("<figure class=") == 6
     assert "{{contributors}}" in source

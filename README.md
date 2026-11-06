@@ -224,9 +224,10 @@ and open the Examples navigation item. The [reproduction guide](docs/documentati
 separates model execution, scientific export and offline validation.
 
 The `Publish documentation` GitHub Actions workflow validates and builds the site on pull
-requests, then publishes changes pushed to `main`. To enable hosting once, open repository
+requests and pushes to `main`. Publication requires a manual workflow run on `main` after validation.
+To enable hosting once, open repository
 **Settings → Pages → Build and deployment → Source** and select **GitHub Actions**.
-After the workflow is merged, it can also be run from **Actions → Publish documentation →
+Deploy from **Actions → Publish documentation →
 Run workflow**, selecting `main`. The site is hosted at
 [marinecast.github.io/toolkit-viewshed](https://marinecast.github.io/toolkit-viewshed/).
 The workflow uses the committed demo bundle and requires only documentation dependencies.

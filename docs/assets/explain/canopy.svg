@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 380" role="img" aria-labelledby="title desc">
+<title id="title">Tree height can interrupt a ground-clear sightline</title><desc id="desc">A person looks across a slope to water. The ray clears bare ground but crosses a tree crown when vegetation is included. Schematic; not a Lime Kiln model result.</desc>
+<rect width="480" height="380" rx="12" fill="#f3f6f1"/>
+<style>text{font:18px system-ui,sans-serif;fill:#253f46}.title{font-size:22px;font-weight:650}.small{font-size:16px}</style>
+<text x="24" y="34" class="title">02 / Trees raise the surface</text>
+<text x="24" y="69">Same ground. A different obstruction.</text>
+<path d="M20 285L20 190 90 190 170 240 210 231 260 285 455 285 455 320 20 320Z" fill="#c5c0ad"/>
+<path d="M260 285H455V320H260Z" fill="#b4d9df"/>
+<g transform="translate(62 190)" fill="#253f46" stroke="#253f46" stroke-width="4" stroke-linecap="round"><circle cy="-33" r="6"/><path d="M0-26v15m0-12 11-7m-11 19-7 11m7-11 7 11" fill="none"/></g>
+<path d="M209 231V144" stroke="#735e40" stroke-width="6"/>
+<path d="M209 118L174 181H188L169 208H250L231 181H244Z" fill="#759c75"/>
+<path d="M65 157L190 198" stroke="#bd562d" stroke-width="3"/><path d="M190 198L430 278" stroke="#bd562d" stroke-width="3" stroke-dasharray="6 6"/>
+<circle cx="190" cy="198" r="7" fill="none" stroke="#bd562d" stroke-width="3"/>
+<text x="282" y="153" class="small">Ground + canopy</text><path d="M278 159L234 169" stroke="#759c75"/>
+<text x="290" y="224" class="small">Ground alone</text><path d="M286 230L241 266" stroke="#837d68"/>
+<text x="24" y="350" class="small">Eye height starts above ground.</text><text x="24" y="372" class="small">Local canopy clearance is a separate setting.</text>
+</svg>

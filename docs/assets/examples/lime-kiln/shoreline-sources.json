@@ -1,0 +1,52 @@
+{
+  "purpose": "Photographic context, not model validation or modeled observer locations",
+  "photos": [
+    {
+      "id": "panorama",
+      "file": "haro-panorama-chris-light.jpg",
+      "title": "Haro Straits panorama",
+      "author": "Chris Light",
+      "date": "2024-10-24",
+      "source": "https://commons.wikimedia.org/wiki/File:Haro_Straits_panorama.jpg",
+      "download": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f1/Haro_Straits_panorama.jpg/1280px-Haro_Straits_panorama.jpg",
+      "camera": null,
+      "location_scope": "Lime Kiln Point State Park; precise camera location not published",
+      "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "changes": "Commons resized thumbnail; no crop or other edits",
+      "checked": "2026-11-06",
+      "sha256": "adf72f3b9c96ee57148066e6e97f1e07511e49115388a8d8d22e0920a6afb44d"
+    },
+    {
+      "id": "A",
+      "file": "shore-chiwauk.jpg",
+      "title": "Lime Kiln Point State Park",
+      "author": "Chiwauk",
+      "date": "2021-06-17",
+      "source": "https://commons.wikimedia.org/wiki/File:Lime_Kiln_Point_State_Park.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Lime_Kiln_Point_State_Park.jpg/960px-Lime_Kiln_Point_State_Park.jpg",
+      "camera": {
+        "lat": 48.514997,
+        "lon": -123.149881,
+        "epsg32610": [
+          488931.2811192985,
+          5373553.424396671
+        ],
+        "h3_r7": "8728d1061ffffff",
+        "position_basis": "Commons published camera geotag; accuracy not stated",
+        "heading_magnetic_degrees": 237,
+        "heading_true_degrees": null
+      },
+      "location_scope": "Published camera geotag within the example source cell",
+      "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "changes": "Commons resized thumbnail; no crop or other edits",
+      "checked": "2026-11-06",
+      "sha256": "8d6ebe478da5d8b45908b112b78a41b2886a3dd3cecc59d411c3a1cc464f8705"
+    }
+  ],
+  "suggested_google_photo": {
+    "url": "https://maps.app.goo.gl/CRVTwxqcjhnDYigS8",
+    "author": "Melanie Chandler",
+    "displayed_date": "Nov 2021",
+    "use": "link only; camera position unverified; image not copied"
+  }
+}

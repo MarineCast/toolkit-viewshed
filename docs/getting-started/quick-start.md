@@ -33,13 +33,18 @@ pairs with centroid distance at most 1 km, and zero beyond that hard cutoff. The
 candidate universe may retain cells whose centroids fall outside the cutoff. This is a distance-only diagnostic, not physical viewability or
 detection probability. The profile's cutoff cannot exceed the pair product's modeled coverage.
 
-Inspect the path printed as `profile`:
+Read the exact path saved by the example:
 
 ```python
-import polars as pl
+import json
+from pathlib import Path
 
-# Substitute the exact profile path printed by the example.
-frame = pl.read_parquet("<profile-path>")
+import polars as pl
+from viewshed_toolkit import validate_distance_product
+
+result = json.loads(Path("work/my-first-distance/result.json").read_text())
+validate_distance_product(result["profile"])
+frame = pl.read_parquet(result["profile"])
 print(frame.select("source_h3", "target_h3", "distance_km", "weight_distance").head())
 ```
 
@@ -59,7 +64,7 @@ opaque-land water run use `--workflow water`.
 
 Read the [San Juan guided example](../examples.md) without installing anything. It uses committed
 real-data model results and explains ground, canopy, sampled viewpoints and modeled support.
-Then follow [reproduction](../documentation-examples.md) for a bounded real model with native GDAL
+Then follow [Run the San Juan model](../san-juan-demo.md) for a bounded real model with native GDAL
 and available source inputs. That run has different data and scientific requirements from this
 first distance result.
 

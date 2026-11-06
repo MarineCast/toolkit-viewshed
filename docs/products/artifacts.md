@@ -61,8 +61,9 @@ See the [scientific contracts](../scientific-methodology.md) for exact definitio
 | `COMPONENT_PROVENANCE_JSON`, `SOURCE_VINTAGES_JSON` | Producer evidence and source vintage |
 
 Read values together with their states. Null/unavailable is not observed zero; not-applicable
-canopy is not evidence that a water cell was measured to contain no trees. A missing candidate
-pair is outside the evaluated universe, not a zero-valued observation.
+canopy is not evidence that a water cell was measured to contain no trees. A pair absent from the
+candidate lookup is outside the modeled universe. A candidate pair with a missing result is
+incomplete or unavailable and must not be treated as zero.
 
 ## Evidence that travels with an artifact
 

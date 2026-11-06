@@ -16,18 +16,33 @@ observer activity.
 
 {{read_one_result}}
 
-See the [same pair in the visual walkthrough](../examples.md#one-pair).
+See the [same pair in the visual walkthrough](../sightline-details.md#one-pair).
 The walkthrough’s per-target maximum is an example-derived summary across **land** sources;
 it is not a new supported product or the visibility of a union of viewpoints.
 
 The [completed regional example](../regional-viewshed-example.md) compares both source roles
 for the same H3 pair and shows a per-target mean over each role's recorded pairs.
 
+## Understand the multiplication
+
+For an **illustrative, non-geographic** pair:
+
+| Field | Value | Interpretation |
+| --- | ---: | --- |
+| `weight_terrain` | 0.50 | Ground support, with distance already included |
+| `weight_vegetation` | 0.90 | Conditional canopy factor |
+| `weight_distance` | 0.80 | Separate centroid-distance diagnostic |
+| `weight_static_viewability` | **0.45** | **0.50 × 0.90** |
+
+Multiplying by the distance diagnostic again would change the calculation. A score of 0.45 is
+not a 45% chance of seeing an animal. Follow the [Lime Kiln component maps](../examples.md)
+for a geographic example using the same four fields.
+
 ## Keep the pair and its evidence together
 
 Within a source role, the key is `source_h3 × target_h3`. A table combining roles must retain
-`source_type`. The candidate lookup defines the modeled universe; a missing candidate is not
-an observed zero. Preserve units, support, source coverage and metadata alongside numeric values.
+`source_type`. The candidate lookup defines the modeled universe; a candidate with a missing result is incomplete or unavailable, never
+a computed zero. Preserve units, support, source coverage and metadata alongside numeric values.
 
 Artifact validation has different scopes. `validate(artifacts)` checks referenced paths exist;
 it is not a schema or scientific validation. The workflow's publication checks and

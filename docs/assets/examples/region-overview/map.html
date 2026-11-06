@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Regional land viewing support · Viewshed Toolkit</title>
+<link rel="stylesheet" href="../../vendor/leaflet-1.9.4/leaflet.css">
+<link rel="stylesheet" href="map.css">
+<script defer src="../../vendor/leaflet-1.9.4/leaflet.js"></script>
+<script defer src="map.js"></script>
+</head>
+<body>
+<header>
+  <div class="title"><strong>Regional land viewing support</strong><span>Strongest combined weight per water cell</span></div>
+  <div class="controls">
+    <button type="button" id="reset" disabled>Full region</button>
+    <label for="place">Explore</label>
+    <select id="place" disabled><option value="region">Whole region</option><option value="lime">Lime Kiln area</option><option value="everett">Everett waterfront</option><option value="larrabee">Larrabee woods</option></select>
+  </div>
+</header>
+<main id="map" aria-label="Interactive regional viewshed map" role="region" tabindex="0"></main>
+<footer>
+  <div class="legend"><strong>Maximum combined weight</strong><div class="ramp" aria-hidden="true"></div><div class="ticks"><span>0</span><span>0.5</span><span>1</span></div></div>
+  <p class="key"><span class="zero"></span> Gray: computed zero · Blank: no delivered target<br> Land-source maximum · not detection probability</p>
+  <p id="status" role="status">Loading 13,461 water cells…</p>
+  <p id="tile-status" hidden>Street tiles could not load. The local coastline and viewing weights remain available; choose “Coastline” in the layers control.</p>
+  <p class="help">Drag to pan · Scroll or pinch to zoom · Select a cell for details · Arrow keys and +/− work with the map focused.</p>
+  <p id="error" hidden>Interactive map unavailable. <a href="combined.svg">Open the static map</a> or <a href="targets.json">read the target summary</a>.</p>
+  <noscript><p>JavaScript is required for this interactive map. <a href="combined.svg">Open the static map</a>.</p></noscript>
+</footer>
+</body>
+</html>
