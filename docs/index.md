@@ -35,6 +35,12 @@ different questions; this toolkit addresses the geometry of the view.
 
     [Open the guided example](examples.md)
 
+-   **Explore the completed regional viewshed**
+
+    Compare modeled land and water support for the same coastal H3 pair, then see all recorded sources for its water target.
+
+    [Open the regional example](regional-viewshed-example.md)
+
 -   **Run a first workflow**
 
     Set up the native geospatial environment, inspect a configuration, and choose a bounded run.

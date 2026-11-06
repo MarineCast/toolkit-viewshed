@@ -21,6 +21,12 @@ limitations before using them. Current behavior is defined by source/tests and t
 - [Instructional polish validation](../reports/instructional-polish-validation.md): projected
   display, pair parity, bounded rebuild and browser evidence.
 
+## Completed regional delivery
+
+The [November 5, 2026 regional example](../regional-viewshed-example.md) records the full-run
+scope, the checked land and water pair counts, and the workspace manifest used to read the
+completed outputs.
+
 ## Earlier regional and repository work
 
 - [Validation report](../reports/validation.md)

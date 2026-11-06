@@ -141,4 +141,7 @@ These are clipped, reprojected and modeled derivatives; raw datasets are not bun
 [Read the product guide](products/index.md) ·
 [Reproduce or validate the example](documentation-examples.md)
 
+Continue with the [completed regional viewshed](regional-viewshed-example.md) to compare land
+and water source roles and read a target summary from the validated regional delivery.
+
 </div>
