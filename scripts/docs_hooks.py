@@ -90,7 +90,13 @@ def on_page_markdown(markdown, page, config, files):
         for key, value in {"example_tabs": tabs("region"), **values()}.items():
             markdown = markdown.replace("{{" + key + "}}", str(value))
         return markdown
-    if page.file.src_uri not in {"sightline-details.md", "products/index.md"}:
+    if page.file.src_uri == "products/index.md":
+        from render_lime_kiln import page_values
+
+        for key, value in page_values().items():
+            markdown = markdown.replace("{{" + key + "}}", str(value))
+        return markdown
+    if page.file.src_uri != "sightline-details.md":
         return markdown
     # Standard-library presentation renderer is shared by the build and offline checks.
     sys.path.insert(0, str(ROOT / "scripts"))
@@ -204,9 +210,6 @@ def on_page_markdown(markdown, page, config, files):
     active = [t for t in summary["targets"] if t["candidate_count"]]
     values["coverage_reading"] = (
         f"This summary covers {len(active)} target cells with land-source candidates. It has {sum(t['valid_count'] for t in active):,} valid candidate records and {sum(t['missing_count'] for t in active):,} missing candidate records. Coverage is complete within those recorded candidate sets, not across every possible source area."
-    )
-    values["read_one_result"] = (
-        f"The committed land pair `{default['source_h3']} → {default['target_h3']}` (A → B) has unweighted ground support **{number(bare)}**, directly calculated unweighted canopy support **{number(canopy)}**, and combined weight **{number(default[METRIC])}**. Distance attenuation is already included in the combined value. It is a modeled support score, not the probability of seeing an animal."
     )
     alts = {
         "pair-map": "Source A, target B and recorded P to Q samples within San Juan geography",

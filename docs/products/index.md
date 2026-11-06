@@ -1,8 +1,45 @@
-# Product guide
+# Read a result
 
-Choose the quantity that answers your question before selecting a file or an API. All products
-describe static modeled geometry or an assumed distance rule, rather than animal occurrence or
-observer activity.
+The [Lime Kiln walkthrough](../examples.md#follow-one-result-back-to-its-components)
+follows land source `{{lime_source}}` to water target `{{lime_target}}`, with
+**{{lime_km}} km** between their cell centers. The compact weights for that pair are below.
+
+## Read one result
+
+| Field | Recorded value | What it measures |
+| --- | ---: | --- |
+| `weight_terrain` | {{example_terrain}} | Bare-earth viewing support with distance attenuation included |
+| `weight_vegetation` | {{example_vegetation}} | Fraction of that terrain support retained after canopy |
+| `weight_distance` | {{example_distance}} | Distance diagnostic based on the two cell centers |
+| `weight_static_viewability` | **{{example_combined}}** | Combined physical viewing support |
+
+## Understand the multiplication
+
+```text
+terrain support × vegetation factor ≈ combined support
+{{example_terrain}}        × {{example_vegetation}}          ≈ {{example_combined}}
+```
+
+The displayed inputs are rounded. Use the terrain and vegetation fields for this product.
+The distance diagnostic helps explain separation, while terrain already includes attenuation
+along the sampled sightlines. The combined score is a dimensionless model index.
+Estimating detection probability requires observation data and a separate model.
+
+The observation-geometry records call this same final weight `distance_adjusted_viewability`.
+The [Lime Kiln code example](../examples.md#use-the-result) reads that field for this pair.
+
+## Keep the pair and its evidence together
+
+| State | How to read it |
+| --- | --- |
+| Computed zero | The model evaluated the candidate and returned zero support under its settings. |
+| Missing or unavailable | The pair is in the candidate set and lacks a valid result. Keep the value missing. |
+| Outside the candidate set | The candidate lookup did not select this pair for evaluation. |
+
+Within a source role, the key is `source_h3 × target_h3`. A table combining roles also needs
+`source_type`. Keep units, spatial support, source coverage and provenance alongside the values.
+
+## Choose a product
 
 | You need to… | Product or diagnostic | Read next |
 | --- | --- | --- |
@@ -12,42 +49,12 @@ observer activity.
 | Reuse geometry or explore an attenuation curve | Standalone pair distances and named distance profiles | [Distance products](../distance-products.md) |
 | Explore results spatially | Static maps or the committed visual walkthrough | [Pipeline map export](../pipelines.md), [guided example](../examples.md) |
 
-## Read one result
+The [regional map](../examples-region.md) displays the highest available land-source weight
+for each water target. The source supplying that maximum can vary across targets and layers.
+The [completed regional example](../regional-viewshed-example.md) compares the two source roles.
 
-{{read_one_result}}
-
-See the [same pair in the visual walkthrough](../sightline-details.md#one-pair).
-The walkthrough’s per-target maximum is an example-derived summary across **land** sources;
-it is not a new supported product or the visibility of a union of viewpoints.
-
-The [completed regional example](../regional-viewshed-example.md) compares both source roles
-for the same H3 pair and shows a per-target mean over each role's recorded pairs.
-
-## Understand the multiplication
-
-For an **illustrative, non-geographic** pair:
-
-| Field | Value | Interpretation |
-| --- | ---: | --- |
-| `weight_terrain` | 0.50 | Ground support, with distance already included |
-| `weight_vegetation` | 0.90 | Conditional canopy factor |
-| `weight_distance` | 0.80 | Separate centroid-distance diagnostic |
-| `weight_static_viewability` | **0.45** | **0.50 × 0.90** |
-
-Multiplying by the distance diagnostic again would change the calculation. A score of 0.45 is
-not a 45% chance of seeing an animal. Follow the [Lime Kiln component maps](../examples.md)
-for a geographic example using the same four fields.
-
-## Keep the pair and its evidence together
-
-Within a source role, the key is `source_h3 × target_h3`. A table combining roles must retain
-`source_type`. The candidate lookup defines the modeled universe; a candidate with a missing result is incomplete or unavailable, never
-a computed zero. Preserve units, support, source coverage and metadata alongside numeric values.
-
-Artifact validation has different scopes. `validate(artifacts)` checks referenced paths exist;
-it is not a schema or scientific validation. The workflow's publication checks and
-`validate_distance_product` have their own contracts, described in the [API](../api.md) and
-[distance guide](../distance-products.md).
+Artifact checks have different scopes. `validate(artifacts)` checks that referenced paths
+exist. Workflow publication checks and `validate_distance_product` apply their own contracts.
 
 ## Choose the producing workflow
 
