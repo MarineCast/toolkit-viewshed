@@ -14,6 +14,7 @@ import h3
 import polars as pl
 
 from viewshed_toolkit._internal.artifacts import checksum_path
+from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
 from viewshed_toolkit._internal.data.parquet import atomic_sink_parquet
 
 from ..config import AppConfig
@@ -58,16 +59,27 @@ def fingerprint(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
 
-def input_checksums(paths: Mapping[str, Path]) -> dict[str, str]:
+def input_checksums(paths: Mapping[str, Path], *, reuse_unchanged: bool = False) -> dict[str, str]:
+    """Hash inputs, optionally reusing identity-checked file reads within this process.
+
+    Output manifests and durable product validation retain full content reads.
+    Directory membership is always rescanned, including shapefile companions.
+    """
+
+    def digest(path: Path) -> str:
+        if reuse_unchanged and path.is_file() and not path.is_symlink():
+            return checksum_unchanged_file(path)
+        return checksum_path(path)
+
     result = {}
     for name, path in sorted(paths.items()):
         if not path.exists():
             raise FileNotFoundError(path)
         if path.suffix.lower() == ".shp":
             members = sorted(path.parent.glob(path.stem + ".*"))
-            result[name] = fingerprint({member.name: checksum_path(member) for member in members})
+            result[name] = fingerprint({member.name: digest(member) for member in members})
         else:
-            result[name] = checksum_path(path)
+            result[name] = digest(path)
     return result
 
 
@@ -83,7 +95,7 @@ def provenance(app: AppConfig, algorithm: str, inputs: Mapping[str, Path]) -> di
         "resolution_m": app.viewshed.dem_resolution_m,
         "source_h3_resolution": app.h3.source_resolution,
         "target_h3_resolution": app.h3.target_resolution,
-        "inputs": input_checksums(inputs),
+        "inputs": input_checksums(inputs, reuse_unchanged=True),
         **(
             {"marinecast_study": app.raw_config["marinecast_study"]}
             if "marinecast_study" in app.raw_config

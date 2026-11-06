@@ -517,12 +517,12 @@ def apply_curvature_correction_to_dem_da(
 
 
 def _coord_start_index(full_values: np.ndarray, first_window_value: float) -> int:
-    full_values = np.asarray(full_values, dtype=np.float64)
-    spacing = float(np.min(np.abs(np.diff(full_values)))) if len(full_values) > 1 else 1.0
-    tolerance = max(spacing * 1e-7, np.finfo(np.float64).eps * 8)
-    matches = np.where(np.isclose(full_values, first_window_value, rtol=0, atol=tolerance))[0]
+    # Relative tolerance on UTM northings can exceed a complete raster cell.
+    # Windows are slices of this exact grid; tolerate only sub-micrometre
+    # coordinate roundoff and reject ambiguous or missing coordinates.
+    matches = np.flatnonzero(np.isclose(full_values, first_window_value, rtol=0.0, atol=1e-7))
     if len(matches) != 1:
-        raise ValueError("Window coordinates do not align with the full DEM grid.")
+        raise ValueError("Window coordinates do not uniquely align with the full DEM grid.")
     return int(matches[0])
 
 
@@ -1437,6 +1437,11 @@ def run_viewshed_backend_to_bool_array(
             observer_id=observer_id,
         )
     if normalized == "xrspatial":
+        if str(getattr(app.viewshed, "surface_model", "bare_earth")) == "canopy":
+            raise ValueError(
+                "viewshed.backend='xrspatial' does not support grounded canopy observers; "
+                "use backend='gdal'"
+            )
         return run_xrspatial_viewshed_to_bool_array(
             context=context,
             xrspatial_dem_da=xrspatial_dem_da,

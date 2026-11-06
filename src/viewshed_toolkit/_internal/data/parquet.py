@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import uuid
+from contextlib import ExitStack
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 import polars as pl
 import pyarrow.parquet as pq
+import pyarrow as pa
 
 
 def _read_parquet_key_value_metadata(path: Path) -> dict[str, str]:
@@ -72,6 +74,92 @@ def scan_required(path_or_paths: Path | Sequence[Path], required: Sequence[str])
     return frame.select(list(required))
 
 
+def atomic_project_parquet(
+    source_path: Path,
+    outputs: Mapping[Path, Sequence[str]],
+    *,
+    batch_size: int = 65_536,
+    batch_observer: Callable[[pl.DataFrame], None] | None = None,
+) -> int:
+    """Project one bounded input stream into staged outputs, with rollback on failure.
+
+    The observer can reduce diagnostics during the same pass. It must not mutate
+    the input. All writers finish before any previous output is replaced.
+    """
+    source_path = Path(source_path).resolve()
+    destinations = {Path(path).resolve(): list(columns) for path, columns in outputs.items()}
+    if batch_size < 1 or not destinations or len(destinations) != len(outputs):
+        raise ValueError("Projection requires positive batch_size and distinct output paths")
+    if source_path in destinations:
+        raise ValueError("Projection output must not replace its source")
+    before = source_path.stat()
+    identity = (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    )
+    temporary: dict[Path, Path] = {}
+    backups: dict[Path, Path] = {}
+    promoted: set[Path] = set()
+    rows = 0
+    try:
+        with ExitStack() as stack:
+            reader = stack.enter_context(pq.ParquetFile(source_path))
+            writers = {}
+            for path, columns in destinations.items():
+                if not columns or len(columns) != len(set(columns)):
+                    raise ValueError("Projection columns must be nonempty and unique")
+                schema = pa.schema([reader.schema_arrow.field(name) for name in columns])
+                path.parent.mkdir(parents=True, exist_ok=True)
+                staged = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+                temporary[path] = staged
+                writers[path] = stack.enter_context(
+                    pq.ParquetWriter(staged, schema, compression="zstd")
+                )
+            for batch in reader.iter_batches(batch_size=batch_size):
+                table = pa.Table.from_batches([batch])
+                if batch_observer is not None:
+                    batch_observer(pl.from_arrow(batch))
+                for path, columns in destinations.items():
+                    writers[path].write_table(table.select(columns))
+                rows += batch.num_rows
+        after = source_path.stat()
+        if identity != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            raise ValueError(f"Input changed during Parquet projection: {source_path}")
+        for path, columns in destinations.items():
+            if validate_parquet_schema(temporary[path], columns) != rows:
+                raise ValueError(f"Incomplete projected output: {path}")
+        for path in destinations:
+            if path.exists():
+                backup = path.with_name(f".{path.name}.{uuid.uuid4().hex}.backup")
+                path.replace(backup)
+                backups[path] = backup
+        for path, staged in temporary.items():
+            staged.replace(path)
+            promoted.add(path)
+    except Exception:
+        for path in promoted:
+            path.unlink(missing_ok=True)
+        for path, backup in backups.items():
+            backup.replace(path)
+        raise
+    finally:
+        # A failed restore must leave its backup available for recovery.
+        for path in temporary.values():
+            path.unlink(missing_ok=True)
+    for path in backups.values():
+        path.unlink(missing_ok=True)
+    return rows
+
+
 def validate_parquet_schema(path: Path, columns: Sequence[str]) -> int:
     """Require an exact Parquet schema and return its row count."""
 
@@ -87,6 +175,7 @@ def validate_parquet_schema(path: Path, columns: Sequence[str]) -> int:
 
 __all__ = [
     "atomic_sink_parquet",
+    "atomic_project_parquet",
     "scan_required",
     "validate_parquet_schema",
 ]

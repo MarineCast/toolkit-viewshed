@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -25,10 +26,15 @@ from ..contracts.provenance import validate_run_id
 from ..finalize.composition import compose_components
 from ..prepare.datasets import prepare_dataset
 from ..providers import get_provider
-from ..weights.components import build_chm_component, build_dem_component, build_distance_component
+from ..weights.components import (
+    build_chm_component,
+    build_dem_component,
+    build_distance_component,
+    build_land_surface_components,
+)
 from ..weights.distance.products import build_pair_distances
 from .acquisition import download_dataset
-from .registry import COMPONENT_STAGES, component_plan
+from .registry import COMPONENT_STAGES, COMPONENT_TARGETS, component_plan
 from .stages import build_land_cells, prepare_source_target_lookup
 
 
@@ -146,12 +152,10 @@ def run_component_stage(
         return build_target_cells(app, overwrite=overwrite)
     if stage == "export-maps":
         from ..finalize.composition import validate_composed
-        from ..visualization.component_maps import export_component_map
+        from ..visualization.component_maps import export_component_maps
 
         validate_composed(app, source_type)
-        for factor in ("terrain", "distance", *(("canopy",) if source_type == "land" else ())):
-            export_component_map(app, source_type=source_type, factor=factor)
-        return export_component_map(app, source_type=source_type)
+        return export_component_maps(app, source_type=source_type)["static"]
     functions = {
         "build-pair-distances": build_pair_distances,
         "build-dem-weights": build_dem_component,
@@ -215,6 +219,29 @@ def run_component_stage(
     return report
 
 
+def component_run_context(
+    app: AppConfig,
+    *,
+    target: str,
+    source_type: str,
+    run_id: str,
+) -> tuple[tuple[str, ...], Path, dict[str, Any]]:
+    """Validate a request and resolve its plan/identity without filesystem writes."""
+    if source_type not in {"land", "water"}:
+        raise ValueError("source_type must be land or water")
+    if target not in COMPONENT_TARGETS:
+        raise ValueError(f"Unknown build target: {target}")
+    validate_run_id(run_id)
+    plan = component_plan((COMPONENT_TARGETS[target],), source_type=source_type)
+    if source_type == "land" and "build-chm-weights" in plan:
+        from ..config.loader import validate_viewshed_settings
+
+        validate_viewshed_settings(replace(app.viewshed, surface_model="canopy"))
+    manifest = component_root(app) / "manifests" / f"{run_id}-{source_type}.json"
+    identity = {"config_hash": app.config_hash, "stages": list(plan), "source_type": source_type}
+    return plan, manifest, identity
+
+
 @with_study_config
 def run_components(
     config: str | Path | AppConfig,
@@ -224,21 +251,16 @@ def run_components(
     run_id: str = "components",
     overwrite: bool = False,
 ) -> dict[str, Path]:
+    """Run the dependency plan for one source role and return its stage output paths.
+
+    When both land surface weights are requested, compute them together from the same
+    observer samples. Record completed stages and their checksums even if a later stage
+    fails. This workflow writes to the component namespace and retains its intermediates.
+    """
     app = config if isinstance(config, AppConfig) else load_app_config(config)
-    if source_type not in {"land", "water"}:
-        raise ValueError("source_type must be land or water")
-    targets = {
-        "dem": "build-dem-weights",
-        "chm": "build-chm-weights",
-        "distance": "build-distance-weights",
-        "all": "export-maps",
-    }
-    if target not in targets:
-        raise ValueError(f"Unknown build target: {target}")
-    validate_run_id(run_id)
-    plan = component_plan((targets[target],), source_type=source_type)
-    manifest = component_root(app) / "manifests" / f"{run_id}-{source_type}.json"
-    identity = {"config_hash": app.config_hash, "stages": list(plan), "source_type": source_type}
+    plan, manifest, identity = component_run_context(
+        app, target=target, source_type=source_type, run_id=run_id
+    )
     if manifest.exists() and not overwrite:
         previous = json.loads(manifest.read_text())
         if previous.get("identity") != identity:
@@ -246,15 +268,28 @@ def run_components(
                 "Manifest belongs to another logical run; use a new run_id or overwrite=True"
             )
     results: dict[str, Path] = {}
+    shared_outputs: dict[str, Path] = {}
     measurements: list[dict[str, Any]] = []
     try:
         for stage in plan:
             with measure_stage(app.paths.output_dir) as metrics:
                 metrics["stage"] = stage
                 measurements.append(metrics)
-                output = run_component_stage(
-                    app, stage, source_type=source_type, overwrite=overwrite
-                )
+                if stage in shared_outputs:
+                    output = shared_outputs.pop(stage)
+                    metrics["computed_with_stage"] = "build-dem-weights"
+                elif (
+                    stage == "build-dem-weights"
+                    and source_type == "land"
+                    and "build-chm-weights" in plan
+                ):
+                    shared_outputs.update(build_land_surface_components(app, overwrite=overwrite))
+                    output = shared_outputs.pop(stage)
+                    metrics["includes_stages"] = ["build-dem-weights", "build-chm-weights"]
+                else:
+                    output = run_component_stage(
+                        app, stage, source_type=source_type, overwrite=overwrite
+                    )
                 results[stage] = output
                 if output.suffix == ".parquet":
                     import pyarrow.parquet as pq

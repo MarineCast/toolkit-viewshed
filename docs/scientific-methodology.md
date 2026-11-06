@@ -45,9 +45,10 @@ source, clipped to `[0, 1]`. A missing fraction or active geometry is an error i
 The spatial design is deterministic:
 
 1. Repair the polygonal geometry and sort disconnected components by descending area, then by
-   rounded centroid coordinates.
-2. When centroid inclusion is enabled, seed a representative interior point; then seed every
-   disconnected component before refinement.
+   rounded centroid coordinates, with normalized geometry bytes breaking any remaining tie.
+2. Construct the repaired polygon or sorted multipart geometry before selecting its representative
+   interior point. When centroid inclusion is enabled, use that point as the initial seed; then
+   seed every disconnected component before refinement, up to the design maximum.
 3. Generate a fixed interior candidate grid in projected coordinates, with candidate density
    allocated in proportion to the square root of component area.
 4. Select the remaining points by maximin distance. Distances are rounded to six decimal places
@@ -61,10 +62,21 @@ observer denominator. Compatibility inputs without that field use, in order,
 `sample_points_requested`, `sample_points_per_source_cell`, an explicitly supplied observer count,
 and finally 1; new artifacts must persist the actual count.
 
+The current sampler is `component_aware_projected_nested_maximin_v5`. The November 4, 2026 fix
+moves the initial seed after repair and component ordering, so equivalent multipart geometry
+cannot change a short observer prefix merely through component order. It preserves the maximin
+method, candidate grid, configured counts and sampling modes. A bounded comparison against the
+previous implementation retained exactly the same coordinates in 12 ordinary cases: rectangle,
+concave polygon and unequal multipart geometry, each at 1, 3, 5 and 10 samples. Those cases do not
+prove universal equivalence: corrected tied-component or invalid-geometry cases can change
+coordinates, and their old partitions must be invalidated. Regression tests exercise reordered
+equal-area components and nested prefixes without regenerating the existing sampling fixtures.
+
 Implementation: [`prepare/area/sampling.py`](../src/viewshed_toolkit/pipeline/prepare/area/sampling.py)
 and the source-role overrides in
 [`config/loader.py`](../src/viewshed_toolkit/pipeline/config/loader.py). Regression coverage:
-[`test_source_sampling.py`](../tests/pipeline/test_source_sampling.py).
+[`test_source_sampling.py`](../tests/pipeline/test_source_sampling.py) and
+[`test_numerical_audit_regressions.py`](../tests/pipeline/test_numerical_audit_regressions.py).
 
 ## Distance decay
 
@@ -166,16 +178,19 @@ where `c` is `curvature_coefficient` and `R` is `earth_radius_m`. A coefficient 
 configured flat-Earth case. GDAL receives the coefficient directly; the alternate raster backend
 applies the equation explicitly.
 
-Observer height is added above the **unflattened projected bare-earth ground** at the land source
-sample, independently of the water-target surface. A shoreline water-mask pixel must not lower
-a mapped land observer to sea level. A projected ground void uses the authoritative DEM at the
-fixed projected cell centre, then the immediate-neighbour repair below; unresolved source ground
-fails. GDAL receives the corresponding eye-height offset relative to its endpoint input pixel.
-The shared endpoint and canopy arrays are not edited for this elevation correction. Land lineage
-records `unflattened_land_observer_ground_v1`; terrain partition schema v10 rejects prior results.
-Target height is
-added above the endpoint surface. Canonical water-mask pixels in that endpoint surface are set to
-the configured sea level even when the projected input DEM has nodata there.
+Observer height is added above repaired bare-earth ground at the source sample. Target height is
+added above the endpoint surface. Only pixels in an explicitly supplied, qualified
+`paths.marine_water_mask_path` receive `sea_level_m`, including marine DEM voids. The marine mask
+must be binary, aligned to the projected DEM, and a subset of canonical water. With no marine
+mask, the DEM is preserved. The canonical all-water mask still defines target support and canopy
+exclusion; it does not imply sea level.
+
+Finite lake and river DEM heights remain unchanged, including river gradients. Inland DEM voids
+remain missing before the existing endpoint repair below; they are never filled with sea level
+from a generic water label. No per-lake constant or river smoothing is inferred. Preserving source
+DEM heights does not establish surveyed lake levels, tidal datum accuracy, or hydrologic consistency.
+Canonical raster-stack v4 and the water-elevation algorithm invalidate previous land endpoint,
+partition and component results; qualified geometry-only water masks can still be reused.
 
 Endpoint repair is deterministic and independent of the observer batch:
 
@@ -184,6 +199,12 @@ Endpoint repair is deterministic and independent of the observer batch:
    least three finite values exist.
 3. Leave any unresolved endpoint for the configured DEM-gap policy. An unresolved observer
    endpoint fails rather than being replaced by a barrier.
+
+The experimental xrspatial route resolves a cropped window's coordinates against the parent
+grid with zero relative tolerance and a `1e-7` coordinate-unit absolute tolerance; a missing or
+ambiguous match fails. With the required metre CRS, this avoids treating adjacent cells as equal
+merely because their absolute UTM coordinates are large. This corrects the window alignment
+edge case; it does not establish numerical parity between xrspatial and GDAL.
 
 Implementation: [`weights/terrain/los.py`](../src/viewshed_toolkit/pipeline/weights/terrain/los.py)
 and [`prepare/elevation/terrain.py`](../src/viewshed_toolkit/pipeline/prepare/elevation/terrain.py).
@@ -219,6 +240,11 @@ overlays bare-earth endpoint elevation at the observer pixel and at grid-cell ce
 and prevents the observer's own canopy cell from trapping the ray. The shared canopy base is not
 mutated, so one observer's clearance cannot affect another observer.
 
+This grounded-canopy implementation uses GDAL. Canopy with `backend: xrspatial` is explicitly
+unsupported and rejected before LOS, including programmatically created canopy variants and
+paired land runs. A dependency-resolved land canopy build rejects the combination before
+acquisition. The toolkit does not substitute a canopy-top observer or another physical method.
+
 Let `K_bare` and `K_canopy` be the distance-integrated kernels above. The conditional canopy
 factor and final land weight are:
 
@@ -246,9 +272,10 @@ coverage: [`test_canopy_surface.py`](../tests/pipeline/test_canopy_surface.py),
 
 Water sources use the fixed `water_viewing.source_samples_per_cell` source-role policy and
 deterministic interior target-water samples, not the land raster population. For every source
-observer and target sample, the kernel tests the straight segment against the canonical
-mapped-land geometry plus the configured land-clearance buffer. An intersection is opaque. It
-also tests the configured two-ended refracted horizon:
+observer and target sample, the kernel blocks the straight segment if it intersects canonical
+mapped land or is within the configured exact planar land-clearance distance. See
+[projected land blockers](#projected-land-blockers-and-repeat-preparation) for index, projection
+repair, and zero-length ray semantics. It also tests the configured two-ended refracted horizon:
 
 ```text
 R_effective = R / c
@@ -260,6 +287,19 @@ For `c <= 0`, the flat-Earth configuration has no geometric horizon. The horizon
 tests are applied to each observer/target sample pair. Conservative cell-level prefilters may
 skip work only when they prove the complete target is beyond the horizon; they do not declare
 visibility.
+
+The configured `viewshed.max_distance_m` is also applied to each observer/target sample pair:
+distance **equal to** that maximum is eligible; greater distance contributes zero. A finite
+geometric horizon remains a separate test requiring distance strictly below the horizon. The
+distance-decay cutoff is independent and can further reduce the weighted numerator. Increasing
+that cutoff cannot extend LOS beyond the configured maximum range. Cell-centroid filtering alone
+cannot enforce these sample-level bounds.
+
+Blocked and out-of-range samples remain in `N_s × Q_t`; neither numerator is renormalized over
+only the surviving samples. The November 4, 2026 correction is versioned as
+`water_land_mask_sample_kernel_v2`. It changes affected short-range or extended-horizon cases;
+the bounded counterexample does not establish an error in the canonical small-craft configuration,
+whose horizon is shorter than its 30 km maximum range.
 
 The water denominators are exact for the sampled design:
 
@@ -328,6 +368,15 @@ and paired execution use the same LOS and sampling implementations; fixture pari
 absolute tolerance `1e-7`.
 Those fixtures establish software regression parity, not regional ecological or field-observation
 validity.
+
+Land partition identity includes the canonical source-target lookup's content signature, so a
+new target cannot be filled as zero by reusing an older incomplete partition. Sampling, water
+kernel and backend alignment versions participate in reuse checks. Worker count is excluded
+from terrain partition identity because fixed-point sums and observer bitwise unions preserve
+completion-order independence; configuration changes to scientific sampling or support still
+invalidate reuse. A synthetic native coastal rebuild with one and four workers produced exactly
+matching component tables, and a worker-only change reused partitions without invoking LOS.
+This is bounded software evidence, not a regional runtime or coverage result.
 
 The current regional parameter values and version names live in
 [`configs/salish_sea.yaml`](../configs/salish_sea.yaml). The code and regression links above are
@@ -554,3 +603,87 @@ above-ground bounds explicitly. V2 fixes source grounding and known-blockage res
 unknown endpoints; legacy prepared/output identities cannot certify v2 results. Existing GDAL
 full-cell kernels and their vegetation meaning remain unchanged. Package support does not
 establish empirical calibration, regional completeness or vertical-datum equivalence.
+
+## Source coverage and mixed canopy inputs
+
+A published canopy product can deliberately mask built-up land; nodata must not be inferred to
+mean no trees. Independent hydrography can establish nominal open-water support, while mapped
+swamp/marsh may still carry canopy. Supplementary heights require explicit source availability,
+units, alignment, dates and missingness checks. Preserve valid primary heights, record exactly
+which land pixels are supplemented, and keep known water/not-applicable distinct from a modeled
+zero canopy height. A composite with multiple source dates is not a uniform-year observation.
+The [bounded canopy reconciliation](reports/canopy-resolution-2026-11-04.md) records one implemented
+benchmark recipe and its limits; it is not an adopted global source policy or field validation.
+
+### Regional domain conversion and geometry caches (2026-11-04)
+
+A projected raster domain is densified at no more than 1 km before geographic conversion;
+transforming only four corners can exclude water from large regional grids. Canonical raster
+stack v3 and land partition/component identity bind that algorithm. H3 geometry v2 intersects
+unchanged native cells with vector water using prepared containment/disjoint tests and padded
+local clips; invalid fast clips fall back to exact overlay. The target denominator remains the
+complete native H3 water intersection measured in EPSG:6933, rather than a raster pixel area.
+Tiny floating-point overlay differences require rebuilding old geometry/partitions, whose
+identity includes the geometry algorithm version for both roles. Work tiling does not change
+resolution, full-pixel aggregation, observer sampling, or missingness rules. Source and field
+qualifications for the expanded DEM/canopy recipe are recorded in the
+[regional qualification report](reports/regional-qualification-2026-11-04.md).
+
+Regional input qualification adds a 60 m **preparation/QA guard** to cover inscribed 31 km buffer
+arc approximation error, clipped to the existing raster grid. This changes acquired/checked support,
+not LOS radius, analysis resolution, aggregation stride or observer policy. Water-only H3 area
+preparation uses the same supplied water intersection without constructing an unused land
+complement; the existing land-derived fallback remains available. A height-only DEM update may
+reuse a water mask only with matching grid/domain/source identities and verified mask bytes;
+its endpoint terrain is always rebuilt. Source availability and repeatability do not validate
+field heights or uniform canopy vintage. The subsequent
+[inland-water correction](reports/inland-water-elevation-2026-11-04.md) replaces the earlier
+blanket water flattening with explicit marine-only sea-level assignment and reruns the paired
+benchmark on the same source geometries and observer samples.
+
+### Reusing domains without changing support (2026-11-04)
+
+Regional shoreline fill retains its existing rule: add only Natural-Earth offshore-water
+components touching the domain boundary to the supplied canonical water, then take the land
+complement. Preparation now evaluates the equivalent set identity
+`A \ (W union O) = (A \ W) \ O`. Selected offshore components are assembled as a disjoint
+MultiPolygon and subtracted together, avoiding a regional dissolve and repeated subtractions.
+No vertex simplification, coordinate rounding, raster resampling or sampling change is applied.
+Water partition identity binds the domain geometry algorithm version.
+
+Clipped vector unions and resulting domains can reuse exact WKB with matching source-byte,
+extent, GEOS, algorithm and output-checksum contracts. A cache does not establish source accuracy.
+See [cache retention](configuration.md#cache-retention-and-cleanup) for lifecycle behavior.
+
+### Projected land blockers and repeat preparation
+
+Regional water-source blockers retain the mapped land model and configured coastal clearance.
+The WGS84 domain is projected without simplification. Projection can introduce self-intersections
+in otherwise valid geographic polygons; invalid projected components are repaired with Shapely's
+native **linework** `make_valid`, then validated before use. Original vector files are never
+rewritten. The repair receipt records validity reasons and before/after component-area sums;
+these are topology diagnostics, not surveyed area accuracy.
+
+Prepared land components are indexed with an STRtree. A ray is blocked when it intersects
+land, or when its exact planar Euclidean distance to the indexed land boundary is at most the
+configured clearance (default 30 m). Boundary line chunks partition the original segments exactly;
+they add no coastline vertices and require no regional polygon buffer or dissolve. Original land
+intersections also handle rays wholly inside a land component. Overlapping components are combined
+by Boolean OR, never by summing support. Exact zero-length rays (a source sample equal to its
+target sample) use a valid Point predicate: repeated-coordinate LineStrings are invalid and can
+be missed by GEOS STRtree `dwithin`. The point conversion preserves the represented ray exactly;
+no epsilon, sample displacement or sampling reduction is introduced.
+
+This replaces the former 16-quadrant-segment polygon-buffer approximation to the same clearance.
+At 30 m its circular-arc chord deficit can reach `30 * (1 - cos(pi/64))`, about **0.0361 m**.
+Exact-distance tests can therefore change decisions near the former buffered boundary; native
+buffer simplification and rounding also cease to define the clearance test.
+This is a versioned numerical improvement; resolution, sampling and the configured clearance do
+not change. Projection and boundary-index receipts bind source geometry bytes, CRS, clearance,
+algorithm/library versions and full cached-output checksums. Changed or corrupt caches rebuild.
+An initial native projection repair may be expensive; validated retained results avoid repeating it.
+
+Static-map water-mask caching preserves the existing pixel-centre rasterization, grid and
+`all_touched=False` policy. Cache identity includes actual polygon content, CRS, transform,
+shape, algorithm and library versions; persisted TIFF checksums and grid metadata are verified
+before reuse. Map caching changes neither LOS resolution nor observer sampling.

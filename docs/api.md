@@ -18,7 +18,10 @@ from viewshed_toolkit import (
     build_distance_profile,
     build_pair_distances,
     load_app_config,
+    plan_components,
     process,
+    run_component_stage,
+    run_components,
     run_stage,
     run_viewshed,
     validate,
@@ -54,14 +57,20 @@ The main calls have distinct scopes:
 | Call | Behavior |
 | --- | --- |
 | `load_app_config(path)` | Read-only configuration loading and normalization. |
+| `plan_components(config, ...)` | Inspect a component dependency plan and local prerequisites without running stages. |
+| `run_component_stage(config, stage, ...)` | Execute exactly one explicit component stage. |
+| `run_components(config, ...)` | Build the selected component dependency closure and retain its products. |
 | `run_stage(config, invocation)` | Execute one registered stage; writes that stage's outputs. |
 | `run_viewshed(config)` | Execute every canonical stage and retain the durable static outputs. |
 | `process(request)` | Execute selected stages, validate expected paths, and write a run manifest. |
 | `validate(artifacts)` | Check that referenced artifact paths exist; it is not a schema or scientific validation. |
 
-Both `run_viewshed` and a complete `process` request clean the viewshed directory down to its
-durable static-output contract after successful stage execution. Use a dedicated output directory
-when experimenting.
+Both `run_viewshed` and a complete `process` request clean disposable scratch after successful
+stage execution. The default `run.cleanup_policy: retain_reusable` keeps configured sources,
+prepared raster/geometry caches, LOS checkpoints and working factor tables for validated reuse.
+`compact` requests the earlier compact-output cleanup while still protecting configured source
+inputs. Cleanup remains confined to the configured output root and follows durable-output
+validation. See [cache retention](configuration.md#cache-retention-and-cleanup).
 
 ## Running selected stages
 
@@ -114,12 +123,12 @@ result = process(
 ```
 
 Run IDs must be simple filename identifiers (no path separators, drive prefixes or traversal).
-Manifest collision checks run before any stage. `resume=True` does not override a different logical
-run; explicit `force=True` is required for manifest replacement. Complete resume validates the
-retained paired generation and present inputs before skipping. Partial resume executes stage cache
-checks and does not return `skipped=True` from output checksums alone.
+Manifest collision checks run before any stage. Use a new ID for a different configuration or
+stage selection. Full-workflow resume also validates the retained paired generation. A completed
+subset can resume when its current input fingerprints and expected output checksums match.
 
-The distance CLI commands reject `--limit` and `--start`; bound the configuration instead.
+The distance CLI commands accept `--start` as a zero-based offset into sorted source H3 cells and
+`--limit` as the maximum number of sources. A bounded build produces a subset for the selected role.
 `terrain-weight` retains intermediates and no longer advertises a redundant retention flag.
 Legacy vegetation support/ray commands remain available for advanced compatibility work; canonical
 land production uses matched bare-earth/canopy `terrain-weight` or the paired stage. Legacy output
@@ -131,6 +140,18 @@ or unavailable output permission hints, and does not certify scientific validity
 
 `ViewshedRequest` accepts an optional `WorkflowIdentity`. Without one, the service reads the
 configuration's `provenance` section and otherwise uses toolkit-generic defaults.
+
+Resume requires a successful manifest with matching configuration, maintained scientific algorithm
+versions, stage identity, current local input fingerprints, and full output checksums. A failed or
+incomplete manifest requires explicit recovery. Changed input fingerprints, invalid/missing
+outputs, and older manifests without current fingerprints fail before stage execution.
+Recovery requires explicit `run_stage(..., StageInvocation(..., overwrite=True))` calls for the
+affected stages, followed by a **new run ID**. `force=True` cannot
+bypass these checks or make existing scientific stage caches current. For a complete workflow,
+the recorded input snapshot reflects its intentional post-success cleanup. These local checks do
+not establish freshness at remote providers. Algorithm identity uses maintained producer version
+constants, not automatic source-code hashing; numerical changes must update the relevant versions.
+See [caching and failures](pipelines.md#caching-and-failures).
 
 ## Canonical advanced imports
 
@@ -208,30 +229,51 @@ continues to build the raw product and the default compatibility `distance_weigh
 
 ## Explicit component API
 
-The package root also exports `run_components` and `run_component_stage`:
+The package root exports the component planner and execution APIs:
 
 ```python
-from viewshed_toolkit import load_app_config, run_component_stage, run_components
+from viewshed_toolkit import load_app_config, plan_components, run_component_stage, run_components
 
 app = load_app_config("configs/salish_sea.yaml")
+plan = plan_components(app, target="static", source_type="land", run_id="land-components")
+print(plan["ready"], plan["stages"], plan["issues"])
+
 run_component_stage(app, "download-dem")       # acquisition only
 run_component_stage(app, "prepare-dem")        # existing downloaded inputs only
 run_component_stage(app, "build-dem-weights")  # prepared DEM and pair lookup required
 
-outputs = run_components(app, target="all", source_type="land", run_id="land-components")
+outputs = run_components(app, target="static", source_type="land", run_id="land-components")
 ```
 
-Both accept a config path or `AppConfig`. `run_component_stage` returns the stage's output path;
+All three accept a config path or `AppConfig`. `run_component_stage` returns the stage's output path;
 `run_components` returns a stage-name-to-path mapping and writes a durable run manifest with
 status, checksums, and sampled performance metrics. Valid build targets are `dem`, `chm`,
-`distance`, and `all`. `overwrite=True` explicitly rebuilds requested stages.
+`distance`, `static`, and `all`. `static` includes finalization and validation; `all` adds factor
+maps. `overwrite=True` explicitly rebuilds requested stages. Dependencies follow `source_type`:
+water builds omit raster acquisition/preparation, and land builds share preparation when both
+surface components need computation.
+
+`plan_components` accepts keyword arguments `target="all"`, `source_type="land"`,
+`run_id="components"`, and `overwrite=False`. It returns a read-only report containing `ready`,
+ordered `stages`, `issues`, input
+metadata, planned acquisition, backend capabilities, output roots, run identity/conflicts, cache
+presence, and resource/workload metadata. The CLI equivalent is `build ... --dry-run`; it exits
+with status 1 when the report is not ready. `overwrite=True` affects the reported manifest-conflict
+decision but performs no writes in the planner.
+
+Configuration loading retains mandatory shared-study identity/checksum validation. After loading,
+planning does not hash input contents or scan raster/geometry rows. Existing caches are explicitly
+`present_but_unverified`; readable headers and raster envelopes do not establish valid-data
+coverage or scientific correctness. Provider freshness/network access and a regional ETA are not
+checked. The normal build validates cache contracts and outputs before reuse.
 
 Advanced provider implementations use `pipeline.providers.RasterProvider`, `Asset`,
 `DownloadResult`, and `register_provider`. Dataset settings use `pipeline.config.datasets`.
 Provider registration must precede loading a configuration that names the new provider.
 
 The component API has no implicit cleanup. Its final tables and maps use a separate namespace;
-the original public `process` and `run_viewshed` retain the legacy paired/cleanup contract above.
+the original public `process` and `run_viewshed` retain their paired promotion and configured
+post-success cleanup contract above.
 See [pipeline stages](pipelines.md) for exact dependencies and [configuration](configuration.md)
 for the intentionally preserved scientific model.
 

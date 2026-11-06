@@ -31,6 +31,7 @@ def _config(tmp_path: Path) -> Path:
         yaml.safe_dump(
             {
                 "h3": {"source_resolution": 7, "target_resolution": 7},
+                "run": {"cleanup_policy": "compact"},
                 "paths": {"output_dir": str(output_dir)},
             }
         )
@@ -44,6 +45,7 @@ def _split_config(tmp_path: Path) -> Path:
         yaml.safe_dump(
             {
                 "h3": {"source_resolution": 7, "target_resolution": 7},
+                "run": {"cleanup_policy": "compact"},
                 "paths": {
                     "output_dir": str(tmp_path / "tmp" / "viewshed" / "h3r7"),
                     "final_output_dir": str(tmp_path / "processed" / "viewshed" / "RES7"),

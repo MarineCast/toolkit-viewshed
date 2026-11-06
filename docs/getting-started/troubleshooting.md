@@ -17,25 +17,24 @@ not permission to substitute zero support. The diagnostic does not download or m
 | Manifest belongs to another logical run | Same run ID used with different settings or stages | Choose a new run ID and isolated output roots. `resume=True` does not authorize a different identity. |
 | Resume rejects changed inputs or missing generation evidence | Existing products no longer prove current producer identity | Preserve the old set for inspection; rebuild producers in a fresh workspace. Never fabricate a receipt or refresh metadata to certify old values. |
 | Profile cutoff exceeds coverage | Pair universe is narrower than requested profile | Lower the profile cutoff or intentionally generate a wider universe. Missing pairs are not zeros. |
-| Distance CLI rejects `--limit` / `--start` | These flags were previously accepted but ignored | Bound the configuration's area/range. The distance commands only support complete runs. |
+| Distance CLI selects no sources | The offset is at or beyond the sorted source list | Use a smaller zero-based `--start` for the selected role and a positive `--limit`. |
 | Empty canopy tile selection | No mapped land intersects the request, or invalid geometry/CRS | Inspect bounds and CRS. Both geographic and projected land inputs are supported; missing CRS is an error. |
 | Offline example reports an existing directory | Overwrite protection | Choose a new output directory. The example never clears existing products. |
 | Blank interactive map | Missing bundle or blocked script | Read the static lesson figures/captions; rebuild docs with `mkdocs build --strict` and inspect browser errors. |
 
 ## Cache and overwrite semantics
 
-`force=True` on `process` authorizes replacement of a manifest; it does not force every producing
-stage to recalculate. Full-run resume validates the retained generation and currently present
-inputs before skipping. Partial resume re-enters the requested stage's own cache checks and
-returns a non-skipped orchestration result. `run_components(..., overwrite=True)` rebuilds its
-selected dependency closure. See [workflow contracts](../pipelines.md) before choosing one.
+Use a new run ID for a different configuration or stage selection. Full-workflow resume validates
+the retained generation and current input fingerprints before skipping. For a completed subset,
+resume verifies its own input fingerprints and expected outputs. `run_components(..., overwrite=True)`
+rebuilds its selected dependency closure. See [workflow contracts](../pipelines.md) before choosing one.
 
 For a bug report, include the commit, command, redacted configuration, `doctor` output, error and
 smallest reproducing input. Do not attach credentials, private locations or large source datasets.
 
 Partial-run manifests use schema version 3 to record canonical local input checksums, including
 missing inputs and shapefile sidecars. Partial resume rejects changed/missing input identity and
-historical manifests without that inventory before entering stage checks. It does not silently
+historical manifests without that inventory before running stages. It does not silently
 certify older cached outputs. Rebuild affected producers with their explicit overwrite controls
 or a fresh workspace, then create a new manifest. Remote source freshness is not certified by
 local checksum validation.

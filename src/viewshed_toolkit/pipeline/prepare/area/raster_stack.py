@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import shutil
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,6 +17,7 @@ from typing import Any
 import geopandas as gpd
 import numpy as np
 import rasterio
+from shapely import segmentize
 from shapely.geometry import box
 
 from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
@@ -37,18 +40,20 @@ from ..elevation.terrain import (
     canonical_endpoint_repair,
     ensure_projected_regional_dem,
     flatten_water_pixels_to_sea_level,
+    validate_marine_water_mask,
+    WATER_ELEVATION_ALGORITHM_VERSION,
     rasterize_water_to_match_dem,
 )
 
 CRS_WGS84 = "EPSG:4326"
 LOGGER = logging.getLogger(__name__)
-CANONICAL_RASTER_STACK_ALGORITHM_VERSION = "viewshed_canonical_raster_stack_v2"
+CANONICAL_RASTER_STACK_ALGORITHM_VERSION = "viewshed_canonical_raster_stack_v4"
 _CANONICAL_RASTER_STACK_READY_THIS_PROCESS: dict[str, "CanonicalRasterStack"] = {}
 
 
 @dataclass(frozen=True)
 class CanonicalRasterStack:
-    """Immutable domain-aligned raster inputs shared by terrain batches."""
+    """Domain-aligned terrain inputs, their fingerprints, and their metadata paths."""
 
     projected_dem_path: Path
     water_mask_path: Path
@@ -60,6 +65,8 @@ class CanonicalRasterStack:
     core_fingerprint: str
     canopy_fingerprint: str | None
     reporting_water_mask_path: Path | None = None
+
+    marine_water_mask_path: Path | None = None
 
 
 @lru_cache(maxsize=4)
@@ -170,6 +177,7 @@ def load_and_clip_water(
     config: ViewshedConfig,
     aoi_wgs84: gpd.GeoDataFrame,
 ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+    """Return the filled water domain in WGS84 and in the configured projected CRS."""
     water = _load_water_layer_cached(str(config.water_polygon_path))
     if config.reporting_water_polygon_path is not None:
         clipped = water.clip(aoi_wgs84)
@@ -259,6 +267,67 @@ def _canonical_metadata_matches(
     return True
 
 
+def _reuse_water_mask_for_unchanged_grid(
+    output_path: Path, reference_path: Path, contract: dict[str, Any]
+) -> bool:
+    """Reuse only verified water geometry/grid bytes when DEM heights change."""
+    identity_keys = (
+        "water_sources",
+        "domain_aoi_algorithm",
+        "projected_crs",
+        "dem_resolution_m",
+    )
+    for metadata_path in sorted(output_path.parent.parent.glob("*/core_metadata.json")):
+        try:
+            metadata = json.loads(metadata_path.read_text())
+            previous = metadata["contract"]
+            previous_water_version = previous.get("water_mask_algorithm_version")
+            if (
+                previous_water_version is None
+                and previous.get("algorithm_version") == "viewshed_canonical_raster_stack_v3"
+            ):
+                previous_water_version = "densified_domain_water_mask_v1"
+            if previous_water_version != contract.get("water_mask_algorithm_version"):
+                continue
+            if any(previous.get(key) != contract.get(key) for key in identity_keys):
+                continue
+            if previous["projected_dem"]["grid"] != contract["projected_dem"]["grid"]:
+                continue
+            if metadata["fingerprint"] != _canonical_contract_fingerprint(previous):
+                continue
+            source = metadata_path.parent / "canonical_water_mask.tif"
+            if source == output_path or not _canonical_metadata_matches(
+                metadata_path,
+                fingerprint=metadata["fingerprint"],
+                output_paths={"water_mask": source},
+                reference_path=reference_path,
+            ):
+                continue
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = output_path.with_name(f".{output_path.name}.{uuid.uuid4().hex}.tmp")
+            try:
+                try:
+                    os.link(source, temporary)
+                except OSError:
+                    shutil.copyfile(source, temporary)
+                temporary.replace(output_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+            actual = _canonical_raster_signature(output_path)
+            expected = metadata["outputs"]["water_mask"]
+            if (
+                actual["grid"] != expected["grid"]
+                or actual["tags"] != expected["tags"]
+                or actual["members"][0]["sha256"] != expected["members"][0]["sha256"]
+            ):
+                continue
+            LOGGER.info("Reused unchanged grid/water mask from %s", source)
+            return True
+        except (OSError, ValueError, TypeError, KeyError, rasterio.errors.RasterioError):
+            continue
+    return False
+
+
 def _write_canonical_metadata(
     metadata_path: Path,
     *,
@@ -301,13 +370,28 @@ def _canonical_water_source_contract(app: AppConfig) -> dict[str, Any]:
     return result
 
 
+def _raster_domain_wgs84(bounds: tuple[float, float, float, float], crs: Any) -> gpd.GeoDataFrame:
+    """Preserve the projected raster footprint across curved geographic edges."""
+    domain = gpd.GeoDataFrame(
+        {"name": ["canonical_projected_dem_domain"]},
+        geometry=[segmentize(box(*bounds), max_segment_length=1000.0)],
+        crs=crs,
+    )
+    return domain.to_crs(CRS_WGS84)
+
+
 def ensure_canonical_raster_stack(
     app: AppConfig,
     *,
     include_canopy: bool,
     window_bounds: tuple[float, float, float, float] | None = None,
 ) -> CanonicalRasterStack:
-    """Create or reuse the immutable domain-aligned terrain raster stack."""
+    """Prepare content-keyed terrain inputs shared across batches.
+
+    The target-water mask includes inland water. The separate marine mask controls
+    sea-level flattening in the endpoint DEM, which retains valid inland elevations.
+    Canopy inputs have their own fingerprint and are prepared only when requested.
+    """
 
     config = viewshed_config_from_app_config(app)
     shared_support = None
@@ -364,7 +448,14 @@ def ensure_canonical_raster_stack(
         "projected_crs": str(config.crs_projected),
         "dem_resolution_m": float(config.dem_resolution_m),
         "sea_level_m": float(config.sea_level_m),
-        "endpoint_algorithm": "viewshed_water_flattened_endpoint_v3",
+        "endpoint_algorithm": WATER_ELEVATION_ALGORITHM_VERSION,
+        "water_mask_algorithm_version": "densified_domain_water_mask_v1",
+        "marine_water_mask": (
+            _canonical_raster_signature(config.marine_water_mask_path)
+            if config.marine_water_mask_path is not None
+            else None
+        ),
+        "domain_aoi_algorithm": "projected_bounds_densified_1km_before_geographic_v1",
     }
     core_fingerprint = _canonical_contract_fingerprint(core_contract)
     cache_root = projected_dem.parent / "canonical_domain_rasters" / core_fingerprint[:20]
@@ -422,32 +513,29 @@ def ensure_canonical_raster_stack(
         reference_path=projected_dem,
     )
     if not core_valid:
-        with rasterio.open(projected_dem) as projected_source:
-            if projected_source.crs is None:
-                raise ValueError(f"Projected DEM has no CRS: {projected_dem}")
-            domain_projected = gpd.GeoDataFrame(
-                {"name": ["canonical_projected_dem_domain"]},
-                geometry=[box(*projected_source.bounds)],
-                crs=projected_source.crs,
-            )
-        domain_wgs84 = domain_projected.to_crs(CRS_WGS84)
-        if shared_support is not None:
-            # Use unchanged native geometry so a geographic clip cannot create
-            # a new projected edge along a tile seam.
-            water_projected = _load_water_layer_cached(str(config.water_polygon_path)).to_crs(
-                config.crs_projected
-            )
-        else:
-            _, water_projected = load_and_clip_water(config, domain_wgs84)
         cache_root.mkdir(parents=True, exist_ok=True)
-        rasterize_water_to_match_dem(
-            water_projected,
-            projected_dem,
-            water_mask_path,
-            overwrite=True,
-            compress=app.raster.intermediate_compress,
-            block_size=app.raster.block_size,
-        )
+        if not _reuse_water_mask_for_unchanged_grid(water_mask_path, projected_dem, core_contract):
+            if shared_support is not None:
+                # Preserve the native footprint so clipping cannot create projected tile seams.
+                water_projected = _load_water_layer_cached(str(config.water_polygon_path)).to_crs(
+                    config.crs_projected
+                )
+            else:
+                with rasterio.open(projected_dem) as projected_source:
+                    if projected_source.crs is None:
+                        raise ValueError(f"Projected DEM has no CRS: {projected_dem}")
+                    domain_wgs84 = _raster_domain_wgs84(
+                        tuple(projected_source.bounds), projected_source.crs
+                    )
+                _, water_projected = load_and_clip_water(config, domain_wgs84)
+            rasterize_water_to_match_dem(
+                water_projected,
+                projected_dem,
+                water_mask_path,
+                overwrite=True,
+                compress=app.raster.intermediate_compress,
+                block_size=app.raster.block_size,
+            )
         if reporting_mask_path is not None and shared_support is not None:
             reporting_frame = gpd.GeoDataFrame(
                 geometry=[shared_support.reporting_water], crs=4326
@@ -460,9 +548,13 @@ def ensure_canonical_raster_stack(
                 compress=app.raster.intermediate_compress,
                 block_size=app.raster.block_size,
             )
+        if config.marine_water_mask_path is not None:
+            validate_marine_water_mask(
+                config.marine_water_mask_path, projected_dem, water_mask_path=water_mask_path
+            )
         flatten_water_pixels_to_sea_level(
             projected_dem,
-            water_mask_path,
+            config.marine_water_mask_path,
             endpoint_dem_path,
             sea_level_m=config.sea_level_m,
             overwrite=True,
@@ -470,6 +562,12 @@ def ensure_canonical_raster_stack(
             block_size=app.raster.block_size,
         )
         canonical_endpoint_repair(endpoint_dem_path, app.paths.regional_dem_path)
+        if (
+            config.marine_water_mask_path is not None
+            and _canonical_raster_signature(config.marine_water_mask_path)
+            != core_contract["marine_water_mask"]
+        ):
+            raise ValueError("Marine water mask changed during raster preparation")
         if _canonical_water_source_contract(app) != core_contract["water_sources"]:
             raise ValueError("Canonical source geometry changed during raster preparation")
         _write_canonical_metadata(
@@ -555,6 +653,7 @@ def ensure_canonical_raster_stack(
             )
 
     stack = CanonicalRasterStack(
+        marine_water_mask_path=config.marine_water_mask_path,
         projected_dem_path=projected_dem,
         water_mask_path=water_mask_path,
         endpoint_dem_path=endpoint_dem_path,

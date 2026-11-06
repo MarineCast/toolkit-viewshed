@@ -43,6 +43,30 @@ class WaterPixelH3Index:
         return int(self.code_grid.nbytes) + sum(len(cell.encode("utf-8")) for cell in self.h3_cells)
 
 
+def validate_pixel_h3_index(index: WaterPixelH3Index, reference_shape: tuple[int, int]) -> None:
+    """Require aligned integer target codes; only -1 denotes absent membership.
+
+    Scalar min/max reductions avoid allocating a raster-sized validation mask.
+    """
+
+    grid = index.code_grid
+    if grid.ndim != 2 or len(reference_shape) != 2 or grid.shape != tuple(reference_shape):
+        raise ValueError(
+            "Water-pixel H3 index shape does not match the two-dimensional reference grid: "
+            f"index_shape={grid.shape} reference_shape={reference_shape}"
+        )
+    if not np.issubdtype(grid.dtype, np.integer):
+        raise ValueError(f"Water-pixel H3 index requires integer target codes: dtype={grid.dtype}")
+    if grid.size:
+        minimum, maximum = int(grid.min()), int(grid.max())
+        if minimum < -1 or maximum >= len(index.h3_cells):
+            raise ValueError(
+                "Water-pixel H3 index contains an invalid target code: "
+                f"minimum={minimum} maximum={maximum} target_count={len(index.h3_cells)}; "
+                "only -1 or a lookup code is allowed"
+            )
+
+
 @dataclass(frozen=True)
 class CanonicalPixelH3Artifact:
     """Paths and lookup values for one immutable canonical code grid."""
@@ -379,6 +403,8 @@ def canonical_pixel_h3_window(
 
     artifact = ensure_canonical_pixel_h3_artifact(app, canonical_water_mask_path)
     mask = np.asarray(batch_water_mask, dtype=bool)
+    if mask.ndim != 2:
+        raise ValueError("Batch water mask must be two-dimensional")
     with rasterio.open(artifact.code_grid_path) as source:
         if CRS.from_user_input(source.crs) != CRS.from_user_input(batch_crs):
             raise ValueError(
@@ -394,14 +420,19 @@ def canonical_pixel_h3_window(
         ):
             raise ValueError("Batch pixel/H3 window falls outside the canonical grid.")
         codes = source.read(1, window=window)
-    if codes.shape != mask.shape:
-        raise ValueError(
-            f"Canonical pixel/H3 window shape mismatch: codes={codes.shape} mask={mask.shape}"
-        )
-    codes[~mask] = -1
-    return WaterPixelH3Index(
+    index = WaterPixelH3Index(
         code_grid=codes,
         h3_cells=artifact.h3_cells,
         code_grid_path=artifact.code_grid_path,
         lookup_path=artifact.lookup_path,
     )
+    # Validate before water masking, which must not erase corrupt index codes.
+    validate_pixel_h3_index(index, mask.shape)
+    codes[~mask] = -1
+    return index
+
+
+def clear_canonical_pixel_h3_cache() -> None:
+    """Release process-local artifact metadata without deleting the grid."""
+
+    _ARTIFACT_CACHE.clear()

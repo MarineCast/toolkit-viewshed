@@ -39,13 +39,15 @@ def build_target_cells(app: AppConfig, *, overwrite: bool = False) -> Path:
     candidates = (
         list(shared["water_reporting"]["cells"])
         if shared is not None
-        else list(support.cells)
-        if "marinecast_study" in app.raw_config
-        else domains.bbox_h3_cells(
-            tuple(polygon.bounds),
-            runtime.source_resolution,
-            buffer_rings=settings.bbox_buffer_rings,
-            strict_intersection=False,
+        else (
+            list(support.cells)
+            if "marinecast_study" in app.raw_config
+            else domains.bbox_h3_cells(
+                tuple(polygon.bounds),
+                runtime.source_resolution,
+                buffer_rings=settings.bbox_buffer_rings,
+                strict_intersection=False,
+            )
         )
     )
     classified = _classify_bbox_cells(runtime, settings, cells=candidates, extent="target")

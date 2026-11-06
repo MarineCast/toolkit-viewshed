@@ -21,6 +21,8 @@ from .pipeline.api import (
 from .pipeline.api.components import run_component_stage, run_components
 from .pipeline.api.transmission import run_transmission
 from .pipeline.api.transmission_tile_workflow import run_transmission_tiles
+
+from .pipeline.api.regional import plan_components
 from .pipeline.config import AppConfig, load_app_config
 from .pipeline.config.transmission import TransmissionConfig, load_transmission_config
 from .pipeline.config.transmission_tiles import (
@@ -64,6 +66,8 @@ __all__ = [
     "load_study_membership",
     "load_transmission_config",
     "load_transmission_tile_config",
+
+    "plan_components",
     "process",
     "rasterize_building_footprints",
     "run_component_stage",

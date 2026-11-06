@@ -433,14 +433,16 @@ def _fake_app(config_hash: str, sampling_mode: str = "active_fraction") -> Simpl
             curvature_coefficient=0.85714,
             earth_radius_m=6_378_137.0,
         ),
-        paths=SimpleNamespace(canopy_height_path="CHM_10M.tif"),
+        paths=SimpleNamespace(
+            canopy_height_path="CHM_10M.tif", output_dir=Path("missing-sampling-fixture")
+        ),
     )
 
 
 def test_partition_metadata_tracks_sampling_contract_and_model_hash(monkeypatch) -> None:
     monkeypatch.setattr(
         "viewshed_toolkit.pipeline.weights.terrain.gdal._area_lookup_path_for_app",
-        lambda app: Path(__file__),
+        lambda app, *, require_exists=True: Path(__file__),
     )
     expected = expected_partition_metadata(_fake_app("hash-a"))
     same_model_new_full_hash = expected_partition_metadata(_fake_app("hash-b"))
@@ -450,12 +452,12 @@ def test_partition_metadata_tracks_sampling_contract_and_model_hash(monkeypatch)
     assert expected["min_sample_points_per_source_cell"] == 1
     assert (
         expected["source_sampling_algorithm_version"]
-        == "component_aware_projected_nested_maximin_v4"
+        == "component_aware_projected_nested_maximin_v5"
     )
     assert expected["source_sampling_projected_crs"] == "EPSG:32610"
     assert expected["source_sampling_candidate_grid_side"] == 32
     assert expected["source_sampling_max_design_points"] == 10
-    assert expected["terrain_partition_schema_version"] == "direct_unweighted_los_v10"
+    assert expected["terrain_partition_schema_version"] == "adaptive_active_fraction_v9"
     assert _metadata_values_match(expected, expected)
     assert same_model_new_full_hash == expected
 

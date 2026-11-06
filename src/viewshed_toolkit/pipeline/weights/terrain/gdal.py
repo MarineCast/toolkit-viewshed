@@ -90,6 +90,12 @@ from ...prepare.area.geometry import (
 )
 from ...prepare.area.inputs import load_source_cells
 from .. import distance
+from .land_mask import (
+    LAND_EXCLUSION_ALGORITHM_VERSION,
+    LandExclusionIndex,
+    load_land_exclusion_index,
+    load_projected_land_domain,
+)
 
 
 class _RetainedIdentity:
@@ -106,6 +112,10 @@ class _RetainedIdentity:
 
 
 LOGGER = logging.getLogger(__name__)
+TERRAIN_PARTITION_SCHEMA_VERSION = "adaptive_active_fraction_v9"
+GRID_ALIGNMENT_ALGORITHM_VERSION = "strict_parent_grid_v1"
+WATER_TERRAIN_ALGORITHM_VERSION = "opaque_land_mask_max_range_v2"
+WATER_TERRAIN_PREFILTER_VERSION = "land_mask_los_max_range_v2"
 _TARGET_WATER_AREA_BY_H3_CACHE: dict[tuple[Any, ...], pl.DataFrame] = {}
 _WATER_TERRAIN_DOMAIN_CACHE: dict[str, domains.DomainGeometries] = {}
 _PROJECTED_LAND_DOMAIN_CACHE: dict[tuple[str, str, str, _RetainedIdentity], Any] = {}
@@ -184,6 +194,12 @@ def _terrain_partition_config_hash(app: AppConfig) -> str:
     payload = dict(app.raw_config)
     payload.pop("static_maps", None)
     payload.pop("publishing", None)
+    # Observer completion order is reduced with exact fixed-point sums and
+    # bitwise unions. Changing concurrency does not change a source result.
+    payload.pop("max_workers", None)
+    batch = dict(payload.get("batch", {}) or {})
+    batch.pop("max_workers", None)
+    payload["batch"] = batch
 
     paths = dict(payload.get("paths", {}) or {})
     paths.pop("map_dir", None)
@@ -200,6 +216,7 @@ def _terrain_partition_config_hash(app: AppConfig) -> str:
         "write_maps",
         "write_cumulative_rasters",
         "write_pair_geometry",
+        "cleanup_policy",
     ):
         run.pop(key, None)
     payload["run"] = run
@@ -215,18 +232,23 @@ def _water_input_identity(app: AppConfig) -> str:
     inputs["lookup"] = _area_lookup_path_for_app(app)
     return json.dumps(
         {
-            name: (
-                _canonical_dataset_signature(Path(path))
-                if path is not None and Path(path).exists()
-                else {"unavailable": str(path)}
-            )
-            for name, path in inputs.items()
+            "domain_geometry_algorithm": domains.DOMAIN_GEOMETRY_ALGORITHM_VERSION,
+            **{
+                name: (
+                    _canonical_dataset_signature(Path(path))
+                    if path is not None and Path(path).exists()
+                    else {"unavailable": str(path)}
+                )
+                for name, path in inputs.items()
+            },
         },
         sort_keys=True,
     )
 
 
 def expected_partition_metadata(app: AppConfig, *, refresh: bool = False) -> dict[str, Any]:
+    from ...prepare.area.geometry import H3_GEOMETRY_ALGORITHM_VERSION
+
     if getattr(app, "partition_metadata_snapshot", None) is not None and not refresh:
         return dict(app.partition_metadata_snapshot)
     water_viewing = app.raw_config.get("water_viewing", {}) or {}
@@ -266,6 +288,7 @@ def expected_partition_metadata(app: AppConfig, *, refresh: bool = False) -> dic
         "earth_radius_m": float(getattr(app.viewshed, "earth_radius_m", 6378137.0)),
         "viewshed_model_version": app.run.version,
         "target_water_area_model_version": "complete_h3_water_intersection_v1",
+        "h3_geometry_algorithm_version": H3_GEOMETRY_ALGORITHM_VERSION,
         "terrain_weight_method": str(
             app.raw_config.get("viewshed", {}).get(
                 "terrain_weight_method",
@@ -279,16 +302,24 @@ def expected_partition_metadata(app: AppConfig, *, refresh: bool = False) -> dic
         "target_water_area_equal_area_crs": str(
             water_viewing.get("target_area_equal_area_crs", "EPSG:6933")
         ),
-        "terrain_partition_schema_version": "direct_unweighted_los_v10",
+        "terrain_partition_schema_version": TERRAIN_PARTITION_SCHEMA_VERSION,
         "source_type": _source_type_for_app(app),
     }
+    lookup_path = _area_lookup_path_for_app(app, require_exists=False)
     if _source_type_for_app(app) == "land":
         metadata["observer_ground_contract"] = "unflattened_land_observer_ground_v1"
-        from ...prepare.area.raster_stack import _canonical_dataset_signature
+        from ...prepare.area.raster_stack import (
+            CANONICAL_RASTER_STACK_ALGORITHM_VERSION,
+            _canonical_dataset_signature,
+        )
 
+        metadata["canonical_raster_stack_algorithm_version"] = (
+            CANONICAL_RASTER_STACK_ALGORITHM_VERSION
+        )
         signatures = {}
         for name in (
             "regional_dem_path",
+            "marine_water_mask_path",
             "water_polygon_path",
             "land_polygon_path",
             "land_h3_path",
@@ -300,6 +331,11 @@ def expected_partition_metadata(app: AppConfig, *, refresh: bool = False) -> dic
                     if Path(path).exists()
                     else {"unavailable": str(path)}
                 )
+        signatures["source_target_lookup"] = (
+            _canonical_dataset_signature(lookup_path)
+            if lookup_path.exists()
+            else {"unavailable": str(lookup_path)}
+        )
         metadata["land_scientific_input_signatures"] = json.dumps(signatures, sort_keys=True)
     if metadata["terrain_surface_model"] == "canopy":
         from ...prepare.elevation.cache import input_signature
@@ -310,18 +346,23 @@ def expected_partition_metadata(app: AppConfig, *, refresh: bool = False) -> dic
             input_signature(Path(app.paths.canopy_height_path)), sort_keys=True
         )
     if metadata["viewshed_backend"] == "gdal":
-        metadata["gdal_grid_alignment_version"] = "strict_parent_grid_v1"
+        metadata["gdal_grid_alignment_version"] = GRID_ALIGNMENT_ALGORITHM_VERSION
+    elif metadata["viewshed_backend"] == "xrspatial":
+        metadata["xrspatial_grid_alignment_version"] = GRID_ALIGNMENT_ALGORITHM_VERSION
     if _source_type_for_app(app) == "water":
         land_buffer_m, target_samples = _water_land_mask_settings(app)
         metadata["water_scientific_input_signatures"] = _water_input_identity(app)
-        metadata["water_terrain_model"] = "opaque_land_mask_v1"
-        metadata["water_terrain_prefilter_version"] = "land_mask_los_v1"
+        metadata["water_terrain_model"] = WATER_TERRAIN_ALGORITHM_VERSION
+        metadata["water_terrain_prefilter_version"] = WATER_TERRAIN_PREFILTER_VERSION
+        metadata["water_land_exclusion_algorithm_version"] = LAND_EXCLUSION_ALGORITHM_VERSION
         metadata["water_land_buffer_m"] = land_buffer_m
         metadata["water_target_samples_per_cell"] = target_samples
         metadata["observer_height_class"] = str(app.observer_height_class or "default")
     from ...contracts.generation import byte_checksum
 
-    metadata["candidate_lookup_sha256"] = byte_checksum(_area_lookup_path_for_app(app))
+    metadata["candidate_lookup_sha256"] = (
+        byte_checksum(lookup_path) if lookup_path.is_file() else None
+    )
     return metadata
 
 
@@ -393,7 +434,7 @@ def _partition_row_count(path: Path) -> int:
         return int(len(pd.read_parquet(path, columns=[])))
 
 
-def _area_lookup_path_for_app(app: AppConfig) -> Path:
+def _area_lookup_path_for_app(app: AppConfig, *, require_exists: bool = True) -> Path:
     """Return the canonical slim source-target lookup for the active H3 resolution.
 
     The terrain stage accepts only the active working directory's lookup. This
@@ -405,7 +446,7 @@ def _area_lookup_path_for_app(app: AppConfig) -> Path:
         / "lookup"
         / f"SOURCE_TARGET_LOOKUP_H3R{int(app.h3.source_resolution)}.parquet"
     )
-    if not path.exists():
+    if require_exists and not path.exists():
         raise FileNotFoundError(
             "Missing canonical source-target lookup. Expected clean-standard lookup at: " f"{path}"
         )
@@ -507,10 +548,11 @@ def _load_terrain_source_cells(app: AppConfig) -> gpd.GeoDataFrame:
         raise ValueError(f"No water source cells found in lookup: {lookup_path}")
 
     runtime = distance.load_distance_runtime(app.config_path)
-    shared = "marinecast_study" in app.raw_config
+    shared = bool({"marinecast_study", "shared_study"} & app.raw_config.keys())
     domain_geometries = domains.load_land_water_domains(
         runtime, extent="source" if shared else "target"
     )
+    water_domain = domain_geometries.water_domain
     full_geometry_lookup = _cached_h3_geometry_for_app(app, "geometry_wgs84")
     water_projected_lookup = (
         None if shared else _cached_h3_geometry_for_app(app, "water_geometry_projected")
@@ -529,7 +571,7 @@ def _load_terrain_source_cells(app: AppConfig) -> gpd.GeoDataFrame:
             water_projected_lookup.get(str(cell)) if water_projected_lookup is not None else None
         )
         if water_projected is None:
-            water_geom = geom.intersection(domain_geometries.water_domain)
+            water_geom = geom.intersection(water_domain)
             water_projected = shapely_transform(
                 _projected_transformer_for_app(app).transform, water_geom
             )
@@ -590,6 +632,7 @@ def _water_terrain_domains_for_app(app: AppConfig) -> domains.DomainGeometries:
     domain_geometries = domains.load_land_water_domains(runtime, extent="target")
     if support is not None:
         from dataclasses import replace
+
         from ...config.reporting import read_polygon
 
         domain_geometries = replace(
@@ -651,8 +694,7 @@ def _projected_land_domain_for_app(app: AppConfig, domain_geometries: domains.Do
     cached = _PROJECTED_LAND_DOMAIN_CACHE.get(cache_key)
     if cached is not None:
         return cached
-    transformer = Transformer.from_crs(CRS_WGS84, crs, always_xy=True)
-    projected = shapely_transform(transformer.transform, domain_geometries.land_domain)
+    projected = load_projected_land_domain(app, domain_geometries)
     _PROJECTED_LAND_DOMAIN_CACHE[cache_key] = projected
     return projected
 
@@ -781,11 +823,12 @@ def _projected_land_exclusion_for_app(
     clearance_m = max(0.0, float(land_clearance_m))
     cache_key = (_RetainedIdentity(projected_land), clearance_m)
     cached = _PROJECTED_LAND_EXCLUSION_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
-    exclusion = projected_land.buffer(clearance_m) if clearance_m > 0.0 else projected_land
-    shapely.prepare(exclusion)
-    _PROJECTED_LAND_EXCLUSION_CACHE[cache_key] = exclusion
+    if cached is not None and cached[0] is projected_land:
+        return cached[1]
+    exclusion = load_land_exclusion_index(
+        app, domain_geometries, clearance_m, lambda: projected_land, validated_projection=True
+    )
+    _PROJECTED_LAND_EXCLUSION_CACHE[cache_key] = (projected_land, exclusion)
     return exclusion
 
 
@@ -894,7 +937,7 @@ def _water_sample_kernel_result(
 
     return {
         "terrain_visible_clear_sky": bool(visible_pair_count > 0),
-        "aggregation_method": "water_land_mask_sample_kernel_v1",
+        "aggregation_method": "water_land_mask_sample_kernel_v2",
         "any_observer_support_fraction": np.float32(observer_fraction),
         "union_visible_target_fraction": np.float32(union_fraction),
         "joint_los_fraction": np.float32(joint_fraction),
@@ -1020,6 +1063,7 @@ def _water_land_mask_supports_for_targets(
         if math.isinf(horizon_m)
         else all_distances_m < horizon_m
     )
+    all_visible &= all_distances_m <= float(app.viewshed.max_distance_m)
     visible_indices = np.flatnonzero(all_visible)
     if visible_indices.size:
         all_lines = np.concatenate(line_chunks, axis=0)
@@ -1028,10 +1072,13 @@ def _water_land_mask_supports_for_targets(
             domain_geometries,
             land_buffer_m,
         )
-        all_visible[visible_indices] &= ~np.asarray(
-            shapely.intersects(land, shapely.linestrings(all_lines[visible_indices])),
-            dtype=bool,
+        lines = shapely.linestrings(all_lines[visible_indices])
+        blocked = (
+            land.blocked(lines)
+            if isinstance(land, LandExclusionIndex)
+            else np.asarray(shapely.intersects(land, lines), dtype=bool)
         )
+        all_visible[visible_indices] &= ~blocked
     all_weights = distance.distance_weight_values(
         all_distances_m / 1_000.0,
         distance_weight_config,
@@ -1123,6 +1170,7 @@ def _water_terrain_prefilter_for_source(
         float(app.viewshed.target_height_m),
         float(app.viewshed.curvature_coefficient),
         float(app.viewshed.earth_radius_m),
+        float(app.viewshed.max_distance_m),
         str(app.viewshed.crs_projected),
         land_mask_settings,
         source_point_signature,

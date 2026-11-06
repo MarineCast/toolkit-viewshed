@@ -8,6 +8,8 @@ limitations before using them. Current behavior is defined by source/tests and t
 
 - [Reliability improvements](../reports/reliability-improvements.md): manifest/resume and acquisition
   regressions, synthetic first result, native suite, documentation and unperformed acceptance work.
+- [November 4 code audit](../reports/audit-2026-11-04.md) and
+  [implementation follow-up](../reports/implementation-2026-11-04.md).
 
 ## San Juan instructional work
 
@@ -25,7 +27,8 @@ limitations before using them. Current behavior is defined by source/tests and t
 
 The [November 5, 2026 regional example](../regional-viewshed-example.md) records the full-run
 scope, the checked land and water pair counts, and the workspace manifest used to read the
-completed outputs.
+completed outputs. The [full-run report](../reports/full-regional-run-2026-11-05.md) records the
+input and execution scope, timings, and output validation.
 
 ## Earlier regional and repository work
 

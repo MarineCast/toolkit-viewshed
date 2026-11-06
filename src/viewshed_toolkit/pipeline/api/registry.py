@@ -62,27 +62,40 @@ COMPONENT_DEPENDENCIES: dict[str, tuple[str, ...]] = {
     "build-dem-weights": ("prepare-dem", "build-source-target-lookup"),
     "build-chm-weights": ("prepare-chm", "build-dem-weights"),
     "build-distance-weights": ("build-pair-distances",),
-    "compose-static-weights": ("build-dem-weights", "build-chm-weights", "build-distance-weights"),
+    # Prepare CHM before DEM weighting when both surfaces are requested, so the
+    # component orchestrator can share their raster preparation and LOS runner.
+    "compose-static-weights": ("build-chm-weights", "build-dem-weights", "build-distance-weights"),
     "finalize": ("compose-static-weights",),
     "validate": ("finalize",),
     "export-maps": ("validate",),
 }
 COMPONENT_STAGES = tuple(COMPONENT_DEPENDENCIES)
+COMPONENT_TARGETS = {
+    "dem": "build-dem-weights",
+    "chm": "build-chm-weights",
+    "distance": "build-distance-weights",
+    "static": "validate",
+    "all": "export-maps",
+}
 
 
 def component_plan(targets: tuple[str, ...], *, source_type: str = "land") -> tuple[str, ...]:
     """Resolve only the requested dependency closure in deterministic order."""
     if source_type not in {"land", "water"}:
         raise ValueError("source_type must be land or water")
-    dependencies = dict(COMPONENT_DEPENDENCIES)
+    dependencies = COMPONENT_DEPENDENCIES
     if source_type == "water":
-        dependencies["build-dem-weights"] = ("build-source-target-lookup",)
-        dependencies["build-chm-weights"] = ("build-dem-weights",)
+        # Opaque-land LOS and its neutral canopy factor consume geometry only.
+        dependencies = {
+            **dependencies,
+            "build-dem-weights": ("build-source-target-lookup",),
+            "build-chm-weights": ("build-dem-weights",),
+        }
     ordered: list[str] = []
     visiting: set[str] = set()
 
     def visit(stage: str) -> None:
-        if stage not in COMPONENT_DEPENDENCIES:
+        if stage not in dependencies:
             raise ValueError(f"Unknown component stage: {stage}")
         if stage in visiting:
             raise ValueError(f"Cyclic component dependency: {stage}")

@@ -53,3 +53,32 @@ bundles are not retroactively rewritten or certified by this change.
 With `land_tiles_only`, canopy selection transforms the acquisition bbox into the land file's
 CRS before its spatial read. A missing land CRS is rejected. Geographic and projected land
 geometries should select the same tiles.
+
+## Bounded canopy reconciliation evidence
+
+ETH 2020 masks built-up land as nodata as well as some nonland classes. Its missing values do not
+establish zero canopy. A [bounded2026-11-04 reconciliation](reports/canopy-resolution-2026-11-04.md)
+uses retained NHD open-water evidence and published WRI/Meta heights only for genuine missing land
+support, preserving valid ETH values and recording per-pixel provenance/date information. Native
+height maxima are reduced to the configured 30 m grid. This is a mixed-source/mixed-vintage local
+benchmark recipe; it does not add a registered provider, migrate the pinned study, or qualify a
+uniform 2020 regional product. Source availability, nominal water mapping and field accuracy remain
+distinct checks. See that report for auxiliary-mask ambiguity, withheld source cells and replay.
+
+## Regional US/Canadian qualification recipe
+
+The [2026-11-04 regional qualification](reports/regional-qualification-2026-11-04.md) retains
+NRCan MRDEM30 **DTM** and native source classes for Canadian coverage, with USGS bare-earth
+NAVD88 heights explicitly converted to CGVD2013 using pinned geodetic grids. Canadian fallback
+from unqualified USGS border pixels is rejected. The local recipe supplements masked ETH canopy
+with native WRI/Meta maxima only inside conservative independently dated imagery support, and
+records mixed source/vintage and auxiliary-mask limitations. Independent BC/NHD nominal water
+separates shoreline omissions from missing land heights. This is a retained local acquisition
+recipe, not a newly registered provider or a uniform-date/field-calibrated terrain-canopy product.
+
+Use `datasets.dem/chm.provider: local`, explicit `assets`, an honest mixed-source `version`, and
+source checksums when reusing these prepared inputs through the component acquisition workflow.
+Keep source/cache receipts and categorical provenance companions with them. The analysis still
+uses the configured 30 m grid and existing observer sampling; native retrieval and work tiling
+do not change these scientific settings. Coverage qualifications and benchmark eligibility must
+be checked before full execution; the dated report records the actually executed scope.

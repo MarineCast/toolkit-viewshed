@@ -12,7 +12,8 @@ from ..api import (
     validate_distance_product,
 )
 from ..api.components import run_component_stage, run_components
-from ..api.registry import COMPONENT_STAGES
+from ..api.regional import plan_components
+from ..api.registry import COMPONENT_STAGES, COMPONENT_TARGETS
 
 
 def _build_pair_distances(args: argparse.Namespace) -> None:
@@ -57,6 +58,30 @@ def _validate_distance_product(args: argparse.Namespace) -> None:
     )
 
 
+def _build(args: argparse.Namespace) -> None:
+    if args.dry_run:
+        report = plan_components(
+            args.config,
+            target=args.target,
+            run_id=args.run_id,
+            source_type=args.source_type,
+            overwrite=args.overwrite,
+        )
+        print(json.dumps(report, indent=2, sort_keys=True))
+        if not report["ready"]:
+            raise SystemExit(1)
+        return
+    print(
+        run_components(
+            args.config,
+            target=args.target,
+            run_id=args.run_id,
+            source_type=args.source_type,
+            overwrite=args.overwrite,
+        )
+    )
+
+
 def register_commands(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser], *, default_config: str
 ) -> None:
@@ -71,6 +96,7 @@ def register_commands(
     )
     region.add_argument("--config", default=default_config)
     region.add_argument("--inputs-only", action="store_true")
+    region.add_argument("--source-type", choices=("land", "water"), default=None)
     region.set_defaults(func=_validate_region)
     pairs = subparsers.add_parser(
         "build-pair-distances",
@@ -103,27 +129,22 @@ def register_commands(
     validate_product.add_argument("path")
     validate_product.set_defaults(func=_validate_distance_product)
     build = subparsers.add_parser(
-        "build", help="Build DEM, CHM, distance, or all components with dependencies."
+        "build", help="Build selected components with dependencies, or inspect a read-only plan."
     )
-    build.add_argument("target", choices=("dem", "chm", "distance", "all"))
+    build.add_argument("target", choices=tuple(COMPONENT_TARGETS))
     build.add_argument("--run-id", default="components")
+    build.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Inspect inputs, stages and capabilities without writes or downloads.",
+    )
     stage = subparsers.add_parser("stage", help="Execute exactly one component stage.")
     stage.add_argument("stage", choices=COMPONENT_STAGES)
     for parser in (build, stage):
         parser.add_argument("--config", default=default_config)
         parser.add_argument("--source-type", choices=("land", "water"), default="land")
         parser.add_argument("--overwrite", action="store_true")
-    build.set_defaults(
-        func=lambda args: print(
-            run_components(
-                args.config,
-                target=args.target,
-                run_id=args.run_id,
-                source_type=args.source_type,
-                overwrite=args.overwrite,
-            )
-        )
-    )
+    build.set_defaults(func=_build)
     stage.set_defaults(
         func=lambda args: print(
             run_component_stage(
@@ -138,7 +159,9 @@ def _validate_region(args: argparse.Namespace) -> None:
 
     from ..api.regional import validate_region
 
-    report = validate_region(args.config, require_outputs=not args.inputs_only)
+    report = validate_region(
+        args.config, require_outputs=not args.inputs_only, source_type=args.source_type
+    )
     print(json.dumps(report, indent=2))
     if not report["valid"]:
         raise SystemExit(1)

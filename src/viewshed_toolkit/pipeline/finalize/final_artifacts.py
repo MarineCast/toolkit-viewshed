@@ -50,12 +50,15 @@ import polars as pl
 import pyarrow.parquet as pq
 
 from viewshed_toolkit._internal.artifacts import checksum_path
+from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
 from viewshed_toolkit._internal.data.parquet import (
     atomic_sink_parquet,
     scan_required,
     validate_parquet_schema,
 )
 
+from ..config.distance import DistanceWeightConfig
+from ..config.loader import resolve_existing_or_relative_path
 from ..config.paths import (
     DEFAULT_DEM_PATH_TEMPLATE,
     DEFAULT_LAND_H3_PATH_TEMPLATE,
@@ -67,7 +70,6 @@ from ..config.paths import (
     write_metadata_sidecar,
 )
 from ..config.schema import load_yaml
-from ..config.loader import resolve_existing_or_relative_path
 from ..contracts.artifacts import (
     FINAL_SCHEMAS,
     OBSERVATION_GEOMETRY_SCHEMA_VERSION,
@@ -81,7 +83,9 @@ from ..contracts.artifacts import (
 )
 from ..contracts.cleanup import (
     cleanup_output_tree,
+    cleanup_policy_from_raw,
     metadata_sidecars_for,
+    static_cleanup_preserve_paths,
 )
 from ..contracts.generation import (
     byte_checksum,
@@ -89,13 +93,13 @@ from ..contracts.generation import (
     parquet_metadata,
     validate_generation_receipt,
 )
-from ..contracts.pairs import SOURCE_TYPES
 from ..contracts.lineage import (
     factor_contract,
     record_factor,
     validate_factor,
     validate_role_factors,
 )
+from ..contracts.pairs import SOURCE_TYPES
 
 
 def materialize_distance_weights(
@@ -104,6 +108,7 @@ def materialize_distance_weights(
     *,
     overwrite: bool,
     source_type: str = "land",
+    distance_config: DistanceWeightConfig | None = None,
 ) -> tuple[Path, int]:
     """Materialize the minimal distance-factor artifact for a source type."""
 
@@ -111,7 +116,9 @@ def materialize_distance_weights(
     paths = final_artifact_paths(config_path)
     output_path = paths.weights_path("distance_weights", source_type=source_type)
     raw, config_dir = load_yaml(config_path)
-    contract = factor_contract(raw, config_dir, source_type, "distance")
+    contract = factor_contract(
+        raw, config_dir, source_type, "distance", distance_config=distance_config
+    )
     for path in input_paths:
         validate_factor(path, contract)
 
@@ -742,7 +749,7 @@ def materialize_observation_geometry_output(
     }
     if source_type == "land" and paths.dual_surface_factors.exists():
         input_paths["dual_surface_factors"] = paths.dual_surface_factors
-    input_checksums = {name: checksum_path(path) for name, path in input_paths.items()}
+    input_checksums = {name: checksum_unchanged_file(path) for name, path in input_paths.items()}
     config_hash = static_scientific_config_hash(raw)
     generation_id = f"{source_type}_{stable_config_hash({'config': config_hash, 'inputs': input_checksums}, length=20)}"
     if generation is not None:
@@ -979,7 +986,11 @@ def _write_static_artifact_metadata(
             "distance_semantics": "distance_integrated_in_weight_terrain; weight_distance_is_diagnostic",
             "input_paths": {key: str(value) for key, value in input_paths.items()},
             "input_checksums": dict(input_checksums),
-            "input_retention_policy": "ephemeral_inputs_may_be_pruned_after_final_validation",
+            "input_retention_policy": (
+                "reusable_inputs_retained_after_final_validation"
+                if cleanup_policy_from_raw(raw) == "retain_reusable"
+                else "ephemeral_inputs_may_be_pruned_after_final_validation"
+            ),
             "artifact_checksum": checksum_path(output_path),
             "coverage": dict(coverage),
             "row_count": int(row_count),
@@ -1096,7 +1107,7 @@ def validate_static_artifact_metadata(
         if not input_path.exists():
             missing_inputs.append(str(name))
             continue
-        actual_checksum = checksum_path(input_path)
+        actual_checksum = checksum_unchanged_file(input_path)
         if actual_checksum != expected_checksum:
             checksum_mismatches[str(name)] = {
                 "path": str(input_path),
@@ -1263,7 +1274,9 @@ def materialize_static_viewability_outputs(
                 source_type=source_type,
             )
             input_paths = _static_input_paths(paths, source_type)
-            input_checksums = {name: checksum_path(path) for name, path in input_paths.items()}
+            input_checksums = {
+                name: checksum_unchanged_file(path) for name, path in input_paths.items()
+            }
             parquet_metadata = _static_parquet_metadata(
                 raw,
                 source_type=source_type,
@@ -1575,7 +1588,7 @@ def cleanup_viewshed_dir_to_static_outputs(config_path: str | Path) -> list[Path
     )
 
     root = paths.output_dir.resolve()
-    preserved: set[Path] = set()
+    preserved: set[Path] = static_cleanup_preserve_paths(config_path, paths)
     for path in [
         *final_outputs,
         paths.land_observation_geometry,

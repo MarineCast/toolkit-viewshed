@@ -52,7 +52,9 @@ from typing import Any
 import geopandas as gpd
 import numpy as np
 import rasterio
+import shapely
 from rasterio.features import rasterize
+from rasterio.windows import Window
 
 from viewshed_toolkit._internal.artifacts import checksum_path
 from viewshed_toolkit._internal.geo import raster as core_raster
@@ -68,6 +70,8 @@ from .cache import raster_cache_matches as _raster_cache_matches
 GEOTIFF_BLOCK_SIZE = 256
 LOGGER = logging.getLogger(__name__)
 _PROJECTED_DEM_READY_THIS_PROCESS: set[Path] = set()
+_WATER_RASTERIZATION_TILE_SIZE = 2048
+WATER_ELEVATION_ALGORITHM_VERSION = "preserve_dem_except_explicit_marine_v1"
 
 
 # -----------------------------------------------------------------------------
@@ -326,15 +330,6 @@ def rasterize_water_to_match_dem(
                 water_match.geometry.notna() & ~water_match.geometry.is_empty
             ].copy()
 
-            water_arr = rasterize(
-                [(geom, 1) for geom in water_match.geometry],
-                out_shape=(src.height, src.width),
-                transform=src.transform,
-                fill=0,
-                dtype="uint8",
-                all_touched=True,
-            )
-
             profile = core_raster.update_geotiff_profile(
                 src.profile,
                 compress=compress,
@@ -344,7 +339,53 @@ def rasterize_water_to_match_dem(
                 nodata=0,
             )
             with rasterio.open(out_path, "w", **profile) as dst:
-                dst.write(water_arr, 1)
+                # Pad the geometry clip beyond the output pixels so artificial
+                # clip edges cannot affect GDAL's all-touched boundary rules.
+                pad = 2 * max(
+                    math.hypot(src.transform.a, src.transform.d),
+                    math.hypot(src.transform.b, src.transform.e),
+                )
+                tile_size = _WATER_RASTERIZATION_TILE_SIZE
+                geometries = water_match.geometry.to_numpy()
+                for row in range(0, src.height, tile_size):
+                    for col in range(0, src.width, tile_size):
+                        height = min(tile_size, src.height - row)
+                        width = min(tile_size, src.width - col)
+                        window = Window(col, row, width, height)
+                        corners = [
+                            src.transform * (x, y)
+                            for x in (col, col + width)
+                            for y in (row, row + height)
+                        ]
+                        left = min(x for x, _ in corners) - pad
+                        right = max(x for x, _ in corners) + pad
+                        bottom = min(y for _, y in corners) - pad
+                        top = max(y for _, y in corners) + pad
+                        clipped = shapely.clip_by_rect(geometries, left, bottom, right, top)
+                        invalid = ~shapely.is_valid(clipped)
+                        if invalid.any():
+                            # Preserve GDAL's existing handling of invalid
+                            # projected inputs; GEOS overlay can reject them.
+                            clipped[invalid] = geometries[invalid]
+                        shapes = [
+                            (part, 1)
+                            for geom in clipped
+                            for part in getattr(geom, "geoms", [geom])
+                            if not part.is_empty
+                        ]
+                        water_arr = (
+                            rasterize(
+                                shapes,
+                                out_shape=(height, width),
+                                transform=src.window_transform(window),
+                                fill=0,
+                                dtype="uint8",
+                                all_touched=True,
+                            )
+                            if shapes
+                            else np.zeros((height, width), dtype="uint8")
+                        )
+                        dst.write(water_arr, 1, window=window)
                 dst.update_tags(
                     algorithm_version="viewshed_water_mask_v2",
                     cache_fingerprint=fingerprint,
@@ -358,26 +399,53 @@ def rasterize_water_to_match_dem(
     return out_path
 
 
+def validate_marine_water_mask(
+    path: Path, dem_path: Path, *, water_mask_path: Path | None = None
+) -> None:
+    """Require a binary, aligned explicit marine classification; never infer from height."""
+    core_raster.validate_raster_grid_alignment(
+        path, dem_path, label_a="marine_water_mask", label_b="DEM"
+    )
+    from contextlib import ExitStack
+
+    with ExitStack() as stack:
+        mask = stack.enter_context(rasterio.open(path))
+        water = (
+            stack.enter_context(rasterio.open(water_mask_path))
+            if water_mask_path is not None
+            else None
+        )
+        if mask.count != 1 or mask.nodata not in (None, 0):
+            raise ValueError(
+                "Marine water mask must be single-band binary 0/1 with nodata None or 0"
+            )
+        for _, window in mask.block_windows(1):
+            values = mask.read(1, window=window)
+            if not np.isin(values, [0, 1]).all():
+                raise ValueError("Marine water mask contains values outside binary 0/1")
+            if water is not None and ((values == 1) & (water.read(1, window=window) != 1)).any():
+                raise ValueError("Marine water mask includes pixels outside canonical water")
+
+
 def flatten_water_pixels_to_sea_level(
     dem_path: Path,
-    water_mask_path: Path,
+    water_mask_path: Path | None,
     out_path: Path,
     sea_level_m: float = 0.0,
     overwrite: bool = False,
     compress: str | None = "none",
     block_size: int = GEOTIFF_BLOCK_SIZE,
 ) -> Path:
-    core_raster.validate_raster_grid_alignment(
-        dem_path,
-        water_mask_path,
-        label_a="batch_dem",
-        label_b="water_mask",
-    )
+    # This low-level mask is explicitly marine, never the all-water target mask.
+    if water_mask_path is not None:
+        validate_marine_water_mask(water_mask_path, dem_path)
     fingerprint = _cache_fingerprint(
         {
-            "algorithm_version": "viewshed_water_flattened_endpoint_v3",
+            "algorithm_version": WATER_ELEVATION_ALGORITHM_VERSION,
             "dem": _input_signature(dem_path),
-            "water_mask": _input_signature(water_mask_path),
+            "marine_water_mask": (
+                _input_signature(water_mask_path) if water_mask_path is not None else None
+            ),
             "sea_level_m": float(sea_level_m),
         }
     )
@@ -388,7 +456,15 @@ def flatten_water_pixels_to_sea_level(
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with rasterio.open(dem_path) as dem_src, rasterio.open(water_mask_path) as water_src:
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            dem_src = stack.enter_context(rasterio.open(dem_path))
+            water_src = (
+                stack.enter_context(rasterio.open(water_mask_path))
+                if water_mask_path is not None
+                else None
+            )
             profile = core_raster.update_geotiff_profile(
                 dem_src.profile,
                 compress=compress,
@@ -399,18 +475,19 @@ def flatten_water_pixels_to_sea_level(
             with rasterio.open(out_path, "w", **profile) as dst:
                 for _, window in dem_src.block_windows(1):
                     analysis = dem_src.read(1, window=window).astype("float32")
-                    water_mask = water_src.read(1, window=window) == 1
-                    # The canonical water mask, rather than DEM coverage, owns
-                    # endpoint elevation over water. Projected DEMs can contain
-                    # small coastal nodata holes even though modeled water
-                    # endpoint elevation is explicitly sea level.
-                    analysis[water_mask] = sea_level_m
+                    if water_src is not None:
+                        marine = water_src.read(1, window=window) == 1
+                        analysis[marine] = sea_level_m
+                    # Preserve finite lake/river heights and unresolved inland
+                    # nodata. A water classification does not establish sea level.
                     dst.write(analysis, 1, window=window)
                 dst.update_tags(
-                    algorithm_version="viewshed_water_flattened_endpoint_v3",
+                    algorithm_version=WATER_ELEVATION_ALGORITHM_VERSION,
                     cache_fingerprint=fingerprint,
                     source_dem_path=str(Path(dem_path).resolve()),
-                    source_water_mask_path=str(Path(water_mask_path).resolve()),
+                    source_marine_water_mask_path=(
+                        str(Path(water_mask_path).resolve()) if water_mask_path is not None else ""
+                    ),
                     sea_level_m=str(float(sea_level_m)),
                 )
     except Exception:

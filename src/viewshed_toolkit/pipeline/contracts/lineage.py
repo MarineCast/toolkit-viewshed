@@ -8,7 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from ..config.distance import load_distance_weight_config
+from ..config.distance import DistanceWeightConfig, load_distance_weight_config
 from ..config.paths import get_dem_settings, resolve_existing_or_relative_path
 from .artifacts import final_artifact_paths_from_raw
 from .components import fingerprint, input_checksums, validate_pairs, write_json
@@ -38,7 +38,13 @@ def producer_revision() -> str | None:
 
 
 def factor_contract(
-    raw: Mapping[str, Any], config_dir: Path, role: str, kind: str
+    raw: Mapping[str, Any],
+    config_dir: Path,
+    role: str,
+    kind: str,
+    *,
+    distance_config: DistanceWeightConfig | None = None,
+    lookup_path: Path | None = None,
 ) -> dict[str, Any]:
     """Dependency-scoped effective settings and current content identities."""
     if role not in {"land", "water"} or kind not in REBUILD_STAGES:
@@ -53,7 +59,7 @@ def factor_contract(
     from .generation import byte_checksum
 
     paths = final_artifact_paths_from_raw(dict(raw), config_dir)
-    inputs = {"lookup": paths.source_target_lookup}
+    inputs = {"lookup": lookup_path if lookup_path is not None else paths.source_target_lookup}
     dem = {
         **asdict(ViewshedSettings()),
         **{key: value for key, value in get_dem_settings(dict(raw)).items() if value is not None},
@@ -78,7 +84,7 @@ def factor_contract(
         ),
         "source_target_lookup": dict(raw.get("source_target_lookup", {})),
     }
-    distance = asdict(load_distance_weight_config(dict(raw)))
+    distance = asdict(distance_config or load_distance_weight_config(dict(raw)))
     for key in ("overwrite", "source_chunk_size", "compute_exact_p90", "p90_method", "version"):
         distance.pop(key, None)
     settings["distance"] = distance

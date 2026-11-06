@@ -14,6 +14,11 @@ from viewshed_toolkit.pipeline.config.distance import DistanceWeightConfig
 from viewshed_toolkit.pipeline.weights.terrain import gdal
 
 
+@pytest.fixture(autouse=True)
+def _isolate_relative_fixture_cache(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+
 def _app(*, curvature_coefficient: float) -> SimpleNamespace:
     return SimpleNamespace(
         config_path=Path("fixture.yaml"),
@@ -32,6 +37,7 @@ def _app(*, curvature_coefficient: float) -> SimpleNamespace:
             target_height_m=1.0,
             curvature_coefficient=curvature_coefficient,
             earth_radius_m=6_371_008.8,
+            max_distance_m=30_000.0,
             crs_projected="EPSG:3857",
         ),
     )
@@ -137,7 +143,7 @@ def test_open_water_kernel_persists_recomputable_sample_numerators(
     )
 
     assert kernel is not None
-    assert kernel["aggregation_method"] == "water_land_mask_sample_kernel_v1"
+    assert kernel["aggregation_method"] == "water_land_mask_sample_kernel_v2"
     assert kernel["n_observers"] == 2
     assert kernel["target_water_sample_count"] == 2
     assert kernel["visible_observer_pixel_count_sum"] == 4

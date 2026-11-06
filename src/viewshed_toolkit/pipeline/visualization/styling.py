@@ -115,12 +115,15 @@ def _map_colors(config: ViewshedMapConfig, count: int = 11) -> list[str]:
 
 
 def _display_max(values: pd.Series | np.ndarray, quantile: float) -> float:
-    array = np.asarray(pd.to_numeric(pd.Series(np.ravel(values)), errors="coerce"), dtype=float)
-    valid = array[np.isfinite(array) & (array > 0)]
+    if isinstance(values, np.ndarray) and values.dtype in (np.float32, np.float64):
+        array = values.ravel()
+    else:
+        array = np.asarray(pd.to_numeric(pd.Series(np.ravel(values)), errors="coerce"), dtype=float)
+    valid = array[np.isfinite(array) & (array > 0)].astype(np.float64, copy=False)
     if valid.size == 0:
         return 1.0
     clipped_quantile = min(1.0, max(0.0, float(quantile)))
-    value = float(np.quantile(valid, clipped_quantile))
+    value = float(np.quantile(valid, clipped_quantile, overwrite_input=True))
     return value if value > 0 else float(valid.max())
 
 

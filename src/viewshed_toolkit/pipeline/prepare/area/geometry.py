@@ -10,6 +10,7 @@ from typing import Iterable
 import geopandas as gpd
 import numpy as np
 import polars as pl
+import shapely
 from pyproj import CRS
 from shapely import from_wkb, to_wkb
 from shapely.geometry.base import BaseGeometry
@@ -31,7 +32,7 @@ H3_GEOMETRY_SCHEMA: tuple[str, ...] = (
     "water_geometry_projected",
     "water_area_m2",
 )
-H3_GEOMETRY_ALGORITHM_VERSION = "h3_geometry_v1"
+H3_GEOMETRY_ALGORITHM_VERSION = "h3_geometry_v2_local_water_clips"
 
 _FRAME_CACHE: dict[tuple[str, int, int], pl.DataFrame] = {}
 _LOOKUP_CACHE: dict[tuple[str, int, int, str], dict[str, BaseGeometry]] = {}
@@ -88,6 +89,39 @@ def _validate_frame(frame: pl.DataFrame, path: Path) -> None:
         raise ValueError(f"H3 geometry artifact has null water areas: {path}")
 
 
+def _intersect_water_by_local_tiles(cells: gpd.GeoSeries, water: BaseGeometry) -> gpd.GeoSeries:
+    """Intersect native cells with bounded water clips, preserving vector support.
+
+    Prepared predicates return wholly wet/dry cells directly. Boundary cells share
+    padded local clips; clipping edges lie outside every final cell, so they never
+    become part of its water denominator. Invalid fast clips use an exact overlay.
+    """
+    values = cells.to_numpy()
+    result = np.empty(len(cells), dtype=object)
+    shapely.prepare(water)
+    wet = shapely.covers(water, values)
+    dry = ~shapely.intersects(water, values)
+    result[wet] = values[wet]
+    result[dry] = shapely.Polygon()
+    groups: dict[tuple[int, int], list[int]] = {}
+    for index in np.flatnonzero(~(wet | dry)):
+        bounds = values[index].bounds
+        key = (
+            int(np.floor((bounds[0] + bounds[2]) * 2)),
+            int(np.floor((bounds[1] + bounds[3]) * 2)),
+        )
+        groups.setdefault(key, []).append(int(index))
+    for indices in groups.values():
+        selected = values[indices]
+        left, bottom, right, top = shapely.total_bounds(selected)
+        bounds = (left - 1e-7, bottom - 1e-7, right + 1e-7, top + 1e-7)
+        local = shapely.clip_by_rect(water, *bounds)
+        if not local.is_valid:
+            local = water.intersection(shapely.box(*bounds))
+        result[indices] = shapely.intersection(selected, local)
+    return gpd.GeoSeries(result, index=cells.index, crs=cells.crs)
+
+
 def ensure_h3_geometry_artifact(
     runtime: DistanceRuntime,
     cells: Iterable[str],
@@ -114,13 +148,13 @@ def ensure_h3_geometry_artifact(
     # Geometry is shared by source and target stages, so its water intersection
     # must cover the complete buffered target domain rather than the smaller
     # observer-source bbox.
-    domain_geometries = domains.load_land_water_domains(
+    water_domain = domains.load_water_domain(
         runtime, extent="source" if runtime.raw_config.get("shared_study") else "target"
     )
     inputs = _artifact_inputs(
         runtime,
         cells=cell_ids,
-        water_domain=domain_geometries.water_domain,
+        water_domain=water_domain,
         projected_crs=projected,
         equal_area_crs=area_crs,
     )
@@ -146,14 +180,14 @@ def ensure_h3_geometry_artifact(
             inputs = _artifact_inputs(
                 runtime,
                 cells=cell_ids,
-                water_domain=domain_geometries.water_domain,
+                water_domain=water_domain,
                 projected_crs=projected,
                 equal_area_crs=area_crs,
             )
 
     geometries_wgs84 = gpd.GeoSeries([cell_to_polygon(cell) for cell in cell_ids], crs=CRS_WGS84)
     geometries_projected = geometries_wgs84.to_crs(projected)
-    water_wgs84 = geometries_wgs84.intersection(domain_geometries.water_domain)
+    water_wgs84 = _intersect_water_by_local_tiles(geometries_wgs84, water_domain)
     water_projected = gpd.GeoSeries(water_wgs84, crs=CRS_WGS84).to_crs(projected)
     water_equal_area = gpd.GeoSeries(water_wgs84, crs=CRS_WGS84).to_crs(area_crs)
 

@@ -59,7 +59,7 @@ assert package.is_relative_to(Path(sys.prefix).resolve()), package
 resources = [common_areas_path(), default_config_path()]
 assert all(p.is_file() and p.resolve().is_relative_to(Path(sys.prefix).resolve()) for p in resources), resources
 bundled = package_resources.files('viewshed_toolkit.resources')
-for name in ['study.schema.json', 'registry-artifact-interface.v1.json', 'native_warp_plan.cpp', 'comparison_map.html', 'raster_overlay.js']:
+for name in ['study.schema.json', 'coastal-study.schema.json', 'registry-artifact-interface.v1.json', 'native_warp_plan.cpp', 'comparison_map.html', 'raster_overlay.js']:
     assert bundled.joinpath(name).is_file(), name
 assert callable(viewshed_toolkit.run_transmission)
 from affine import Affine

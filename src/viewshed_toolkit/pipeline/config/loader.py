@@ -20,6 +20,8 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import polars as pl
+from pyproj import CRS
+from pyproj.exceptions import CRSError
 
 from .paths import (
     DEFAULT_DEM_PATH_TEMPLATE,
@@ -41,7 +43,7 @@ from .schema import load_yaml_config
 GEOTIFF_BLOCK_SIZE = 256
 LOGGER = logging.getLogger(__name__)
 SOURCE_SAMPLING_CANDIDATE_GRID_SIDE = 32
-SOURCE_SAMPLING_ALGORITHM_VERSION = "component_aware_projected_nested_maximin_v4"
+SOURCE_SAMPLING_ALGORITHM_VERSION = "component_aware_projected_nested_maximin_v5"
 _PROJECTED_DEM_READY_THIS_PROCESS: set[Path] = set()
 
 
@@ -129,6 +131,14 @@ class RunConfig:
     # Production output controls.
     skip_existing_partitions: bool = True
     combine_final_parquet: bool = False
+    cleanup_policy: str = "retain_reusable"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.cleanup_policy, str) or self.cleanup_policy not in {
+            "retain_reusable",
+            "compact",
+        }:
+            raise ValueError("run.cleanup_policy must be 'retain_reusable' or 'compact'")
 
 
 @dataclass(frozen=True)
@@ -147,6 +157,7 @@ class PathsConfig:
     partitioned_visibility_dir: Path
     manifest_path: Path
     projected_dem_path: Path
+    marine_water_mask_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +179,56 @@ class ViewshedSettings:
     canopy_nodata_policy: str = "error"
     minimum_canopy_height_m: float = 0.0
     observer_canopy_clearance_radius_m: float = 0.0
+
+
+def validate_viewshed_settings(settings: ViewshedSettings) -> None:
+    """Reject invalid metric settings before paths, acquisition, or raster work."""
+
+    positive = (
+        "dem_resolution_m",
+        "max_distance_m",
+        "earth_radius_m",
+        "dem_nodata_barrier_height_m",
+    )
+    nonnegative = (
+        "observer_eye_height_m",
+        "target_height_m",
+        "aoi_margin_m",
+        "minimum_canopy_height_m",
+        "observer_canopy_clearance_radius_m",
+    )
+    for name in (*positive, *nonnegative, "sea_level_m", "curvature_coefficient"):
+        try:
+            value = float(getattr(settings, name))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"viewshed.{name} must be a finite number") from exc
+        if not math.isfinite(value):
+            raise ValueError(f"viewshed.{name} must be finite")
+        if name in positive and value <= 0.0:
+            raise ValueError(f"viewshed.{name} must be > 0")
+        if name in nonnegative and value < 0.0:
+            raise ValueError(f"viewshed.{name} must be >= 0")
+    if not float(settings.dem_resolution_m).is_integer():
+        raise ValueError("viewshed.dem_resolution_m must be a positive integer")
+
+    try:
+        crs = CRS.from_user_input(settings.crs_projected)
+    except (CRSError, TypeError, ValueError) as exc:
+        raise ValueError("viewshed.crs_projected must be a projected CRS with metre units") from exc
+    if (
+        not crs.is_projected
+        or len(crs.axis_info) < 2
+        or any(
+            not math.isclose(float(axis.unit_conversion_factor), 1.0, rel_tol=0.0, abs_tol=1e-12)
+            for axis in crs.axis_info[:2]
+        )
+    ):
+        raise ValueError("viewshed.crs_projected must be a projected CRS with metre units")
+    if settings.backend == "xrspatial" and settings.surface_model == "canopy":
+        raise ValueError(
+            "viewshed.backend='xrspatial' does not support grounded canopy observers; "
+            "use backend='gdal' for canopy and paired land builds"
+        )
 
 
 @dataclass(frozen=True)
@@ -348,6 +409,8 @@ class ViewshedConfig:
     viewshed_version: str
     reporting_water_polygon_path: Path | None = None
 
+    marine_water_mask_path: Path | None = None
+
 
 @dataclass(frozen=True)
 class BatchContext:
@@ -519,6 +582,8 @@ def load_app_config(
     if not math.isfinite(dem_nodata_barrier_height_m) or dem_nodata_barrier_height_m <= 0:
         raise ValueError("viewshed.dem_nodata_barrier_height_m must be finite and > 0.")
     viewshed_raw["dem_nodata_barrier_height_m"] = dem_nodata_barrier_height_m
+    viewshed_settings = ViewshedSettings(**viewshed_raw)
+    validate_viewshed_settings(viewshed_settings)
     batch_raw = dict(raw.get("batch", {}))
     if "parent_resolution" in batch_raw:
         warnings.warn(
@@ -569,6 +634,11 @@ def load_app_config(
         config_hash=stable_config_hash(raw),
         run=RunConfig(**raw.get("run", {})),
         paths=PathsConfig(
+            marine_water_mask_path=(
+                resolve_existing_or_relative_path(paths["marine_water_mask_path"], config_dir)
+                if paths.get("marine_water_mask_path")
+                else None
+            ),
             water_polygon_path=_infer_water_polygon_path(paths, config_dir),
             land_polygon_path=resolve_existing_or_relative_path(
                 paths.get("land_polygon_path", DEFAULT_LAND_POLYGON_RELATIVE),
@@ -622,7 +692,7 @@ def load_app_config(
                 config_dir,
             ),
         ),
-        viewshed=ViewshedSettings(**viewshed_raw),
+        viewshed=viewshed_settings,
         h3=H3Config(**h3_raw),
         batch=BatchConfig(**batch_raw),
         region=RegionConfig(**raw.get("region", {})),
@@ -716,6 +786,7 @@ def viewshed_config_from_app_config(app: AppConfig) -> ViewshedConfig:
         canopy_nodata_policy=app.viewshed.canopy_nodata_policy,
         minimum_canopy_height_m=app.viewshed.minimum_canopy_height_m,
         observer_canopy_clearance_radius_m=app.viewshed.observer_canopy_clearance_radius_m,
+        marine_water_mask_path=app.paths.marine_water_mask_path,
         water_polygon_path=app.paths.water_polygon_path,
         land_polygon_path=app.paths.land_polygon_path,
         canopy_height_path=app.paths.canopy_height_path,

@@ -1142,7 +1142,12 @@ def _write_selected_map(
         app=app,
         config=config,
     )
-    grid = _build_smoothing_grid(context, app.paths.water_polygon_path, config)
+    grid = _build_smoothing_grid(
+        context,
+        app.paths.water_polygon_path,
+        config,
+        cache_dir=app.paths.output_dir / "geometry_cache/map_water_masks",
+    )
     map_ = folium.Map(
         location=[
             settings.selected_location.latitude,
@@ -1281,6 +1286,7 @@ def _write_aggregate_map(
         target_context,
         app.paths.water_polygon_path,
         config,
+        cache_dir=app.paths.output_dir / "geometry_cache/map_water_masks",
     )
     source_grid = _build_smoothing_grid(source_context, None, config)
     map_ = folium.Map(

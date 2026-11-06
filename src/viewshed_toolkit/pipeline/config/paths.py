@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import time
 import warnings
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -420,7 +421,12 @@ def write_metadata_sidecar(
     if extra_metadata:
         metadata.update(extra_metadata)
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
-    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True, default=str) + "\n")
+    temporary = metadata_path.with_name(f".{metadata_path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(metadata, indent=2, sort_keys=True, default=str) + "\n")
+        temporary.replace(metadata_path)
+    finally:
+        temporary.unlink(missing_ok=True)
     return metadata_path
 
 
