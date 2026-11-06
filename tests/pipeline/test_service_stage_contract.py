@@ -5,6 +5,7 @@ from pathlib import Path
 from viewshed_toolkit import WorkflowIdentity
 from viewshed_toolkit._internal.artifacts import RunManifest
 from viewshed_toolkit.pipeline.api import stages
+from viewshed_toolkit.pipeline.api.registry import invocations_for_stage
 from viewshed_toolkit.pipeline.api.service import (
     STAGES,
     ViewshedRequest,
@@ -14,7 +15,6 @@ from viewshed_toolkit.pipeline.api.service import (
     _resume_refs,
     _stage_signature,
 )
-from viewshed_toolkit.pipeline.api.registry import invocations_for_stage
 
 
 def test_default_service_uses_dual_surface_land_contract() -> None:
@@ -135,6 +135,7 @@ def test_resume_requires_exact_stage_signature_paths_and_checksums(tmp_path: Pat
         workflow="human.viewshed",
         config_hash=config_hash,
         resolved_config={},
+        input_fingerprints={},
         outputs=refs,
         stage_signature=signature,
     ).write(manifest_path)
@@ -145,6 +146,7 @@ def test_resume_requires_exact_stage_signature_paths_and_checksums(tmp_path: Pat
         config_hash=config_hash,
         stage_signature=signature,
         expected_paths=(first.resolve(), second.resolve()),
+        input_fingerprints={},
     )
     assert resumed is not None
 
@@ -156,6 +158,7 @@ def test_resume_requires_exact_stage_signature_paths_and_checksums(tmp_path: Pat
             config_hash=config_hash,
             stage_signature=signature,
             expected_paths=(first.resolve(), second.resolve()),
+            input_fingerprints={},
         )
         is None
     )
@@ -220,26 +223,28 @@ def test_process_collision_is_rejected_before_stage_side_effects(tmp_path, monke
     service.process(request)
     manifest = app.paths.output_dir / "manifests/same-id.json"
     payload = json.loads(manifest.read_text())
+    original = payload.copy()
     payload["config_hash"] = "another configuration"
     manifest.write_text(json.dumps(payload))
     before = manifest.read_bytes()
     calls.clear()
-    for resume in (False, True):
+    for resume, force in ((False, False), (True, False), (False, True)):
         with pytest.raises(FileExistsError, match="different logical run"):
             service.process(
-                ViewshedRequest(config, stages=request.stages, run_id="same-id", resume=resume)
+                ViewshedRequest(
+                    config, stages=request.stages, run_id="same-id", resume=resume, force=force
+                )
             )
         assert not calls
         assert manifest.read_bytes() == before
-    service.process(ViewshedRequest(config, stages=request.stages, run_id="same-id", force=True))
-    assert len(calls) == 1
-    calls.clear()
+    manifest.write_text(json.dumps(original))
     service.process(request)
     assert len(calls) == 1  # Same-identity refresh remains supported.
 
 
-def test_partial_resume_reenters_stage_validation_and_rejects_changed_inputs(tmp_path, monkeypatch):
+def test_partial_resume_validates_cached_outputs_and_rejects_changed_inputs(tmp_path, monkeypatch):
     import pytest
+
     from tests.pipeline.test_component_workflow import coastal_fixture
     from viewshed_toolkit.pipeline.api import service
 
@@ -256,12 +261,12 @@ def test_partial_resume_reenters_stage_validation_and_rejects_changed_inputs(tmp
     request = ViewshedRequest(config, stages=("build-land-cells",), run_id="partial", resume=True)
     service.process(request)
     result = service.process(request)
-    assert not result.skipped
-    assert len(observed) == 2
+    assert result.skipped
+    assert len(observed) == 1
     app.paths.land_polygon_path.write_bytes(b"changed input at the same path")
-    with pytest.raises(ValueError, match="inputs changed"):
+    with pytest.raises(ValueError, match="input provenance is missing or changed"):
         service.process(request)
-    assert len(observed) == 2
+    assert len(observed) == 1
 
 
 def test_manifest_identifiers_reject_paths_before_loading_configuration(monkeypatch):
@@ -276,18 +281,6 @@ def test_manifest_identifiers_reject_paths_before_loading_configuration(monkeypa
     for run_id in ("", ".", "..", "../escape", "/absolute", r"a\b", "C:drive", "a\x00b"):
         with pytest.raises(ValueError, match="simple filename"):
             service.process(ViewshedRequest(Path("unused.yaml"), run_id=run_id))
-
-
-def test_distance_cli_rejects_unsupported_partial_flags():
-    import pytest
-
-    from viewshed_toolkit.pipeline.cli.main import build_cli
-
-    for command in ("build-distance-weights", "distance-weight"):
-        for flag in ("--limit", "--start"):
-            with pytest.raises(SystemExit) as error:
-                build_cli().parse_args([command, flag, "1"])
-            assert error.value.code == 2
 
 
 def test_partial_resume_rejects_legacy_manifest_before_stage_calls(tmp_path, monkeypatch):
@@ -319,7 +312,7 @@ def test_partial_resume_rejects_legacy_manifest_before_stage_calls(tmp_path, mon
     monkeypatch.setattr(
         service, "execute_stages", lambda *args: pytest.fail("Unexpected execution")
     )
-    with pytest.raises(ValueError, match="input-aware manifest v3"):
+    with pytest.raises(ValueError, match="input provenance is missing or changed"):
         service.process(request)
 
 

@@ -115,12 +115,15 @@ def _map_colors(config: ViewshedMapConfig, count: int = 11) -> list[str]:
 
 
 def _display_max(values: pd.Series | np.ndarray, quantile: float) -> float:
-    array = np.asarray(pd.to_numeric(pd.Series(np.ravel(values)), errors="coerce"), dtype=float)
-    valid = array[np.isfinite(array) & (array > 0)]
+    if isinstance(values, np.ndarray) and values.dtype in (np.float32, np.float64):
+        array = values.ravel()
+    else:
+        array = np.asarray(pd.to_numeric(pd.Series(np.ravel(values)), errors="coerce"), dtype=float)
+    valid = array[np.isfinite(array) & (array > 0)].astype(np.float64, copy=False)
     if valid.size == 0:
         return 1.0
     clipped_quantile = min(1.0, max(0.0, float(quantile)))
-    value = float(np.quantile(valid, clipped_quantile))
+    value = float(np.quantile(valid, clipped_quantile, overwrite_input=True))
     return value if value > 0 else float(valid.max())
 
 
@@ -160,6 +163,6 @@ def _map_note(
               <div style="display:flex;justify-content:space-between;"><span>Low</span><span>High</span></div>
               <div style="margin-top:5px;color:#444;">Each factor is independently scaled
               from zero to its configured display quantile. Hover an original H3 layer
-              for its unscaled grid value.</div>
+              for its unscaled grid value. Gray dashed cells indicate missing or inapplicable values; inspect coverage/status. Transparent cells with value 0 are computed zeros.</div>
             </div>
             """))

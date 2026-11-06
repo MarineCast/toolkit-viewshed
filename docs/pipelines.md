@@ -9,11 +9,13 @@ with `viewshed-toolkit stage --help`. The dependency graph is owned by `api/regi
 |---|---|---|
 | Main API | `run_viewshed` / `process` | `run_components` / `run_component_stage` |
 | Durable outputs | Existing compact final-output contract | Separate durable component namespace |
-| Automatic cleanup | After successful complete execution | No implicit cleanup |
+| Automatic cleanup | Validated scratch cleanup; reusable caches retained by default | No implicit cleanup |
 | Land/water promotion | Rollback-safe paired promotion | Per-role manifests; no combined atomic generation pointer |
 
-These lifecycle guarantees are not interchangeable. The established workflow owns its compact
-cleanup and paired-promotion behavior; component stages must not invoke or emulate it.
+These lifecycle guarantees are not interchangeable. The established workflow owns its configured
+cleanup and paired-promotion behavior; component stages must not invoke or emulate it. See
+[cache retention](configuration.md#cache-retention-and-cleanup) for the default `retain_reusable`
+policy and the explicit `compact` alternative. Both protect configured sources.
 
 ## Explicit component stages
 
@@ -34,16 +36,28 @@ cleanup and paired-promotion behavior; component stages must not invoke or emula
 | validate | Check current components, formula, and final output checksum |
 | export-maps | Static mean support by target over candidate source cells |
 
-`build dem|chm|distance|all` resolves only the requested dependency closure. `all` includes maps;
-source role is explicit (`--source-type land|water`). Map geometry/data are embedded; rendering
+`build dem|chm|distance|static|all` resolves only the requested dependency closure. `static`
+finishes and validates the role's final table without maps; `all` also exports factor maps.
+Source role is explicit (`--source-type land|water`). Map geometry/data are embedded; rendering
 still uses Folium's external Leaflet/CDN JavaScript. Maps provide no current weather or observer
 activity interpretation.
 
-For water, `build dem|chm|all --source-type water` resolves geometry and pair dependencies,
-but omits DEM/CHM download and preparation: mapped land is the opaque blocker and canopy is
-explicitly not applicable. Explicit `stage download-dem` or `stage download-chm` still does the
-requested acquisition. Land builds retain their raster dependencies. The `build distance` target
-remains raster-independent for both roles.
+Water plans use mapped land as an opaque blocker and omit DEM/CHM acquisition and preparation.
+The water CHM component records its explicit N/A factor. A land build that needs both surface
+components uses shared batch preparation for paired DEM/CHM execution, then persists each
+component separately. If only one component is stale, the current component can be reused.
+Independent `stage` commands retain their original scope; explicitly requesting a raster
+preparation stage still performs that operation. `build distance` is raster-independent for both
+source roles. Factor-map export aggregates all requested factors in one table scan and shares
+target polygons across the maps.
+
+`build ... --dry-run` calls the public `plan_components` API without running stages, downloading,
+or writing outputs. It reports the same dependency closure, prerequisites, capabilities, run-ID
+conflicts, local resource availability, and existing table-header workload counts. Configured
+shared-study validation still runs during configuration loading. No additional content hashes or
+raster/geometry row scans are performed. Cache presence remains unverified, and readable metadata
+cannot prove valid-data coverage, provider availability/freshness, or a regional ETA. A non-ready
+plan exits with status 1; see the [API report contract](api.md#explicit-component-api).
 
 `build-distance-weights` is a compatibility stage: it applies the integrated model's existing
 default profile to `build-pair-distances` and adapts that product to the established component
@@ -53,11 +67,24 @@ See [distance products](distance-products.md).
 
 ## Caching and failures
 
-No stage claims a cache hit from file existence alone. New products require matching contract and
-output checksum; old underlying stages retain their existing metadata/grid checks. Invalid legacy
-caches may require `--overwrite` or a fresh work directory. A changed source invalidates dependent
-component composition. Complete sparse LOS execution is checked before absent rows can mean
-observed zero; duplicate keys and invalid observed values are errors.
+Durable component products require a matching contract and full output checksum before reuse.
+Input digest reuse is limited to unchanged filesystem identity and timestamps; changed files are
+reread. Terrain component contracts include the underlying scientific algorithm and partition
+identities, including lookup content. A changed source invalidates dependent composition.
+Complete sparse LOS execution is checked before absent rows can mean observed zero; duplicate
+keys and invalid observed values are errors. Legacy producers have their own cache behavior;
+starting a new orchestration run alone does not rebuild their cached products.
+
+Legacy `process` resume checks current local input fingerprints, maintained scientific algorithm
+versions, and complete manifest/output contracts before skipping work. An older manifest without
+current fingerprints, changed input fingerprints, invalid outputs, or an incomplete manifest fails
+closed before execution. Rebuild affected stages explicitly with
+`run_stage(..., StageInvocation(..., overwrite=True))`, then start a **new
+run ID**. `force=True` never bypasses these checks or requests scientific stage-cache rebuilding.
+Complete workflows record fingerprints after their intentional cleanup; resuming does not require
+recreating intentionally removed intermediates. These checks do not query remote-provider
+freshness. Algorithm identity follows maintained producer version constants; numerical changes
+must update those versions because orchestration does not automatically hash source code.
 
 Paired production checks completion records and current partition metadata for both land
 surfaces before composition. It materializes dense bare-earth clear-sky diagnostics over the
@@ -67,8 +94,8 @@ This is rollback safety within one writer, not an atomic generation pointer for 
 Water partition identity and in-process geometry caches include land/water geometry and lookup
 content, so changes at the same path invalidate reuse.
 
-Component run manifests are per source type and run ID. Reusing an ID with a different configuration or
-plan fails before stages execute unless `--overwrite` is explicit. An interrupted run records
+Component run manifests are per source type and run ID. Reusing an ID with a different configuration
+or plan fails before stages execute unless `--overwrite` is explicit. An interrupted run records
 completed outputs and a failed stage; it does not claim completion. Concurrent writers to the
 same logical run are not supported; use separate run/output directories.
 
@@ -78,12 +105,21 @@ distance method, schema, or algorithm changes invalidate pair distances and ther
 A profile change creates a distinct content-addressed weighted product while preserving the raw
 pair universe and existing profiles.
 
+The legacy distance partition path also binds the active model/cutoff, source role, lookup content,
+and exact selected source IDs. A complete manifest selects the partitions to combine; directory
+globbing is not a recovery mechanism. Combination and source/target aggregation validate partition
+metadata and output checksums and reject overlapping source selections. Partition and manifest
+writes are atomic, and a failed new partition build preserves the last complete manifest. Retained
+partitions from other models or
+source slices are not silently included. Rebuild the desired selection after an interrupted run;
+do not infer completeness from files left in the partition directory.
+
 ## Cleanup
 
 Explicit component builds do not automatically delete work files. Their raw caches, weight tables,
 final tables, and manifests live in the separate durable component namespace. Keep source and
-work inputs until required validation/reproduction is complete. Existing legacy cleanup tests and
-rollback-safe legacy land/water promotion remain unchanged. Do not run legacy cleanup against a
+work inputs until required validation/reproduction is complete. Established workflow cleanup now
+retains reusable caches by default; rollback-safe land/water promotion is preserved. Do not run cleanup against a
 custom root that also contains the new durable namespace.
 
 
@@ -117,16 +153,15 @@ inputs. This is a measured reduction in hash calls, not a measured regional spee
 ## Manifest-backed paired orchestration
 
 `process(ViewshedRequest(...))` validates a simple run ID and checks manifest identity **before**
-execution or cleanup. Reusing an ID with different configuration/stages requires `force=True`;
-`resume=True` alone is not overwrite authorization. A same-identity invocation may refresh its
-manifest after normal cache-aware execution.
+execution or cleanup. A different configuration or stage selection requires a new run ID.
+A same-identity invocation can refresh its manifest after normal cache-aware execution.
 
 Complete-run resume validates the durable generation receipt, typed products, metadata and
 currently available input identity before accepting the stored output checksums. Permitted
 input pruning remains supported by the retained receipt. Invalid generation evidence fails
-without running stages or replacing the manifest. Partial runs have no equivalent complete
-generation contract, so resume re-enters stage-specific checks instead of skipping from a
-manifest checksum alone. No stage formulas or paired cleanup rules change.
+without running stages or replacing the manifest. A completed subset of stages can resume
+after verifying its current input fingerprints and expected output checksums. An interrupted
+or failed invocation requires explicit recovery.
 
 Partial-run manifests use schema version 3 to record canonical local input checksums, including
 missing inputs and shapefile sidecars. Partial resume rejects changed/missing input identity and
@@ -134,3 +169,28 @@ historical manifests without that inventory before entering stage checks. It doe
 certify older cached outputs. Rebuild affected producers with their explicit overwrite controls
 or a fresh workspace, then create a new manifest. Remote source freshness is not certified by
 local checksum validation.
+
+## Explicit direct-transmission workflow
+
+`viewshed-toolkit transmission --config request.json --stage prepare|score|run|validate` selects
+the separate versioned scenario workflow registered in `TRANSMISSION_STAGES`. It neither acquires
+inputs nor overwrites/promotes legacy outputs. Completion requires matched input/configuration/code
+identity and validated source partitions. Failed generations remain incomplete with evidence
+preserved. See [direct transmission](direct-transmission.md) for schema and lifecycle details.
+
+### Persistent explicit-transmission tiles
+
+The opt-in `transmission-tiles` workflow plans provisioned inputs, preprocesses each required canonical
+parent once into immutable compressed storage tiles, then reads those tiles for weights. It has no
+acquisition dependency or implicit cleanup. A completion ledger rejects unwritten/deleted chunks;
+explicit resume validates receipts, and explicit recovery refuses live owners or committed corruption.
+The [persistent workflow](direct-transmission.md#persistent-xarray-tile-preparation-and-scoring) retains
+full-source observer support, source-relative sampling, original ray coordinates, conservative terrain
+support and numerical census gates. Final source evidence and one prepared store remain local.
+
+An explicit `shared_study.config_path` profile selects native R7 reporting targets independently
+from `land_source` and `water_source` observer memberships. Mixed source cells can appear in both
+roles. The owner-declared source extent and physical context are verified before preparation;
+source raster paths still need full coverage across the configured LOS/AOI margin. The historical
+standalone bbox policy applies when no shared study is selected. Shared selection changes cache
+identity and does not change cleanup or promotion scope.

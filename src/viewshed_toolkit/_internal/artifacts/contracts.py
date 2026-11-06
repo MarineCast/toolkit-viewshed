@@ -144,6 +144,7 @@ class RunManifest:
     code_revision: str | None = None
     schema_version: str = "1"
     stage_signature: str | None = None
+    input_fingerprints: Mapping[str, Any] | None = None
     data_snapshot: DataSnapshotMetadata | None = None
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 

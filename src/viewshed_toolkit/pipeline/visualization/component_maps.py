@@ -27,28 +27,88 @@ def _stable_element_ids(element: Any, prefix: str) -> None:
 
 
 def export_component_map(app: AppConfig, *, source_type: str, factor: str = "static") -> Path:
+    """Export a single target-support map."""
+    return export_component_maps(app, source_type=source_type, factors=(factor,))[factor]
+
+
+def export_component_maps(
+    app: AppConfig, *, source_type: str, factors: tuple[str, ...] | None = None
+) -> dict[str, Path]:
+    """Export one target-support map per requested factor from a shared Parquet scan.
+
+    Each map groups stored pairs by target H3. The canopy mean uses only land pairs
+    with positive terrain support. Color caps apply to rendering only.
+    """
+    from ..config.study import validate_study_app
+
+    validate_study_app(app)
     columns = {
         "static": "weight_static_viewability",
         "terrain": "weight_terrain",
         "canopy": "weight_vegetation",
         "distance": "weight_distance",
     }
-    if factor not in columns or (factor == "canopy" and source_type == "water"):
-        raise ValueError("Requested map factor is unavailable for this source role")
-    values = pl.col(columns[factor])
-    if factor == "canopy":
-        values = values.filter(pl.col("weight_terrain") > 0)
+    if factors is None:
+        factors = ("terrain", "distance", *(("canopy",) if source_type == "land" else ()), "static")
+    factors = tuple(dict.fromkeys(factors))
+    for factor in factors:
+        if factor not in columns or (factor == "canopy" and source_type == "water"):
+            raise ValueError("Requested map factor is unavailable for this source role")
+    expressions = []
+    for factor in factors:
+        values = pl.col(columns[factor])
+        if factor == "canopy":
+            values = values.filter(pl.col("weight_terrain") > 0)
+        expressions.append(values.mean().alias(f"mean_{factor}_support"))
     path = component_path(app, "static", source_type)
     frame = (
-        pl.read_parquet(path)
+        pl.scan_parquet(path)
         .group_by("target_h3")
         .agg(
-            values.mean().alias("mean_static_support"),
+            *expressions,
             pl.col("source_h3").n_unique().alias("source_cells"),
             (pl.col("weight_terrain") > 0).sum().alias("terrain_supported_sources"),
         )
         .sort("target_h3")
+        .collect(engine="streaming")
     )
+    geometries: dict[str, Any] = {}
+    west, south, east, north = bbox_from_config(app.raw_config)
+    for cell in frame["target_h3"]:
+        polygon = cell_to_polygon(cell)
+        geometries[cell] = mapping(polygon)
+        bounds = polygon.bounds
+        west, south = min(west, bounds[0]), min(south, bounds[1])
+        east, north = max(east, bounds[2]), max(north, bounds[3])
+    outputs = {}
+    for factor in factors:
+        factor_frame = frame.select(
+            "target_h3",
+            pl.col(f"mean_{factor}_support").alias("mean_static_support"),
+            "source_cells",
+            "terrain_supported_sources",
+        )
+        outputs[factor] = _render_component_map(
+            app,
+            source_type=source_type,
+            factor=factor,
+            frame=factor_frame,
+            geometries=geometries,
+            target_bounds=(west, south, east, north),
+        )
+    return outputs
+
+
+def _render_component_map(
+    app: AppConfig,
+    *,
+    source_type: str,
+    factor: str,
+    frame: pl.DataFrame,
+    geometries: dict[str, Any],
+    target_bounds: tuple[float, float, float, float],
+) -> Path:
+    path = component_path(app, "static", source_type)
     west, south, east, north = bbox_from_config(app.raw_config)
     map_ = folium.Map(
         location=[(south + north) / 2, (west + east) / 2], tiles=None, prefer_canvas=True
@@ -65,7 +125,7 @@ def export_component_map(app: AppConfig, *, source_type: str, factor: str = "sta
     features = [
         {
             "type": "Feature",
-            "geometry": mapping(cell_to_polygon(row["target_h3"])),
+            "geometry": geometries[row["target_h3"]],
             "properties": row,
         }
         for row in frame.to_dicts()
@@ -109,12 +169,7 @@ def export_component_map(app: AppConfig, *, source_type: str, factor: str = "sta
             "</div></div>"
         )
     )
-    target_bounds = [cell_to_polygon(cell).bounds for cell in frame["target_h3"]]
-    if target_bounds:
-        west = min(west, *(bounds[0] for bounds in target_bounds))
-        south = min(south, *(bounds[1] for bounds in target_bounds))
-        east = max(east, *(bounds[2] for bounds in target_bounds))
-        north = max(north, *(bounds[3] for bounds in target_bounds))
+    west, south, east, north = target_bounds
     map_.fit_bounds([[south, west], [north, east]])
     output = component_root(app) / "maps" / f"{source_type}_{factor}_support.html"
     output.parent.mkdir(parents=True, exist_ok=True)

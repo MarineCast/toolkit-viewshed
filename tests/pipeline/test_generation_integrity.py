@@ -170,9 +170,11 @@ def test_partition_snapshot_avoids_repeated_lookup_hash_and_next_run_invalidates
 
 
 @pytest.fixture
-def generation(tmp_path):
+def generation(tmp_path, request):
     config = coastal_fixture(tmp_path)
     raw = yaml.safe_load(config.read_text())
+    if getattr(request, "param", None) == "compact":
+        raw["run"]["cleanup_policy"] = "compact"
     raw["paths"].update(
         final_visibility_path=str(tmp_path / "work/terrain/all.parquet"),
         partitioned_visibility_dir=str(tmp_path / "work/terrain/partitions"),
@@ -537,7 +539,11 @@ def test_view_score_report_failure_preserves_previous_publication(generation, mo
     assert all(path.read_bytes() == b"previous durable publication" for path in outputs)
 
 
-@pytest.mark.parametrize("mutation", ["none", "pruned", "dem", "receipt", "sidecar"])
+@pytest.mark.parametrize(
+    ("mutation", "generation"),
+    [("none", None), ("pruned", "compact"), ("dem", None), ("receipt", None), ("sidecar", None)],
+    indirect=["generation"],
+)
 def test_process_resume_validates_retained_generation(generation, monkeypatch, mutation):
     from viewshed_toolkit._internal.artifacts import RunManifest
     from viewshed_toolkit.pipeline.api import service
@@ -559,6 +565,11 @@ def test_process_resume_validates_retained_generation(generation, monkeypatch, m
     refs = service._artifact_refs(expected, request=request, config_hash=app.config_hash)
     paths = final_artifact_paths(config)
     manifest = app.paths.map_dir / f"h3r{paths.h3_resolution}" / "manifests/resume.json"
+    if mutation == "pruned":
+        # Successful orchestration captures fingerprints after its own cleanup.
+        app.paths.regional_dem_path.unlink()
+        app.paths.canopy_height_path.unlink()
+        paths.terrain_weights.unlink()
     RunManifest(
         run_id=request.run_id,
         workflow=identity.workflow,
@@ -568,12 +579,9 @@ def test_process_resume_validates_retained_generation(generation, monkeypatch, m
         stage_signature=service._stage_signature(
             app.config_hash, request.stages, identity=identity
         ),
+        input_fingerprints=service._run_input_fingerprints(app, request.stages),
     ).write(manifest)
-    if mutation == "pruned":
-        app.paths.regional_dem_path.unlink()
-        app.paths.canopy_height_path.unlink()
-        paths.terrain_weights.unlink()
-    elif mutation == "dem":
+    if mutation == "dem":
         app.paths.regional_dem_path.write_bytes(b"changed prepared DEM")
     elif mutation == "receipt":
         (paths.land_static_weights.parent / "viewshed-generation.json").unlink()
@@ -584,6 +592,9 @@ def test_process_resume_validates_retained_generation(generation, monkeypatch, m
     if mutation in {"none", "pruned"}:
         assert service.process(request).skipped
     else:
-        with pytest.raises(ValueError):
-            service.process(request)
+        for force in (False, True):
+            with pytest.raises(ValueError):
+                service.process(
+                    service.ViewshedRequest(config, run_id="resume", resume=True, force=force)
+                )
     assert manifest.read_bytes() == before

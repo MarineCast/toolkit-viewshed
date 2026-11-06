@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import logging
 import math
+import json
+import hashlib
+import uuid
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -17,18 +20,23 @@ from typing import Any, Sequence
 
 import geopandas as gpd
 import pandas as pd
-from shapely.geometry import Polygon, box
+import polars as pl
+import shapely
+from shapely.geometry import MultiPolygon, Polygon, box
 
 from viewshed_toolkit._internal.geo.geometry import (
     safe_polygonal_difference,
     safe_polygonal_intersection,
     safe_polygonal_union,
+    remember_validated_geometry,
 )
 from viewshed_toolkit._internal.geo.h3 import bbox_h3_cells as core_bbox_h3_cells
 from viewshed_toolkit._internal.geo.h3 import (
     cell_to_latlng,
     grid_disk_set,
 )
+from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
+from viewshed_toolkit._internal.data.parquet import atomic_sink_parquet
 
 from ...config import (
     VIEWSHED_DATA_ROOT,
@@ -39,6 +47,19 @@ from ...config import (
 LOGGER = logging.getLogger(__name__)
 CRS_WGS84 = "EPSG:4326"
 NATURAL_EARTH_LAND_URL = "https://naturalearth.s3.amazonaws.com/10m_physical/ne_10m_land.zip"
+DOMAIN_GEOMETRY_ALGORITHM_VERSION = "shoreline_fill_difference_v3"
+_DOMAIN_CACHE: dict[tuple[str, str], DomainGeometries] = {}
+_CLIPPED_UNION_CACHE: dict[tuple[str, str], Any] = {}
+
+
+def _write_cache_receipt(path: Path, payload: dict[str, Any]) -> None:
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, sort_keys=True))
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
 
 AVG_H3_EDGE_LENGTH_KM: dict[int, float] = {
     0: 1281.256011,
@@ -139,17 +160,59 @@ def _load_optional_clipped_union(
     *,
     bbox_gdf: gpd.GeoDataFrame,
     label: str,
+    cache_dir: Path | None = None,
 ) -> tuple[Any | None, str]:
     if path is None:
         return None, "none"
     if not path.exists():
         return None, f"missing:{path}"
 
+    def signature() -> dict[str, Any]:
+        members = (
+            sorted(path.parent.glob(path.stem + ".*")) if path.suffix.lower() == ".shp" else [path]
+        )
+        return dict(
+            algorithm="clipped_polygonal_union_v1",
+            sources={
+                str(p.resolve()): checksum_unchanged_file(p, raw_bytes=True)
+                for p in members
+                if p.is_file()
+            },
+            bbox=bbox_gdf.geometry.iloc[0].wkb_hex,
+            geos=shapely.geos_version_string,
+        )
+
+    contract = signature() if cache_dir is not None else None
+    cache = receipt = None
+    fingerprint = ""
+    if contract is not None:
+        fingerprint = hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()
+        cache = cache_dir / f"{fingerprint}.parquet"
+        receipt = cache.with_suffix(".json")
+        try:
+            metadata = json.loads(receipt.read_text())
+            if not isinstance(metadata, dict):
+                raise ValueError("Invalid geometry cache receipt")
+            digest = checksum_unchanged_file(cache, raw_bytes=True)
+            if metadata.get("contract") == contract and metadata.get("sha256") == digest:
+                key = (fingerprint, digest)
+                if key in _CLIPPED_UNION_CACHE:
+                    return _CLIPPED_UNION_CACHE[key], str(path)
+                geometry = shapely.from_wkb(pl.read_parquet(cache)["wkb"][0])
+                if not geometry.is_empty and geometry.geom_type in {"Polygon", "MultiPolygon"}:
+                    if len(_CLIPPED_UNION_CACHE) >= 4:
+                        _CLIPPED_UNION_CACHE.pop(next(iter(_CLIPPED_UNION_CACHE)))
+                    _CLIPPED_UNION_CACHE[key] = geometry
+                    remember_validated_geometry(geometry)
+                    return geometry, str(path)
+        except (OSError, ValueError, KeyError, IndexError, pl.exceptions.PolarsError):
+            pass
+
     gdf = _read_vector_any(path)
-    if gdf.empty:
-        return None, f"empty:{path}"
     if gdf.crs is None:
         raise ValueError(f"{label} polygon has no CRS metadata: {path}")
+    if gdf.empty:
+        return None, f"empty:{path}"
 
     source = gdf.to_crs(CRS_WGS84)
     try:
@@ -158,6 +221,15 @@ def _load_optional_clipped_union(
         if "No polygonal geometry remains" in str(exc):
             return None, f"empty_after_clip:{path}"
         raise ValueError(f"Could not normalize {label} polygon source {path}: {exc}") from exc
+    if cache is not None and receipt is not None:
+        if signature() != contract:
+            raise ValueError(f"{label} polygon changed during union preparation")
+        atomic_sink_parquet(pl.DataFrame({"wkb": [union.wkb]}).lazy(), cache, overwrite=True)
+        digest = checksum_unchanged_file(cache, raw_bytes=True)
+        _write_cache_receipt(receipt, dict(contract=contract, sha256=digest))
+        if len(_CLIPPED_UNION_CACHE) >= 4:
+            _CLIPPED_UNION_CACHE.pop(next(iter(_CLIPPED_UNION_CACHE)))
+        _CLIPPED_UNION_CACHE[(fingerprint, digest)] = union
     return union, str(path)
 
 
@@ -182,23 +254,34 @@ def _land_domain_geometry(
         label="Natural Earth water minus canonical water",
     )
     boundary_zone = bbox_polygon.boundary.buffer(1e-9)
-    water_parts = [water_union]
+    # A \ (W union O) = (A \ W) \ O. Preserve the same shoreline-fill
+    # geometry without dissolving every component of the regional water union.
+    land = safe_polygonal_difference(
+        bbox_polygon, water_union, label="land domain as bbox minus canonical water"
+    )
+    boundary_parts = []
     if not offshore_water.is_empty:
         for geom in getattr(offshore_water, "geoms", [offshore_water]):
             if not geom.is_empty and geom.intersects(boundary_zone):
-                water_parts.append(geom)
+                boundary_parts.append(geom)
+    if boundary_parts:
+        # These are a subset of the disjoint parts of one valid offshore
+        # geometry. Assembly preserves them exactly without a dissolve.
+        boundary_water = (
+            boundary_parts[0] if len(boundary_parts) == 1 else MultiPolygon(boundary_parts)
+        )
+        land = safe_polygonal_difference(
+            land, boundary_water, label="land minus boundary-connected offshore water"
+        )
+    return land
 
-    filled_water_union = safe_polygonal_union(gpd.GeoSeries(water_parts, crs=CRS_WGS84))
-    filled_water = safe_polygonal_intersection(
-        filled_water_union,
-        bbox_polygon,
-        label="filled water clipped to bbox",
-    )
-    return safe_polygonal_difference(
-        bbox_polygon,
-        filled_water,
-        label="land domain as bbox minus filled water",
-    )
+
+def source_domain_polygon(runtime: Any) -> Any:
+    """Shared mode includes outside observers within LOS of reporting targets."""
+    from ...config.study import domain_polygons_from_raw
+
+    shared = domain_polygons_from_raw(runtime.raw_config, runtime.projected_crs)
+    return shared[1] if shared is not None else box(*runtime.bbox_wgs84)
 
 
 def target_domain_polygon(runtime: Any) -> Any:
@@ -209,6 +292,22 @@ def target_domain_polygon(runtime: Any) -> Any:
     margin. Buffering is performed in the configured projected CRS so degrees
     are never treated as metres.
     """
+
+    from ...config.study import domain_polygons_from_raw
+
+    shared = domain_polygons_from_raw(runtime.raw_config, runtime.projected_crs)
+    if shared is not None:
+        return shared[0]
+
+    from ...config.shared_study import runtime_memberships
+
+    shared = runtime_memberships(runtime.raw_config)
+    if shared is not None:
+        return (
+            gpd.read_parquet(shared["water_reporting"]["mask_path"])
+            .to_crs(4326)
+            .geometry.union_all()
+        )
 
     source_polygon = box(*runtime.bbox_wgs84)
     viewshed = runtime.raw_config.get("viewshed", {}) or {}
@@ -228,7 +327,142 @@ def target_domain_polygon(runtime: Any) -> Any:
     )
 
 
+def load_water_domain(runtime: Any, *, extent: str = "source") -> Any:
+    """Load water alone without constructing an unused regional land complement."""
+    if extent not in {"source", "target"}:
+        raise ValueError("extent must be 'source' or 'target'")
+    bbox_polygon = (
+        box(*runtime.bbox_wgs84) if extent == "source" else target_domain_polygon(runtime)
+    )
+    bbox_gdf = gpd.GeoDataFrame({"name": ["bbox"]}, geometry=[bbox_polygon], crs=CRS_WGS84)
+    value = (runtime.raw_config.get("paths", {}) or {}).get("water_polygon_path")
+    path = (
+        resolve_existing_or_relative_path(value, runtime.config_dir)
+        if value
+        else seascape_water_polygon_path()
+    )
+    water, _ = _load_optional_clipped_union(
+        path,
+        bbox_gdf=bbox_gdf,
+        label="Water",
+        cache_dir=(
+            Path(runtime.output_dir) / "geometry_cache/vector_unions"
+            if getattr(runtime, "output_dir", None)
+            else None
+        ),
+    )
+    if water is None:
+        return load_land_water_domains(runtime, extent=extent).water_domain
+    result = safe_polygonal_intersection(
+        water, bbox_polygon, label="canonical water clipped to bbox"
+    )
+    if result.is_empty:
+        raise ValueError("Water domain is empty after clipping/intersection.")
+    return result
+
+
 def load_land_water_domains(
+    runtime: Any,
+    *,
+    extent: str = "source",
+) -> DomainGeometries:
+    """Reuse exact domain WKB only with matching source bytes, extent and GEOS.
+
+    Unconfigured/fallback sources keep the original preparation path. Cache
+    corruption rebuilds from the owning source; retention never grants validity.
+    """
+    if extent not in {"source", "target"}:
+        raise ValueError("extent must be 'source' or 'target'")
+    configured = runtime.raw_config.get("paths", {}) or {}
+    if not getattr(runtime, "output_dir", None) or not all(
+        configured.get(key) for key in ("land_polygon_path", "water_polygon_path")
+    ):
+        return _build_land_water_domains(runtime, extent=extent)
+
+    def signature() -> dict[str, Any] | None:
+        files = {}
+        for key in ("land_polygon_path", "water_polygon_path"):
+            path = resolve_existing_or_relative_path(configured[key], runtime.config_dir)
+            if not path.is_file():
+                return None
+            members = (
+                sorted(path.parent.glob(path.stem + ".*"))
+                if path.suffix.lower() == ".shp"
+                else [path]
+            )
+            files[key] = {
+                str(p.resolve()): checksum_unchanged_file(p, raw_bytes=True)
+                for p in members
+                if p.is_file()
+            }
+        bbox = box(*runtime.bbox_wgs84) if extent == "source" else target_domain_polygon(runtime)
+        return dict(
+            algorithm=DOMAIN_GEOMETRY_ALGORITHM_VERSION,
+            sources=files,
+            extent=extent,
+            bbox_wkb=bbox.wkb_hex,
+            geos=shapely.geos_version_string,
+        )
+
+    contract = signature()
+    if contract is None:
+        return _build_land_water_domains(runtime, extent=extent)
+    fingerprint = hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()
+    cache = (
+        Path(runtime.output_dir)
+        / "geometry_cache"
+        / "land_water_domains"
+        / f"{fingerprint}.parquet"
+    )
+    receipt = cache.with_suffix(".json")
+    try:
+        metadata = json.loads(receipt.read_text())
+        if not isinstance(metadata, dict):
+            raise ValueError("Invalid geometry cache receipt")
+        digest = checksum_unchanged_file(cache, raw_bytes=True)
+        if metadata.get("contract") == contract and metadata.get("sha256") == digest:
+            key = (fingerprint, digest)
+            if key in _DOMAIN_CACHE:
+                return _DOMAIN_CACHE[key]
+            row = pl.read_parquet(cache).row(0, named=True)
+            geometries = [shapely.from_wkb(row[name]) for name in ("bbox", "land", "water")]
+            # The producing safe geometry operations validate topology before
+            # persistence. Matching contract + full WKB checksum proves these
+            # are the same validated bytes; do not repeat regional topology scans.
+            if all(
+                not g.is_empty and g.geom_type in {"Polygon", "MultiPolygon"} for g in geometries
+            ):
+                result = DomainGeometries(*geometries, row["land_source"], row["water_source"])
+                for geometry in geometries:
+                    remember_validated_geometry(geometry)
+                if len(_DOMAIN_CACHE) >= 4:
+                    _DOMAIN_CACHE.pop(next(iter(_DOMAIN_CACHE)))
+                _DOMAIN_CACHE[key] = result
+                return result
+    except (OSError, ValueError, KeyError, IndexError, pl.exceptions.PolarsError):
+        pass
+    result = _build_land_water_domains(runtime, extent=extent)
+    if signature() != contract:
+        raise ValueError("Domain sources changed during geometry preparation")
+    frame = pl.DataFrame(
+        dict(
+            bbox=[result.bbox_polygon.wkb],
+            land=[result.land_domain.wkb],
+            water=[result.water_domain.wkb],
+            land_source=[result.land_source],
+            water_source=[result.water_source],
+        )
+    )
+    atomic_sink_parquet(frame.lazy(), cache, overwrite=True)
+    metadata = dict(contract=contract, sha256=checksum_unchanged_file(cache, raw_bytes=True))
+    _write_cache_receipt(receipt, metadata)
+    if len(_DOMAIN_CACHE) >= 4:
+        _DOMAIN_CACHE.pop(next(iter(_DOMAIN_CACHE)))
+    _DOMAIN_CACHE[(fingerprint, metadata["sha256"])] = result
+    return result
+
+
+def _build_land_water_domains(
     runtime: Any,
     *,
     extent: str = "source",
@@ -237,7 +471,7 @@ def load_land_water_domains(
         raise ValueError("extent must be 'source' or 'target'")
     paths_cfg = runtime.raw_config.get("paths", {}) or {}
     bbox_polygon = (
-        box(*runtime.bbox_wgs84) if extent == "source" else target_domain_polygon(runtime)
+        source_domain_polygon(runtime) if extent == "source" else target_domain_polygon(runtime)
     )
     bbox_gdf = gpd.GeoDataFrame({"name": ["bbox"]}, geometry=[bbox_polygon], crs=CRS_WGS84)
 
@@ -247,11 +481,24 @@ def load_land_water_domains(
         if water_path_value
         else seascape_water_polygon_path()
     )
+    shared_mode = "marinecast_study" in runtime.raw_config
     water_union, water_source = _load_optional_clipped_union(
         water_path,
         bbox_gdf=bbox_gdf,
         label="Water",
+        cache_dir=(
+            Path(runtime.output_dir) / "geometry_cache/vector_unions"
+            if getattr(runtime, "output_dir", None)
+            else None
+        ),
     )
+    if shared_mode:
+        from ...config.reporting import load_reporting_support
+
+        support = load_reporting_support(runtime.raw_config, runtime.projected_crs)
+        if extent == "target":
+            water_union = support.reporting_water
+            water_source = str(support.mask_path)
 
     land_path_value = paths_cfg.get("land_polygon_path")
     land_source_path: Path | None = None
@@ -268,8 +515,22 @@ def load_land_water_domains(
         land_source_path,
         bbox_gdf=bbox_gdf,
         label="Land",
+        cache_dir=(
+            Path(runtime.output_dir) / "geometry_cache/vector_unions"
+            if getattr(runtime, "output_dir", None)
+            else None
+        ),
     )
 
+    if shared_mode:
+        if not water_path.is_file() or land_source_path is None or not land_source_path.is_file():
+            raise ValueError(
+                "Shared study requires explicit marine-water and land geometry; no fallback"
+            )
+        # Readable, declared geometry can have an empty intersection in this
+        # extent. An all-water target rectangle may have land observers outside.
+        land_union = Polygon() if land_union is None else land_union
+        water_union = Polygon() if water_union is None else water_union
     if water_union is None and land_union is None:
         raise FileNotFoundError(
             "Could not build land/water domains. Provide paths.water_polygon_path, "
@@ -297,10 +558,20 @@ def load_land_water_domains(
             label="land domain as bbox minus water",
         )
         land_source = "bbox_minus_water"
+    elif shared_mode:
+        land_domain = (
+            Polygon()
+            if land_union.is_empty
+            else safe_polygonal_intersection(
+                land_union, bbox_polygon, label="shared explicit land support"
+            )
+        )
     else:
         land_domain = _land_domain_geometry(bbox_polygon, land_union, water_union)
 
-    if land_domain.is_empty:
+    if land_domain.is_empty and not (
+        shared_mode or (extent == "target" and runtime.raw_config.get("shared_study"))
+    ):
         raise ValueError("Land domain is empty after clipping/intersection.")
     if water_domain.is_empty:
         raise ValueError("Water domain is empty after clipping/intersection.")

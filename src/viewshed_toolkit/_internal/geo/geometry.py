@@ -2,15 +2,68 @@
 
 from __future__ import annotations
 
-import logging
+import weakref
 from typing import Any
 
 import geopandas as gpd
+import shapely
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import unary_union
 
-LOGGER = logging.getLogger(__name__)
 CRS_WGS84 = "EPSG:4326"
+_VALID_GEOMETRIES: dict[int, weakref.ReferenceType[Any]] = {}
+
+
+def _geometry_is_valid(geom: Any) -> bool:
+    """Reuse validity only for the same live, immutable Shapely 2 geometry."""
+    key = id(geom)
+    previous = _VALID_GEOMETRIES.get(key)
+    if previous is not None and previous() is geom:
+        return True
+    if not geom.is_valid:
+        return False
+    remember_validated_geometry(geom)
+    return True
+
+
+def remember_validated_geometry(geom: Any) -> None:
+    """Memoize topology proved by validation or a verified validated-cache checksum.
+
+    Callers must already have that proof. Geometry objects are immutable and
+    weak references prevent object-ID reuse from certifying a different value.
+    """
+    key = id(geom)
+
+    def discard(reference: weakref.ReferenceType[Any]) -> None:
+        if _VALID_GEOMETRIES.get(key) is reference:
+            _VALID_GEOMETRIES.pop(key, None)
+
+    if len(_VALID_GEOMETRIES) >= 4096:
+        _VALID_GEOMETRIES.clear()
+    _VALID_GEOMETRIES[key] = weakref.ref(geom, discard)
+
+
+def _componentwise_intersection(left: Any, right: Any) -> Any:
+    """Distribute a clip over disjoint polygon components without a global dissolve."""
+    if not isinstance(left, MultiPolygon):
+        return left.intersection(right)
+    parts = shapely.get_parts(left)
+    shapely.prepare(right)
+    contained = shapely.covers(right, parts)
+    if contained.all():
+        return left
+    selected = shapely.intersects(right, parts)
+    output = list(parts[contained])
+    for part in parts[selected & ~contained]:
+        clipped = polygons_from_any(part.intersection(right))
+        if isinstance(clipped, Polygon):
+            output.append(clipped)
+        elif isinstance(clipped, MultiPolygon):
+            output.extend(clipped.geoms)
+    if not output:
+        return Polygon()
+    return output[0] if len(output) == 1 else MultiPolygon(output)
+
 
 try:
     from shapely import make_valid as _make_valid  # type: ignore
@@ -24,6 +77,8 @@ except Exception:  # pragma: no cover
 def safe_make_valid(geom: Any) -> Any:
     """Repair a Shapely geometry using the best available Shapely API."""
     if geom is None or geom.is_empty:
+        return geom
+    if _geometry_is_valid(geom):
         return geom
 
     if _make_valid is not None:
@@ -67,7 +122,7 @@ def safe_polygonal_union(
     clip_polygon = None
     if clip_geometry is not None:
         clip_polygon = polygons_from_any(safe_make_valid(clip_geometry))
-        if clip_polygon is None or clip_polygon.is_empty or not clip_polygon.is_valid:
+        if clip_polygon is None or clip_polygon.is_empty or not _geometry_is_valid(clip_polygon):
             raise ValueError("Clip geometry could not be repaired to a valid polygon.")
 
     parts: list[Polygon | MultiPolygon] = []
@@ -75,15 +130,17 @@ def safe_polygonal_union(
         polygonal = polygons_from_any(safe_make_valid(value))
         if polygonal is None or polygonal.is_empty:
             continue
-        if not polygonal.is_valid:
+        if not _geometry_is_valid(polygonal):
             raise ValueError("Input geometry could not be repaired before union.")
         if clip_polygon is not None:
             if not polygonal.intersects(clip_polygon):
                 continue
-            polygonal = polygons_from_any(safe_make_valid(polygonal.intersection(clip_polygon)))
+            polygonal = polygons_from_any(
+                safe_make_valid(_componentwise_intersection(polygonal, clip_polygon))
+            )
             if polygonal is None or polygonal.is_empty:
                 continue
-            if not polygonal.is_valid:
+            if not _geometry_is_valid(polygonal):
                 raise ValueError("Clipped geometry could not be repaired before union.")
         parts.append(polygonal)
 
@@ -97,21 +154,28 @@ def safe_polygonal_union(
             polygonal = polygons_from_any(safe_make_valid(value))
             if polygonal is None or polygonal.is_empty:
                 continue
-            if not polygonal.is_valid:
+            if not _geometry_is_valid(polygonal):
                 raise ValueError("Projected geometry could not be repaired before union.")
             parts.append(polygonal)
         if not parts:
             raise ValueError("No polygonal geometry remains after reprojection.")
 
     try:
-        merged = unary_union(parts)
+        # A repaired single feature already represents its complete union.
+        # Dissolving a regional MultiPolygon again can dominate preparation.
+        if len(parts) == 1:
+            merged = parts[0]
+        elif hasattr(shapely, "disjoint_subset_union_all") and shapely.geos_version >= (3, 12, 0):
+            merged = shapely.disjoint_subset_union_all(shapely.get_parts(parts))
+        else:
+            merged = unary_union(parts)
     except Exception as exc:
         raise ValueError(
             "Polygonal union failed after geometry repair, clipping, and reprojection."
         ) from exc
 
     merged = polygons_from_any(safe_make_valid(merged))
-    if merged is None or merged.is_empty or not merged.is_valid:
+    if merged is None or merged.is_empty or not _geometry_is_valid(merged):
         raise ValueError("Polygonal union did not produce a valid polygon geometry.")
     return merged
 
@@ -151,10 +215,18 @@ def _safe_polygonal_binary(
         raise ValueError(f"{label}: left geometry has no valid polygonal component.")
     if right_polygon is None or right_polygon.is_empty:
         raise ValueError(f"{label}: right geometry has no valid polygonal component.")
-    if not left_polygon.is_valid or not right_polygon.is_valid:
+    if not _geometry_is_valid(left_polygon) or not _geometry_is_valid(right_polygon):
         raise ValueError(f"{label}: an input could not be repaired to valid polygonal geometry.")
     try:
-        result = getattr(left_polygon, operation)(right_polygon)
+        if operation == "intersection":
+            if isinstance(right_polygon, MultiPolygon) and not isinstance(
+                left_polygon, MultiPolygon
+            ):
+                result = _componentwise_intersection(right_polygon, left_polygon)
+            else:
+                result = _componentwise_intersection(left_polygon, right_polygon)
+        else:
+            result = getattr(left_polygon, operation)(right_polygon)
     except Exception as exc:
         raise ValueError(f"{label}: GEOS {operation} failed after repairing both inputs.") from exc
     if result is None or result.is_empty:
@@ -162,55 +234,9 @@ def _safe_polygonal_binary(
     polygonal = polygons_from_any(safe_make_valid(result))
     if polygonal is None or polygonal.is_empty:
         return Polygon()
-    if not polygonal.is_valid:
+    if not _geometry_is_valid(polygonal):
         raise ValueError(f"{label}: result could not be repaired to valid polygonal geometry.")
     return polygonal
-
-
-def _dist2(a: tuple[float, float], b: tuple[float, float]) -> float:
-    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
-
-
-def _clean_ring(coords: Any, tol: float = 1e-9, min_unique: int = 3) -> list | None:
-    if coords is None:
-        return None
-    pts = list(coords)
-    if len(pts) < 4:
-        return None
-
-    tol2 = tol * tol
-    out = [pts[0]]
-    for p in pts[1:]:
-        if _dist2(p, out[-1]) > tol2:
-            out.append(p)
-
-    if _dist2(out[0], out[-1]) > tol2:
-        out.append(out[0])
-
-    changed = True
-    while changed and len(out) >= 4:
-        changed = False
-        new_out = [out[0]]
-        for i in range(1, len(out) - 1):
-            prev_pt = new_out[-1]
-            cur_pt = out[i]
-            next_pt = out[i + 1]
-            if _dist2(prev_pt, next_pt) <= tol2:
-                changed = True
-                continue
-            new_out.append(cur_pt)
-        new_out.append(out[-1])
-        if _dist2(new_out[0], new_out[-1]) > tol2:
-            new_out.append(new_out[0])
-        out = new_out
-
-    unique = []
-    for p in out[:-1]:
-        if not unique or _dist2(p, unique[-1]) > tol2:
-            unique.append(p)
-    if len(unique) < min_unique:
-        return None
-    return out
 
 
 def polygons_from_any(geom: Any) -> Polygon | MultiPolygon | None:
@@ -224,6 +250,8 @@ def polygons_from_any(geom: Any) -> Polygon | MultiPolygon | None:
         parts = [g for g in geom.geoms if g is not None and not g.is_empty]
         if not parts:
             return None
+        if len(parts) > 1 and len(parts) == len(geom.geoms):
+            return geom
         return MultiPolygon(parts) if len(parts) > 1 else parts[0]
     if gt == "GeometryCollection":
         polys = []
@@ -239,60 +267,3 @@ def polygons_from_any(geom: Any) -> Polygon | MultiPolygon | None:
             return None
         return MultiPolygon(polys) if len(polys) > 1 else polys[0]
     return None
-
-
-def _clean_polygon(poly: Polygon, tol: float = 1e-9) -> Polygon | None:
-    if poly is None or poly.is_empty:
-        return None
-    ext = _clean_ring(list(poly.exterior.coords), tol=tol)
-    if ext is None:
-        return None
-
-    new_holes = []
-    for ring in poly.interiors:
-        cleaned = _clean_ring(list(ring.coords), tol=tol)
-        if cleaned is None:
-            continue
-        try:
-            hole_poly = Polygon(cleaned)
-            if hole_poly.is_empty or hole_poly.area <= 0:
-                continue
-        except Exception:
-            continue
-        new_holes.append(cleaned)
-
-    rebuilt = Polygon(ext, new_holes)
-    if not rebuilt.is_valid:
-        rebuilt2 = polygons_from_any(safe_make_valid(rebuilt))
-        if rebuilt2 is None:
-            return None
-        if rebuilt2.geom_type == "MultiPolygon":
-            rebuilt2 = max(rebuilt2.geoms, key=lambda g: g.area)
-        rebuilt = rebuilt2
-    return rebuilt if rebuilt is not None and not rebuilt.is_empty else None
-
-
-def clean_geometry(geom: Any, tol: float = 1e-9) -> Polygon | MultiPolygon | None:
-    """Clean degenerate rings and return polygonal geometry only."""
-    if geom is None or geom.is_empty:
-        return None
-    gt = geom.geom_type
-    if gt == "Polygon":
-        return _clean_polygon(geom, tol=tol)
-    if gt == "MultiPolygon":
-        parts = []
-        for p in geom.geoms:
-            cp = _clean_polygon(p, tol=tol)
-            if cp is not None and not cp.is_empty:
-                parts.append(cp)
-        if not parts:
-            return None
-        mp = MultiPolygon(parts) if len(parts) > 1 else parts[0]
-        if not mp.is_valid:
-            return polygons_from_any(safe_make_valid(mp))
-        return mp
-
-    fixed = polygons_from_any(safe_make_valid(geom))
-    if fixed is None:
-        return None
-    return clean_geometry(fixed, tol=tol)

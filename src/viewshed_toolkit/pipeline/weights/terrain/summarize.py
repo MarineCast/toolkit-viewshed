@@ -151,6 +151,10 @@ def domain_target_water_area_by_h3(app: AppConfig, h3_resolution: int) -> pl.Dat
     used for this denominator.
     """
 
+    if "marinecast_study" in app.raw_config:
+        from ...config.reporting import load_reporting_support
+
+        load_reporting_support(app.raw_config, app.viewshed.crs_projected)
     # Resolve experiment artifacts from the active AppConfig rather than
     # reloading app.config_path. Notebook-driven runs intentionally replace
     # output_dir and H3 settings in memory while retaining a stable base YAML.
@@ -295,6 +299,34 @@ def domain_target_water_area_by_h3(app: AppConfig, h3_resolution: int) -> pl.Dat
     return out.clone()
 
 
+def _empty_h3_result(include_geometry: bool) -> pd.DataFrame | gpd.GeoDataFrame:
+    columns = [
+        "target_h3_cell",
+        "visible_sampled_pixel_count",
+        "visible_observer_pixel_count_sum",
+        "los_distance_weight_sum",
+        "visible_from_n_points",
+        "nearest_view_distance_km",
+        "mean_view_distance_km",
+        "farthest_view_distance_km",
+        "visible_area_km2_approx_sum",
+        "target_water_area_km2",
+        "any_observer_support_fraction",
+        "union_visible_target_fraction",
+        "joint_los_fraction",
+        "distance_weighted_los_fraction",
+        "observer_sample_fraction",
+        "visible_area_fraction",
+        "terrain_visibility_support",
+        "sample_points_requested",
+        "sample_points_actual",
+    ]
+    if include_geometry:
+        columns.append("geometry")
+        return gpd.GeoDataFrame(columns=columns, geometry="geometry", crs=CRS_WGS84)
+    return pd.DataFrame(columns=columns)
+
+
 def cumulative_visible_arrays_to_h3(
     visible_count: np.ndarray,
     distance_weight_sum: np.ndarray,
@@ -325,31 +357,7 @@ def cumulative_visible_arrays_to_h3(
     sparse_global_cols: np.ndarray | None = None,
 ) -> pd.DataFrame | gpd.GeoDataFrame:
     def empty_result() -> pd.DataFrame | gpd.GeoDataFrame:
-        columns = [
-            "target_h3_cell",
-            "visible_sampled_pixel_count",
-            "visible_observer_pixel_count_sum",
-            "los_distance_weight_sum",
-            "visible_from_n_points",
-            "nearest_view_distance_km",
-            "mean_view_distance_km",
-            "farthest_view_distance_km",
-            "visible_area_km2_approx_sum",
-            "target_water_area_km2",
-            "any_observer_support_fraction",
-            "union_visible_target_fraction",
-            "joint_los_fraction",
-            "distance_weighted_los_fraction",
-            "observer_sample_fraction",
-            "visible_area_fraction",
-            "terrain_visibility_support",
-            "sample_points_requested",
-            "sample_points_actual",
-        ]
-        if include_geometry:
-            columns.append("geometry")
-            return gpd.GeoDataFrame(columns=columns, geometry="geometry", crs=CRS_WGS84)
-        return pd.DataFrame(columns=columns)
+        return _empty_h3_result(include_geometry)
 
     if reference_shape is None or reference_crs is None or pixel_area_m2 is None:
         with rasterio.open(reference_raster_path) as src:
@@ -514,6 +522,42 @@ def cumulative_visible_arrays_to_h3(
             pl.col("visible_from_n_points_approx").alias("visible_from_n_points")
         )
 
+    return grouped_visible_to_h3(
+        grouped_pl,
+        h3_resolution=h3_resolution,
+        target_water_area=target_water_area,
+        pixel_area_m2=float(pixel_area_m2),
+        stride=stride,
+        aggregation_mode=aggregation_mode,
+        min_visible_sampled_pixel_count=min_visible_sampled_pixel_count,
+        min_visible_area_km2=min_visible_area_km2,
+        include_geometry=include_geometry,
+        n_observer_points=n_observer_points,
+        sample_points_requested=sample_points_requested,
+        sample_points_actual=sample_points_actual,
+        allowed_target_h3=allowed_target_h3,
+    )
+
+
+def grouped_visible_to_h3(
+    grouped_pl: pl.DataFrame,
+    *,
+    h3_resolution: int,
+    target_water_area: pl.DataFrame | None,
+    pixel_area_m2: float,
+    stride: int,
+    aggregation_mode: str,
+    min_visible_sampled_pixel_count: int = 1,
+    min_visible_area_km2: float = 0.0,
+    include_geometry: bool = True,
+    n_observer_points: int | None = None,
+    sample_points_requested: int | None = None,
+    sample_points_actual: int | None = None,
+    allowed_target_h3: set[str] | Sequence[str] | None = None,
+) -> pd.DataFrame | gpd.GeoDataFrame:
+    """Apply immutable denominators and output semantics to target-level numerators."""
+    if grouped_pl.is_empty():
+        return _empty_h3_result(include_geometry)
     if target_water_area is None:
         raise ValueError(
             "cumulative_visible_arrays_to_h3 requires the immutable domain-wide "

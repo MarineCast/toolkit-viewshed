@@ -123,16 +123,10 @@ def _selected_source_edges(edges: EdgeTable, source_h3: str) -> pd.DataFrame:
     )
 
 
-def aggregate_target_weight_sums(edges: EdgeTable) -> pd.DataFrame:
-    """Sum each pair factor across sources for every target H3 cell.
+def _prepare_map_edges(frame: pl.LazyFrame) -> pl.LazyFrame:
+    """Preserve unknown factors and validate a single source role at the map boundary."""
 
-    Pair-level combined weight is the distance-integrated terrain kernel times
-    conditional canopy transmission. Vegetation is summed only where the
-    bare-earth terrain factor is positive; terrain-blocked pairs carry a neutral
-    vegetation factor for multiplication but provide no vegetation opportunity
-    to map. Only the source-to-target aggregation is a sum.
-    """
-
+    columns = set(frame.collect_schema().names())
     required = {
         "source_h3",
         "target_h3",
@@ -141,47 +135,125 @@ def aggregate_target_weight_sums(edges: EdgeTable) -> pd.DataFrame:
         "weight_terrain",
         "net_static_weight",
     }
-    frame = _edge_lazy_frame(edges)
-    missing = required - set(frame.collect_schema().names())
+    missing = required - columns
     if missing:
         raise ValueError(f"Viewshed edge table is missing map fields: {sorted(missing)}")
-    return (
-        frame.with_columns(
-            pl.col("source_h3").cast(pl.Utf8),
-            pl.col("target_h3").cast(pl.Utf8),
+    if "source_type" not in columns:
+        # The legacy edge API is land-source; canonical callers supply their role.
+        frame = frame.with_columns(pl.lit("land").alias("source_type"))
+    factors = ["weight_distance", "weight_vegetation", "weight_terrain", "net_static_weight"]
+    frame = frame.with_columns(
+        pl.col("source_h3").cast(pl.Utf8),
+        pl.col("target_h3").cast(pl.Utf8),
+        *[pl.col(c).cast(pl.Float64).fill_nan(None) for c in factors],
+    )
+    invalid = frame.select(
+        pl.any_horizontal(
+            pl.col("source_h3").is_null(),
+            pl.col("target_h3").is_null(),
+            pl.col("source_type").is_null(),
+            ~pl.col("source_type").is_in(["land", "water"]),
             *[
-                pl.col(column)
-                .cast(pl.Float64, strict=False)
-                .fill_nan(0.0)
-                .fill_null(0.0)
-                .alias(column)
-                for column in (
-                    "weight_distance",
-                    "weight_vegetation",
-                    "weight_terrain",
-                    "net_static_weight",
+                (
+                    pl.col(c).is_not_null()
+                    & (~pl.col(c).is_finite() | (pl.col(c) < 0) | (pl.col(c) > 1))
                 )
+                for c in factors
             ],
         )
-        .with_columns(
-            (pl.col("weight_terrain") > 0.0).alias("terrain_visible"),
-            (pl.col("net_static_weight") > 0.0).alias("combined_visible"),
-            pl.when(pl.col("weight_terrain") > 0.0)
-            .then(pl.col("weight_vegetation"))
-            .otherwise(0.0)
-            .alias("vegetation_weight_with_terrain_opportunity"),
+        .any()
+        .alias("invalid"),
+        pl.col("source_type").n_unique().alias("roles"),
+    ).collect(engine="streaming")
+    if invalid.item(0, "invalid") or invalid.item(0, "roles") > 1:
+        raise ValueError(
+            "Map edges require valid keys, one source role and finite weights in [0, 1]."
         )
-        .group_by("target_h3")
+    duplicate = frame.group_by("source_h3", "target_h3").len().filter(pl.col("len") > 1).limit(1)
+    if duplicate.collect(engine="streaming").height:
+        raise ValueError("Map edges contain duplicate source/target pairs.")
+    not_applicable = (pl.col("source_type") == "water") | (pl.col("weight_terrain") == 0).fill_null(
+        False
+    )
+    return frame.with_columns(
+        not_applicable.alias("_vegetation_not_applicable"),
+        pl.when(~not_applicable & (pl.col("weight_terrain") > 0))
+        .then(pl.col("weight_vegetation"))
+        .otherwise(None)
+        .alias("vegetation_supported_weight"),
+    ).with_columns(
+        pl.when(pl.col("_vegetation_not_applicable"))
+        .then(pl.lit("not_applicable"))
+        .when(pl.col("vegetation_supported_weight").is_null())
+        .then(pl.lit("unavailable"))
+        .otherwise(pl.lit("complete"))
+        .alias("vegetation_supported_weight_status")
+    )
+
+
+def _map_metric_aggregations(column: str, output: str) -> list[pl.Expr]:
+    """Complete sums plus separately named available-value summaries and coverage."""
+
+    value = pl.col(column)
+    na = (
+        pl.col("_vegetation_not_applicable")
+        if column == "vegetation_supported_weight"
+        else pl.lit(False)
+    )
+    valid = value.count()
+    missing = (value.is_null() & ~na).sum()
+    available = pl.when(valid > 0).then(value.sum()).otherwise(None)
+    return [
+        pl.when((valid > 0) & (missing == 0)).then(value.sum()).otherwise(None).alias(output),
+        available.alias(f"{output}_available"),
+        value.mean().alias(f"{output}_mean_valid"),
+        valid.alias(f"{output}_valid_count"),
+        missing.alias(f"{output}_missing_count"),
+        (valid + missing).alias(f"{output}_applicable_count"),
+        (pl.len() - valid - missing).alias(f"{output}_not_applicable_count"),
+        pl.when(valid + missing > 0)
+        .then(valid / (valid + missing))
+        .otherwise(None)
+        .alias(f"{output}_coverage_fraction"),
+        pl.when(valid + missing == 0)
+        .then(pl.lit("not_applicable"))
+        .when(valid == 0)
+        .then(pl.lit("unavailable"))
+        .when(missing > 0)
+        .then(pl.lit("partial"))
+        .otherwise(pl.lit("complete"))
+        .alias(f"{output}_status"),
+    ]
+
+
+def aggregate_target_weight_sums(edges: EdgeTable) -> pd.DataFrame:
+    """Aggregate one source role without converting missing factors into modeled zeros.
+
+    The main sum is null for incomplete coverage. ``*_available`` and
+    ``*_mean_valid`` summarize only valid applicable pairs, with explicit counts.
+    Valid zeros count; neutral vegetation on zero-baseline or water pairs does not.
+    Missing candidate rows cannot be detected here; callers own the pair universe.
+    This presentation helper does not qualify partial canopy LOS or final products.
+    """
+
+    frame = _prepare_map_edges(_edge_lazy_frame(edges))
+    return (
+        frame.group_by("target_h3")
         .agg(
-            pl.col("weight_distance").sum().alias("distance_weight_sum"),
-            pl.col("vegetation_weight_with_terrain_opportunity")
-            .sum()
-            .alias("vegetation_weight_sum"),
-            pl.col("weight_terrain").sum().alias("terrain_weight_sum"),
-            pl.col("net_static_weight").sum().alias("target_static_kernel_sum"),
+            *[
+                expr
+                for column, output in (
+                    ("weight_distance", "distance_weight_sum"),
+                    ("vegetation_supported_weight", "vegetation_weight_sum"),
+                    ("weight_terrain", "terrain_weight_sum"),
+                    ("net_static_weight", "target_static_kernel_sum"),
+                )
+                for expr in _map_metric_aggregations(column, output)
+            ],
+            pl.len().alias("pair_count"),
             pl.col("source_h3").n_unique().alias("candidate_source_count"),
-            pl.col("terrain_visible").sum().alias("terrain_visible_source_count"),
-            pl.col("combined_visible").sum().alias("combined_visible_source_count"),
+            (pl.col("weight_terrain") > 0).sum().alias("terrain_visible_source_count"),
+            (pl.col("net_static_weight") > 0).sum().alias("combined_visible_source_count"),
         )
         .sort("target_h3")
         .collect(engine="streaming")
@@ -442,30 +514,9 @@ def _static_edges(app: AppConfig, *, source_type: str) -> pl.LazyFrame:
     missing = sorted(required - set(frame.collect_schema().names()))
     if missing:
         raise ValueError(f"Static viewshed artifact is missing map column(s): {missing}: {path}")
-    return (
-        frame.select(sorted(required))
-        .with_columns(
-            pl.col("source_h3").cast(pl.Utf8),
-            pl.col("target_h3").cast(pl.Utf8),
-            *[
-                pl.col(column)
-                .cast(pl.Float64, strict=False)
-                .fill_nan(0.0)
-                .fill_null(0.0)
-                .clip(0.0, 1.0)
-                for column in (
-                    "weight_distance",
-                    "weight_vegetation",
-                    "weight_terrain",
-                    "weight_static_viewability",
-                )
-            ],
-        )
-        .with_columns(
-            pl.when(pl.col("weight_terrain") > 0.0)
-            .then(pl.col("weight_vegetation"))
-            .otherwise(0.0)
-            .alias("vegetation_supported_weight"),
+    return _prepare_map_edges(
+        frame.select(sorted(required)).with_columns(
+            pl.lit(source_type).alias("source_type"),
             pl.col("weight_static_viewability").alias("net_static_weight"),
         )
     )
@@ -478,10 +529,16 @@ def _aggregate_edges(edges: pl.LazyFrame, *, by: str) -> pl.DataFrame:
     return (
         edges.group_by(by)
         .agg(
-            pl.col("weight_distance").sum().alias("distance_weight_sum"),
-            pl.col("vegetation_supported_weight").sum().alias("vegetation_weight_sum"),
-            pl.col("weight_terrain").sum().alias("terrain_weight_sum"),
-            pl.col("net_static_weight").sum().alias(combined_name),
+            *[
+                expr
+                for column, output in (
+                    ("weight_distance", "distance_weight_sum"),
+                    ("vegetation_supported_weight", "vegetation_weight_sum"),
+                    ("weight_terrain", "terrain_weight_sum"),
+                    ("net_static_weight", combined_name),
+                )
+                for expr in _map_metric_aggregations(column, output)
+            ],
             pl.len().alias("pair_count"),
             (pl.col("weight_terrain") > 0.0).sum().alias("terrain_supported_pair_count"),
         )

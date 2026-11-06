@@ -23,6 +23,7 @@ from concurrent.futures import Executor, Future, ThreadPoolExecutor, as_complete
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator, Sequence
 
+import numpy as np
 import pandas as pd
 import polars as pl
 from rasterio.windows import from_bounds
@@ -39,6 +40,7 @@ from ...config import (
 )
 from ...prepare.area.observers import build_observers_from_sample_points
 from .. import distance
+from .pixel_index import validate_pixel_h3_index
 from .telemetry import append_terrain_performance
 
 LOGGER = logging.getLogger(__name__)
@@ -77,10 +79,12 @@ from .los import (
     run_viewshed_backend_to_bool_array,
 )
 from .summarize import (
+    _NUMBA_AVAILABLE,
     DISTANCE_SUM_SCALE,
     DISTANCE_WEIGHT_SUM_SCALE,
     cumulative_visible_arrays_to_h3,
     domain_target_water_area_by_h3,
+    grouped_visible_to_h3,
 )
 
 
@@ -291,6 +295,8 @@ def run_source_cell_in_batch(
     config = viewshed_config_from_app_config(app)
     if validate_rasters:
         validate_batch_raster_alignment(context)
+        if context.water_pixel_h3_index is not None:
+            validate_pixel_h3_index(context.water_pixel_h3_index, context.water_mask_arr.shape)
     partition_path = _partition_path_for_source(app, source_cell)
     expected_metadata = expected_partition_metadata(app)
 
@@ -374,6 +380,29 @@ def run_source_cell_in_batch(
                 combined_h3=combined,
                 combined_observers=observers if retain_result else None,
             )
+
+    allowed_targets = (
+        dem_target_override
+        if dem_target_override is not None
+        else (
+            set(context.lookup_targets_by_source.get(str(source_cell), frozenset()))
+            if context.lookup_targets_by_source is not None
+            else _lookup_target_cells_for_source(app, source_cell)
+        )
+    )
+    allowed_code_mask = None
+    if (
+        allowed_targets is not None
+        and context.water_pixel_h3_index is not None
+        and not app.run.write_cumulative_rasters
+    ):
+        # Prune aggregation work only: the obstruction raster and LOS remain intact.
+        # Diagnostic cumulative rasters retain their established full-water support.
+        cells = context.water_pixel_h3_index.h3_cells
+        allowed_code_mask = np.zeros(len(cells) + 1, dtype=bool)
+        allowed_code_mask[:-1] = np.fromiter(
+            (cell in allowed_targets for cell in cells), dtype=bool, count=len(cells)
+        )
 
     xrspatial_dem_da = None
     if app.viewshed.backend == "xrspatial":
@@ -506,6 +535,9 @@ def run_source_cell_in_batch(
                 viewshed_result.visible
                 & context.water_mask_arr[row_start:row_end, col_start:col_end]
             )
+            if allowed_code_mask is not None:
+                codes = context.water_pixel_h3_index.code_grid[row_start:row_end, col_start:col_end]
+                visible &= allowed_code_mask[codes]
             postprocess_start = time.perf_counter()
             accumulator.accumulate(
                 visible=visible,
@@ -560,46 +592,63 @@ def run_source_cell_in_batch(
     include_target_geometry = bool(
         app.run.write_pair_geometry or app.run.write_geojson or app.run.write_maps
     )
-    allowed_targets = (
-        dem_target_override
-        if dem_target_override is not None
-        else (
-            set(context.lookup_targets_by_source.get(str(source_cell), frozenset()))
-            if context.lookup_targets_by_source is not None
-            else _lookup_target_cells_for_source(app, source_cell)
-        )
-    )
     target_water_area = prepared.target_water_area
     stride = 1 if app.h3.aggregation_mode == "full" else max(1, int(app.h3.pixel_stride))
-    sparse = accumulator.sparse_arrays(stride=stride)
     with timer(f"clear_sky_h3_aggregation:{source_cell}") as h3_timer:
-        combined_h3 = cumulative_visible_arrays_to_h3(
-            visible_count=sparse.visible_count,
-            distance_weight_sum=sparse.distance_weight_sum,
-            min_distance=sparse.min_distance,
-            mean_distance=sparse.mean_distance,
-            max_distance=sparse.max_distance,
-            observer_mask=sparse.observer_mask,
-            reference_raster_path=context.water_mask_path,
-            h3_resolution=app.h3.output_resolution,
-            target_water_area=target_water_area,
-            pixel_stride=app.h3.pixel_stride,
-            aggregation_mode=app.h3.aggregation_mode,
-            min_visible_sampled_pixel_count=app.h3.min_visible_sampled_pixel_count,
-            min_visible_area_km2=app.h3.min_visible_area_km2,
-            include_geometry=include_target_geometry,
-            n_observer_points=len(observers),
-            sample_points_requested=sample_points_requested,
-            sample_points_actual=sample_points_actual,
-            allowed_target_h3=allowed_targets,
-            sparse_global_rows=sparse.rows,
-            sparse_global_cols=sparse.cols,
-            pixel_h3_index=context.water_pixel_h3_index,
-            reference_shape=context.water_shape,
-            reference_crs=context.water_crs,
-            pixel_area_m2=context.water_pixel_area_m2,
-            distance_weight_sum_scale=DISTANCE_WEIGHT_SUM_SCALE,
-        )
+        if (
+            _NUMBA_AVAILABLE
+            and context.water_pixel_h3_index is not None
+            and context.water_pixel_area_m2 is not None
+        ):
+            grouped = accumulator.grouped_h3(
+                context.water_pixel_h3_index,
+                allowed_target_h3=allowed_targets,
+                stride=stride,
+            )
+            combined_h3 = grouped_visible_to_h3(
+                grouped,
+                h3_resolution=app.h3.output_resolution,
+                target_water_area=target_water_area,
+                pixel_area_m2=context.water_pixel_area_m2,
+                stride=stride,
+                aggregation_mode=app.h3.aggregation_mode,
+                min_visible_sampled_pixel_count=app.h3.min_visible_sampled_pixel_count,
+                min_visible_area_km2=app.h3.min_visible_area_km2,
+                include_geometry=include_target_geometry,
+                n_observer_points=len(observers),
+                sample_points_requested=sample_points_requested,
+                sample_points_actual=sample_points_actual,
+                allowed_target_h3=allowed_targets,
+            )
+        else:
+            sparse = accumulator.sparse_arrays(stride=stride)
+            combined_h3 = cumulative_visible_arrays_to_h3(
+                visible_count=sparse.visible_count,
+                distance_weight_sum=sparse.distance_weight_sum,
+                min_distance=sparse.min_distance,
+                mean_distance=sparse.mean_distance,
+                max_distance=sparse.max_distance,
+                observer_mask=sparse.observer_mask,
+                reference_raster_path=context.water_mask_path,
+                h3_resolution=app.h3.output_resolution,
+                target_water_area=target_water_area,
+                pixel_stride=app.h3.pixel_stride,
+                aggregation_mode=app.h3.aggregation_mode,
+                min_visible_sampled_pixel_count=app.h3.min_visible_sampled_pixel_count,
+                min_visible_area_km2=app.h3.min_visible_area_km2,
+                include_geometry=include_target_geometry,
+                n_observer_points=len(observers),
+                sample_points_requested=sample_points_requested,
+                sample_points_actual=sample_points_actual,
+                allowed_target_h3=allowed_targets,
+                sparse_global_rows=sparse.rows,
+                sparse_global_cols=sparse.cols,
+                pixel_h3_index=context.water_pixel_h3_index,
+                reference_shape=context.water_shape,
+                reference_crs=context.water_crs,
+                pixel_area_m2=context.water_pixel_area_m2,
+                distance_weight_sum_scale=DISTANCE_WEIGHT_SUM_SCALE,
+            )
 
     if _source_type_for_app(app) == "water" and not open_water_rows.empty:
         combined_h3 = pd.concat(

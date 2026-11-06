@@ -34,8 +34,10 @@ def execute_stages(config: AppConfig, stages: Iterable[str]) -> dict[str, tuple[
 def run_viewshed(config: AppConfig) -> ViewshedRunResult:
     """Run the canonical viewshed workflow using typed Python calls only."""
 
-    results = execute_stages(config, DEFAULT_STAGES)
+    from ..config.study import study_selection
     from ..finalize.final_artifacts import cleanup_viewshed_dir_to_static_outputs
 
-    cleanup_viewshed_dir_to_static_outputs(config.config_path)
+    with study_selection(config.study_config_path):
+        results = execute_stages(config, DEFAULT_STAGES)
+        cleanup_viewshed_dir_to_static_outputs(config.config_path)
     return ViewshedRunResult(config=config, stage_results=results)

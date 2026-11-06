@@ -33,6 +33,8 @@ row of the final distance table.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import math
 import shutil
@@ -42,6 +44,10 @@ from typing import Any, Sequence
 import numpy as np
 import pandas as pd
 import polars as pl
+
+from viewshed_toolkit._internal.artifacts import atomic_write_json, atomic_write_text, checksum_path
+from viewshed_toolkit._internal.artifacts.checksums import checksum_unchanged_file
+from viewshed_toolkit._internal.data.parquet import atomic_sink_parquet
 
 try:
     from ...config import (
@@ -76,6 +82,8 @@ except ImportError:  # pragma: no cover - loose script execution
 LOGGER = logging.getLogger(__name__)
 VALID_SOURCE_TYPES = SOURCE_TYPES
 LOOKUP_SCHEMA = SOURCE_TARGET_LOOKUP_SCHEMA
+DISTANCE_PARTITION_ALGORITHM_VERSION = "lookup_distance_partition_v2"
+DISTANCE_COMBINATION_ALGORITHM_VERSION = "lookup_distance_combination_v2"
 
 
 # -----------------------------------------------------------------------------
@@ -207,8 +215,68 @@ def distance_weight_values(
 # -----------------------------------------------------------------------------
 
 
-def _partition_path(paths: DistanceWeightPaths, chunk_index: int) -> Path:
-    return paths.partitioned_dir / f"chunk_{int(chunk_index):06d}.parquet"
+def _distance_partition_contract(
+    cfg: DistanceWeightConfig,
+    *,
+    max_distance_km: float,
+    lookup_checksum: str,
+    source_type: str,
+    source_cells: Sequence[str],
+) -> dict[str, Any]:
+    selected = cfg.selected_model.lower().strip()
+    curve: dict[str, Any] = {"model": selected}
+    if selected == "logistic":
+        curve.update(
+            d50_km=float(cfg.logistic_d50_km),
+            slope_km=float(cfg.logistic_slope_km),
+            normalize_at_zero=cfg.normalize_at_zero,
+        )
+    elif selected == "exponential":
+        curve["lambda_km"] = float(cfg.exponential_lambda_km)
+    elif selected == "piecewise":
+        curve.update(
+            near_km=float(
+                cfg.piecewise_near_km
+                if cfg.piecewise_near_km is not None
+                else cfg.piecewise_full_weight_km
+            ),
+            far_km=float(
+                cfg.piecewise_far_km
+                if cfg.piecewise_far_km is not None
+                else cfg.piecewise_zero_weight_km
+            ),
+        )
+    else:
+        raise ValueError(f"Unsupported distance model: {cfg.selected_model}")
+    return {
+        "algorithm": DISTANCE_PARTITION_ALGORITHM_VERSION,
+        "version": cfg.version,
+        "curve": curve,
+        "max_distance_km": float(max_distance_km),
+        "lookup_checksum": lookup_checksum,
+        "source_type": source_type,
+        "source_cells": sorted(source_cells),
+        "columns": list(DISTANCE_OUTPUT_SCHEMA),
+    }
+
+
+def _partition_path(paths: DistanceWeightPaths, contract: dict[str, Any]) -> Path:
+    identity = hashlib.sha256(
+        json.dumps(contract, sort_keys=True, allow_nan=False).encode()
+    ).hexdigest()
+    return paths.partitioned_dir / f"chunk_{identity}.parquet"
+
+
+def _partition_cache_matches(path: Path, contract: dict[str, Any]) -> bool:
+    try:
+        metadata = json.loads(path.with_suffix(".parquet.json").read_text())
+        return (
+            metadata.get("contract") == contract
+            and metadata.get("output_checksum") == checksum_path(path)
+            and tuple(pl.scan_parquet(path).collect_schema().names()) == DISTANCE_OUTPUT_SCHEMA
+        )
+    except (OSError, ValueError, TypeError, AttributeError, pl.exceptions.PolarsError):
+        return False
 
 
 def _filtered_lookup_scan(
@@ -280,9 +348,13 @@ def _partition_files_from_manifest_or_glob(paths: DistanceWeightPaths) -> list[P
             )
         files = [Path(p) for p in manifest["distance_weight_partition"].dropna().tolist()]
     else:
-        files = sorted(paths.partitioned_dir.glob("chunk_*.parquet"))
+        raise FileNotFoundError(
+            f"Distance partition manifest missing; rebuild the selected source set: {paths.manifest_path}"
+        )
 
-    files = [path for path in files if path.exists()]
+    missing = [path for path in files if not path.exists()]
+    if missing:
+        raise FileNotFoundError(f"Distance manifest references missing partitions: {missing}")
     if not files:
         raise FileNotFoundError(
             f"No distance-weight partitions found in {paths.partitioned_dir}. "
@@ -357,8 +429,13 @@ def build_distance_weight_partitions_from_lookup(
     source_type = _validate_source_type(source_type)
     from ...contracts.lineage import factor_contract, record_factor, validate_factor
 
-    contract = factor_contract(
-        runtime.raw_config, runtime.config_path.parent, source_type, "distance"
+    producer_contract = factor_contract(
+        runtime.raw_config,
+        runtime.config_path.parent,
+        source_type,
+        "distance",
+        distance_config=cfg,
+        lookup_path=lookup_path,
     )
     if start < 0:
         raise ValueError("start must be >= 0")
@@ -368,6 +445,7 @@ def build_distance_weight_partitions_from_lookup(
     paths = distance_weight_paths(runtime, cfg, source_type)
     max_distance_km = resolved_max_distance_km(runtime, cfg)
 
+    lookup_checksum = checksum_unchanged_file(lookup_path)
     lookup_scan = _filtered_lookup_scan(lookup_path, source_type=source_type)
     lookup_scan = _select_distance_fields(lookup_scan).filter(
         pl.col("distance_km").is_not_null()
@@ -388,8 +466,6 @@ def build_distance_weight_partitions_from_lookup(
             f"{lookup_path}"
         )
 
-    if cfg.overwrite and paths.partitioned_dir.exists():
-        shutil.rmtree(paths.partitioned_dir)
     paths.partitioned_dir.mkdir(parents=True, exist_ok=True)
     paths.manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -413,17 +489,21 @@ def build_distance_weight_partitions_from_lookup(
         global_source_start = int(start) + int(source_start)
         global_source_stop = global_source_start + len(source_chunk)
         global_chunk_number = global_source_start // int(cfg.source_chunk_size)
-        out_path = _partition_path(paths, global_chunk_number)
-
-        if out_path.exists() and not cfg.overwrite:
-            validate_factor(out_path, contract)
-            existing_schema = tuple(pl.scan_parquet(str(out_path)).collect_schema().names())
-            if existing_schema != DISTANCE_OUTPUT_SCHEMA:
-                raise ValueError(
-                    "Existing distance partition has stale schema. "
-                    f"Expected {list(DISTANCE_OUTPUT_SCHEMA)}; found {list(existing_schema)}. "
-                    f"Rerun with --overwrite: {out_path}"
-                )
+        partition_contract = _distance_partition_contract(
+            cfg,
+            max_distance_km=max_distance_km,
+            lookup_checksum=lookup_checksum,
+            source_type=source_type,
+            source_cells=source_chunk,
+        )
+        out_path = _partition_path(paths, partition_contract)
+        reusable = not cfg.overwrite and _partition_cache_matches(out_path, partition_contract)
+        if reusable:
+            try:
+                validate_factor(out_path, producer_contract)
+            except ValueError:
+                reusable = False
+        if reusable:
             stats = _partition_manifest_stats(out_path)
             status = "skipped_existing"
         else:
@@ -439,19 +519,23 @@ def build_distance_weight_partitions_from_lookup(
                     ]
                 )
             )
-            out_lf.sink_parquet(str(out_path))
+            atomic_sink_parquet(
+                out_lf.sort(["source_h3", "target_h3"]),
+                out_path,
+                metadata={
+                    "distance_partition_contract": json.dumps(partition_contract, sort_keys=True)
+                },
+            )
+            if checksum_unchanged_file(lookup_path) != lookup_checksum:
+                raise ValueError("Lookup changed during distance partition construction")
+            atomic_write_json(
+                out_path.with_suffix(".parquet.json"),
+                {"contract": partition_contract, "output_checksum": checksum_path(out_path)},
+                overwrite=True,
+            )
             stats = _partition_manifest_stats(out_path)
             status = "ok"
-            if (
-                factor_contract(
-                    runtime.raw_config, runtime.config_path.parent, source_type, "distance"
-                )
-                != contract
-            ):
-                raise ValueError(
-                    "Producer inputs changed during distance stage; rebuild build-distance-weights"
-                )
-            record_factor(out_path, contract)
+            record_factor(out_path, producer_contract)
 
         manifest_rows.append(
             {
@@ -478,8 +562,8 @@ def build_distance_weight_partitions_from_lookup(
                 out_path,
             )
 
-        pd.DataFrame(manifest_rows).to_csv(paths.manifest_path, index=False)
-
+    # Publish the selected source set only after every chunk completes. A failed
+    # build retains resumable partitions without replacing the last complete plan.
     manifest = pd.DataFrame(manifest_rows)
     if manifest.empty or int(manifest.get("n_rows", pd.Series(dtype=int)).sum()) == 0:
         raise ValueError(
@@ -487,7 +571,9 @@ def build_distance_weight_partitions_from_lookup(
             f"Check lookup and max distance settings: {lookup_path}"
         )
 
-    manifest.to_csv(paths.manifest_path, index=False)
+    if checksum_unchanged_file(lookup_path) != lookup_checksum:
+        raise ValueError("Lookup changed during distance partition construction; rerun the build")
+    atomic_write_text(paths.manifest_path, manifest.to_csv(index=False), overwrite=True)
     write_metadata_sidecar(
         paths.partitioned_dir,
         runtime.raw_config,
@@ -507,13 +593,15 @@ def build_distance_weight_partitions_from_lookup(
     return manifest
 
 
-def combine_distance_weight_partitions(
+def _verified_distance_partitions(
     runtime: DistanceRuntime,
     cfg: DistanceWeightConfig,
+    *,
+    source_type: str,
     partition_paths: Sequence[Path] | None = None,
-    source_type: str = "land",
-) -> dict[str, Any]:
-    source_type = _validate_source_type(source_type)
+) -> tuple[list[Path], dict[str, str]]:
+    """Verify the active model, lookup and content before any partition consumer."""
+
     paths = distance_weight_paths(runtime, cfg, source_type)
     parts = (
         [Path(path) for path in partition_paths]
@@ -521,7 +609,81 @@ def combine_distance_weight_partitions(
         else _partition_files_from_manifest_or_glob(paths)
     )
     if not parts:
-        raise FileNotFoundError("No distance partitions selected for combine.")
+        raise FileNotFoundError("No distance partitions selected; rebuild distance weights.")
+
+    lookup_path = final_artifact_paths(runtime.config_path).source_target_lookup
+    lookup_checksum = checksum_unchanged_file(lookup_path)
+    selected_sources: set[str] = set()
+    partition_checksums: dict[str, str] = {}
+    for path in parts:
+        try:
+            recorded = json.loads(path.with_suffix(".parquet.json").read_text())
+            sources = recorded["contract"]["source_cells"]
+            if (
+                not isinstance(sources, list)
+                or not sources
+                or not all(isinstance(source, str) for source in sources)
+                or len(set(sources)) != len(sources)
+            ):
+                raise ValueError("Invalid distance partition source selection")
+            expected = _distance_partition_contract(
+                cfg,
+                max_distance_km=resolved_max_distance_km(runtime, cfg),
+                lookup_checksum=lookup_checksum,
+                source_type=source_type,
+                source_cells=sources,
+            )
+            valid = _partition_cache_matches(path, expected)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            valid = False
+        if not valid:
+            raise ValueError(f"Stale, corrupt, or unverified distance partition; rebuild: {path}")
+        if selected_sources.intersection(sources):
+            raise ValueError("Distance partitions contain overlapping source selections")
+        selected_sources.update(sources)
+        partition_checksums[path.name] = recorded["output_checksum"]
+    return parts, partition_checksums
+
+
+def combine_distance_weight_partitions(
+    runtime: DistanceRuntime,
+    cfg: DistanceWeightConfig,
+    partition_paths: Sequence[Path] | None = None,
+    source_type: str = "land",
+) -> dict[str, Any]:
+    from ...contracts.lineage import factor_contract, validate_factor
+
+    source_type = _validate_source_type(source_type)
+    parts, partition_checksums = _verified_distance_partitions(
+        runtime, cfg, source_type=source_type, partition_paths=partition_paths
+    )
+    contract = {
+        "algorithm": DISTANCE_COMBINATION_ALGORITHM_VERSION,
+        "source_type": source_type,
+        "partitions": partition_checksums,
+        "columns": list(DISTANCE_OUTPUT_SCHEMA),
+    }
+    output_path = final_artifact_paths(runtime.config_path).weights_path(
+        "distance_weights", source_type=source_type
+    )
+    if not cfg.overwrite and _partition_cache_matches(output_path, contract):
+        producer_contract = factor_contract(
+            runtime.raw_config,
+            runtime.config_path.parent,
+            source_type,
+            "distance",
+            distance_config=cfg,
+        )
+        try:
+            receipt = validate_factor(output_path, producer_contract)
+        except ValueError:
+            pass
+        else:
+            return {
+                "path": output_path,
+                "row_count": int(receipt["evaluated_pair_count"]),
+                "source_type": source_type,
+            }
 
     LOGGER.info(
         "Materializing compact %s-source distance weights from %d partition(s)",
@@ -531,8 +693,14 @@ def combine_distance_weight_partitions(
     output_path, row_count = materialize_distance_weights(
         parts,
         runtime.config_path,
-        overwrite=cfg.overwrite,
+        overwrite=True,
         source_type=source_type,
+        distance_config=cfg,
+    )
+    atomic_write_json(
+        output_path.with_suffix(".parquet.json"),
+        {"contract": contract, "output_checksum": checksum_path(output_path)},
+        overwrite=True,
     )
     LOGGER.info(
         "Wrote compact %s-source distance weights rows=%d output=%s",
@@ -552,7 +720,8 @@ def aggregate_distance_weight_partitions_to_target(
 ) -> dict[str, Any] | pd.DataFrame:
     source_type = _validate_source_type(source_type)
     paths = distance_weight_paths(runtime, cfg, source_type)
-    lf = _scan_distance_partitions(_partition_files_from_manifest_or_glob(paths))
+    parts, _ = _verified_distance_partitions(runtime, cfg, source_type=source_type)
+    lf = _scan_distance_partitions(parts)
 
     aggregations: list[pl.Expr] = [
         pl.col("source_h3").n_unique().alias("n_distance_weighted_sources"),
@@ -623,7 +792,8 @@ def aggregate_distance_weight_partitions_to_source(
 ) -> dict[str, Any] | pd.DataFrame:
     source_type = _validate_source_type(source_type)
     paths = distance_weight_paths(runtime, cfg, source_type)
-    lf = _scan_distance_partitions(_partition_files_from_manifest_or_glob(paths))
+    parts, _ = _verified_distance_partitions(runtime, cfg, source_type=source_type)
+    lf = _scan_distance_partitions(parts)
 
     aggregations: list[pl.Expr] = [
         pl.col("target_h3").n_unique().alias("n_distance_weighted_targets"),

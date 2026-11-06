@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections.abc import Iterator
@@ -13,7 +14,13 @@ import psutil
 
 
 @contextmanager
-def measure_stage(work_dir: Path, *, interval: float = 0.05) -> Iterator[dict[str, Any]]:
+def measure_stage(
+    work_dir: Path, *, interval: float = 0.05, disk_interval: float = 5.0
+) -> Iterator[dict[str, Any]]:
+    if not math.isfinite(interval) or interval <= 0:
+        raise ValueError("RSS sampling interval must be finite and positive")
+    if not math.isfinite(disk_interval) or disk_interval <= 0:
+        raise ValueError("Disk sampling interval must be finite and positive")
     metrics: dict[str, Any] = {
         "peak_rss_bytes": None,
         "rss_scope": "process_tree",
@@ -21,12 +28,13 @@ def measure_stage(work_dir: Path, *, interval: float = 0.05) -> Iterator[dict[st
         "peak_work_disk_bytes": None,
         "disk_sampling_partial": False,
         "sample_interval_seconds": interval,
+        "disk_sample_interval_seconds": disk_interval,
         "status": "failed",
     }
     process = psutil.Process()
     stop = threading.Event()
 
-    def sample() -> None:
+    def sample_rss() -> None:
         processes = [process]
         try:
             processes.extend(process.children(recursive=True))
@@ -43,30 +51,43 @@ def measure_stage(work_dir: Path, *, interval: float = 0.05) -> Iterator[dict[st
                 metrics["rss_sampling_partial"] = True
         if observed:
             metrics["peak_rss_bytes"] = max(metrics["peak_rss_bytes"] or 0, rss)
+
+    def sample_disk() -> None:
         try:
             disk = sum(path.stat().st_size for path in work_dir.rglob("*") if path.is_file())
             metrics["peak_work_disk_bytes"] = max(metrics["peak_work_disk_bytes"] or 0, disk)
         except OSError:
             metrics["disk_sampling_partial"] = True
 
-    def monitor() -> None:
+    def monitor_rss() -> None:
         while not stop.wait(interval):
-            sample()
+            sample_rss()
 
-    sample()
-    initial_disk = metrics["peak_work_disk_bytes"]
-    worker = threading.Thread(target=monitor, daemon=True)
+    def monitor_disk() -> None:
+        while not stop.wait(disk_interval):
+            sample_disk()
+
     start, cpu = time.perf_counter(), time.process_time()
-    worker.start()
+    sample_rss()
+    sample_disk()
+    initial_disk = metrics["peak_work_disk_bytes"]
+    workers = [
+        threading.Thread(target=monitor_rss, daemon=True),
+        threading.Thread(target=monitor_disk, daemon=True),
+    ]
+    for worker in workers:
+        worker.start()
     try:
         yield metrics
         metrics["status"] = "complete"
     finally:
+        stop.set()
+        for worker in workers:
+            worker.join()
+        sample_rss()
+        sample_disk()
         metrics["wall_seconds"] = time.perf_counter() - start
         metrics["parent_cpu_seconds"] = time.process_time() - cpu
-        stop.set()
-        worker.join()
-        sample()
         metrics["peak_additional_work_disk_bytes"] = (
             max(0, metrics["peak_work_disk_bytes"] - initial_disk)
             if initial_disk is not None and metrics["peak_work_disk_bytes"] is not None
