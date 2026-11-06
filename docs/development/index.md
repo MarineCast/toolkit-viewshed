@@ -24,6 +24,11 @@ The site build checks the committed bundle and inserts its verified values into 
 example. It does not download inputs or recalculate LOS. For browser checks and bundle export,
 see [reproducing the instructional bundle](../documentation-examples.md).
 
+The GitHub documentation jobs install Chromium and WebKit with their system dependencies.
+On runners that use `/etc/apt/apt-mirrors.txt`, they select the official Ubuntu archive
+over HTTPS before installation to avoid the slow Azure mirror downloads observed on
+November 6, 2026. Package signature verification and all browser checks remain enabled.
+
 ## Design and organization
 
 The reading route is Overview → Lime Kiln walkthrough → first runnable result → Outputs.
