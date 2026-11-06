@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 from render_documentation_walkthrough import check
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +25,40 @@ class QuietHandler(SimpleHTTPRequestHandler):
 
     def log_message(self, format, *args):
         pass
+
+
+def check_regional_explorer(page, url, output, engine):
+    for width, height, device in ((1440, 1000, "desktop"), (390, 844, "mobile")):
+        page.set_viewport_size({"width": width, "height": height})
+        page.goto(url)
+        explorer = page.get_by_role("region", name="Regional viewshed explorer")
+        expect(explorer).to_be_visible()
+        status = explorer.get_by_role("status")
+        expect(status).to_contain_text("385 recorded pairs")
+        before = explorer.locator("[data-sources]").inner_html()
+        explorer.get_by_role("radio", name="Water observers").check()
+        expect(status).to_contain_text("661 recorded pairs")
+        expect(explorer.get_by_text("Not applicable", exact=True)).to_have_count(5)
+        assert explorer.locator("[data-sources]").inner_html() != before
+        target = explorer.get_by_role("button", name="Target 4 · 8728d1b9bffffff")
+        target.click()
+        expect(target).to_have_attribute("aria-pressed", "true")
+        expect(status).to_contain_text("635 recorded pairs")
+        expect(explorer.get_by_role("combobox")).to_have_value("8728d1b9bffffff")
+        explorer.get_by_role("radio", name="Land observers").check()
+        expect(status).to_contain_text("331 recorded pairs")
+        expect(explorer.get_by_text("Not applicable", exact=True)).to_have_count(0)
+        target = explorer.get_by_role("button", name="Target 1 · 8728d1061ffffff")
+        target.press("Enter")
+        expect(target).to_have_attribute("aria-pressed", "true")
+        expect(status).to_contain_text("mean combined support 0.001574")
+        explorer.get_by_role("combobox").select_option("8728d1064ffffff")
+        expect(status).to_contain_text("353 recorded pairs")
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        explorer.screenshot(
+            path=str(output / f"{engine}-{device}-regional-explorer.png"),
+            style=".md-header,.md-tabs{visibility:hidden!important}",
+        )
 
 
 def run(site: Path, output: Path, engines: list[str]) -> dict:
@@ -156,6 +190,8 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                         page.get_by_role("link", name="guided Examples page", exact=True).click()
                         page.wait_for_url(origin + "/toolkit-viewshed/examples/")
                     assert page.locator(".chapter figure").count() == 6
+                regional_url = origin + "/toolkit-viewshed/regional-viewshed-example/"
+                check_regional_explorer(page, regional_url, output, engine)
                 for width, height, device in ((1440, 1000, "desktop"), (390, 844, "mobile")):
                     fallback = browser.new_context(
                         java_script_enabled=False, viewport={"width": width, "height": height}
@@ -179,6 +215,11 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                         path=str(output / f"{engine}-{device}-javascript-disabled.png"),
                         full_page=True,
                     )
+                    static.goto(regional_url)
+                    expect(static.locator("#regional-explorer")).to_be_hidden()
+                    expect(
+                        static.get_by_role("link", name="Open the full-size figure")
+                    ).to_be_visible()
                     fallback.close()
                 assert not errors, errors
                 assert not failed_assets, failed_assets
@@ -200,6 +241,8 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                             "compatibility URLs and base path",
                             "instant navigation back",
                             "no required controls",
+                            "regional target mouse, keyboard and dropdown selection",
+                            "regional observer role switching and static fallback",
                             "third-party requests blocked",
                         ],
                         "page_errors": errors,

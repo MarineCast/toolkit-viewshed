@@ -87,7 +87,9 @@ markdown_extensions:
 extra_css:
   - assets/stylesheets/extra.css
   - assets/examples/examples.css
+  - assets/examples/regional/explorer.css
 hooks:
   - scripts/docs_hooks.py
 extra_javascript:
   - assets/examples/explorer.js
+  - assets/examples/regional/explorer.js
