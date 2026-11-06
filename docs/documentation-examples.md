@@ -53,13 +53,13 @@ sensitivity has not yet been run; this is a recorded robustness gap, not field q
 The small derived grids, sampled profiles and geometry retain source attribution and rights in
 `manifest.json`: USGS/Natural Earth public domain; ETH canopy CC BY 4.0, credited to Lang, Jetz,
 Schindler and Wegner (2023). These derivatives include clipping, reprojection, maximum canopy
-resampling and modeled LOS. Raw regional assets are not committed. No new third-party imagery is
-redistributed. Offline checks validate bundled integrity and scientific assertions; they do not
+resampling and modeled LOS. Raw regional assets are not committed. The scientific bundle contains no third-party photographs; the separately credited
+Lime Kiln presentation below includes a CC BY 2.0 photograph and two CC BY-SA 4.0 shoreline views. Offline checks validate bundled integrity and scientific assertions; they do not
 independently reproduce the real model from raw data.
 
 ## Static walkthrough presentation
 
-The default page presents three chapters: one pair, one source’s candidate targets, and a
+The [detailed sightline page](sightline-details.md) preserves three chapters: one pair, one source’s candidate targets, and a
 per-target maximum across included **land** sources. All six principal figures, comparisons
 and contributor records are visible without JavaScript. The original scientific bundle and its
 `san_juan_lessons_v2` identity remain unchanged; the historical lessons/indexes remain archived
@@ -131,7 +131,7 @@ Profiles retain physical distance and elevation axes with explicit vertical exag
 
 The fixed walkthrough carries the same manifest-selected land pair A → B through all three
 chapters. Historical seven-lesson references in the scientific bundle preserve recorded curated
-evidence; the main page no longer requires the old explorer. All displayed values are inserted
+evidence; the detail page does not require the old explorer. All displayed values are inserted
 from canonical records at build time, including the product guide’s “Read one result.”
 
 The retired `--render-only` command errors with a migration message. Explicit `--legacy-render`
@@ -148,3 +148,156 @@ The supported default and `--model-only` never replace the compatibility redirec
 - Explain the per-target maximum across included land sources and find A in B’s contributor table.
 - Distinguish a valid zero, missing candidate evidence and sources outside the candidate set.
 - Confirm that complete coverage means the recorded candidate population, not all viewpoints.
+
+
+## Lime Kiln presentation
+
+The main [example](examples.md) uses the **30 m regional delivery**, independently of the older
+100 m San Juan scientific bundle retained for [A sightline in detail](sightline-details.md).
+All 661 candidate pairs for land source `8728d1061ffffff` come from the same delivered static
+and observation tables. The five retained regional observer samples replace the demo's two.
+All original numeric values and producer states are preserved. Shared lineage/coverage fields
+are stored once in `source-pairs.json` under `common_metadata`.
+
+To rebuild the small excerpt with access to the validated delivery and retained run inputs:
+
+```bash
+python scripts/export_lime_kiln_regional.py /path/to/MarineCast/Data/Viewshed \
+  --observer-validation /path/to/MarineCast/Reports/viewshed-full-regional-2026-11-05/land-observer-validation.json
+```
+
+Add `--check` for exact read-only reproduction. This needs the toolkit's core geospatial packages.
+The exporter verifies the delivery checksums for both land tables and their metadata, exact
+pair/weight parity, unique keys, source role, composition, configuration identity and the retained
+observer-file checksum. It reads the source geometry and coast paths recorded in delivery metadata;
+those retained inputs must be available. It does not acquire data or run LOS.
+
+Only the small excerpt, projected cell/context geometry and evidence are written under
+`assets/examples/lime-kiln/`. Natural Earth context is clipped and simplified to 30 m for display;
+it does not replace the regional model's reconciled water mask. Native H3 boundaries and the
+retained observer coordinates are unchanged. `regional-source.json` records the authoritative
+file hashes, recorded assumptions, source credits and excerpt payload checksums. The photograph
+remains unmodified, credited to Dave Sizer, CC BY 2.0, with its own checksum.
+
+Rebuild the presentation using only committed assets and Python's standard library:
+
+```bash
+python -S scripts/render_lime_kiln.py
+python -S scripts/render_lime_kiln.py --check
+```
+
+The renderer produces five maps in desktop/mobile and light/dark variants, plus the regional
+distance-decay illustration. All maps retain the complete candidate population and one extent.
+Distance rings show approximate projected 10/20/30 km radii around the source centroid; recorded
+weights use great-circle centroid distance. Numeric terrain/canopy integration is untouched.
+
+For vegetation, hatching is a **derived display classification** where terrain equals zero and
+the vegetation factor equals one. The regional producer records `vegetation_state=positive`
+for these neutral values; that original state is preserved. The presentation never interprets
+these values as an unobstructed view or replaces them with missingness.
+
+`manifest.json` binds the regional excerpt evidence and every rendered output. The MkDocs hook
+checks it on every build. The sightline and tree SVG schematics in `assets/explain/` remain
+educational illustrations; the plotted decay now uses the regional 9 km / 2.7 km / 30 km settings.
+The older demonstration's stored assets and scientific identity remain intact.
+
+[November 6 documentation validation](development/lime-kiln-validation.md) records checks and
+unrun paths. Browser checks cover the regional Lime Kiln maps, How it works, the retained detailed
+sightline page and the interactive regional target example.
+
+
+The shoreline section adds one CC BY-SA 4.0 panorama by Chris Light (2024) and one
+CC BY-SA 4.0 photograph by Chiwauk (2021), retained as uncropped Commons thumbnails.
+`shoreline-sources.json` records source links, licenses, dates, downloads and checksums.
+The camera geotag for photo A is projected to EPSG:32610 and checked against the native R7
+source cell; a regression check independently verifies both. The panorama has no published
+camera coordinate and receives no pin. The map uses retained active land/source/observer
+geometry; it is not a trail map. The magnetic photo heading is recorded but not drawn as a
+true-north arrow. The Google Maps suggestion remains a credited outbound link only.
+The same renderer builds `shoreline.svg`; the manifest and build hook check the two photo
+hashes and source metadata as well as the existing maps. Photos provide context, not numerical
+or field validation, and neither source-cell weights nor the model are changed.
+
+## Multiple locations and the regional overview
+
+The visual walkthrough uses one shared authoring template, `scripts/templates/source-walkthrough.md`,
+with place-specific narrative/photo metadata in `docs/assets/examples/places.json`. The four tabs
+are ordinary links with an active-page state: they work with browser history, deep links and no
+JavaScript, and load only the selected example's assets. The lead photo sits beside the introduction
+on desktop and stacks below it on narrow screens. Lime Kiln retains its existing source selection.
+Everett selects land source `8728d0a74ffffff`; Larrabee selects inland source `8728d1473ffffff`.
+The new place markers are H3 centroids, not surveyed camera positions. The same seven chapters,
+five weight/study maps, component table, photo context and record reader appear for each place.
+
+Larrabee's selected source has zero combined support for all 285 candidate targets, despite 201
+positive terrain weights. Its component table therefore selects the highest-terrain non-self pair
+rather than an arbitrary zero-combined winner. This illustrates the retained inland samples and
+canopy assumptions; it does not assert that the park's coastal viewpoints are obstructed.
+Everett's buildings and vessels are not explicitly represented by the terrain/canopy inputs.
+
+Reuse the retained regional inputs and observer-validation receipt described above:
+
+```bash
+python scripts/export_lime_kiln_regional.py /path/to/Data/Viewshed \
+  --observer-validation /path/to/land-observer-validation.json \
+  --source 8728d0a74ffffff --output docs/assets/examples/everett
+python scripts/export_lime_kiln_regional.py /path/to/Data/Viewshed \
+  --observer-validation /path/to/land-observer-validation.json \
+  --source 8728d1473ffffff --output docs/assets/examples/larrabee
+python scripts/build_regional_overview.py /path/to/Data/Viewshed
+python -S scripts/render_source_examples.py
+python -S scripts/render_regional_overview.py
+```
+
+The exporters accept `--check` for deterministic comparison with the retained data. Ordinary
+MkDocs builds run only the standard-library render checks, not acquisition or data extraction.
+The source excerpts preserve every candidate pair, original weights and states. The overview
+aggregates all delivered land pairs by target using the **maximum valid combined weight**, counts
+missing and valid candidates separately, and never pools land/water roles. It covers all 13,461
+water targets from 26,094 land sources and 5,555,318 candidate pairs. It is a presentation summary,
+not an effort-weighted mean, a sighting probability or a new delivered scientific product.
+
+The additional photos are credited beside the images and checksummed in their source presentation
+manifests. Emersb and Cody Logan: CC BY-SA 3.0; Joe Mabel: CC BY-SA 3.0; SounderBruce: CC BY-SA 4.0.
+Exact camera coordinates are unverified, so no photo pins are invented for Everett or Larrabee.
+The Larrabee coastal and amphitheater photos provide wider park context, not evidence from the
+selected inland source cell. All photo dates and modifications remain explicit.
+
+### Navigating the full regional summary
+
+The fourth example embeds `assets/examples/region-overview/map.html` in an iframe. This is a
+standalone Leaflet map with pan, zoom, keyboard navigation, cell popups, layer controls, case-study
+area shortcuts and a full-region reset. The full-page link opens the same HTML document. Shortcuts
+move the map; every displayed weight continues to summarize all candidate land sources.
+
+Leaflet 1.9.4 is bundled locally under `assets/vendor/leaflet-1.9.4`, with its BSD-2-Clause license
+and source/checksum receipt. The [Leaflet reference](https://leafletjs.com/reference-1.9.4.html)
+documents the Canvas renderer and GeoJSON layers used here. OpenStreetMap street tiles are requested
+only for the current view, use normal browser caching and carry visible attribution, following the
+[OSM tile policy](https://operations.osmfoundation.org/policies/tiles/). The local Natural Earth
+coastline and weight layers also work without online tiles; select **Coastline (offline)**.
+The page retains an expandable static fallback and direct SVG/summary links.
+
+The GeoJSON export uses longitude/latitude coordinates for the same native H3 R7 boundaries and
+copies each original target ID, maximum combined weight, candidate counts and coverage state.
+It does not reaggregate results or run the model. Leaflet projects only the display into Web
+Mercator. The fixed teal color scale is retained, drawn at 85% opacity over the basemap. `map-source.json`
+binds the GeoJSON payloads to the retained aggregate and context geometry with SHA-256 checksums.
+
+Regenerate or verify the geographic display export from the existing checked excerpt:
+
+```bash
+python scripts/export_regional_html_map.py
+python scripts/export_regional_html_map.py --check
+python -m pytest -q tests/pipeline/test_source_examples.py
+node --check docs/assets/examples/region-overview/map.js
+```
+
+The exporter uses the existing geospatial environment (H3, PyProj and Shapely). Ordinary MkDocs
+builds verify its checksums, target population and copied values with the standard library;
+they do not regenerate GeoJSON or acquire tiles. The focused tests also verify every native cell
+boundary and closed coordinate ring. The browser checker targets the iframe's controls. The prior
+SVG controller is no longer loaded; its prototype files remain local for review.
+
+Touch pinch and offline/network-error behavior require dedicated device/browser checks; resizing
+a desktop viewport or choosing the local coastline layer is not proof of those paths.

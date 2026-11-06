@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import functools
 import json
+import os
 import threading
 from datetime import UTC, datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -61,6 +62,107 @@ def check_regional_explorer(page, url, output, engine):
         )
 
 
+def check_lime_kiln(page, origin, output, engine):
+    for width, height, device in ((1440, 1000, "desktop"), (390, 844, "mobile")):
+        page.set_viewport_size({"width": width, "height": height})
+        for path, name, figure_count in (
+            ("examples/", "lime-kiln", 9),
+            ("examples-everett/", "everett", 9),
+            ("examples-larrabee/", "larrabee", 9),
+            ("examples-region/", "region", 2),
+            ("understand/", "how-it-works", 3),
+        ):
+            page.goto(origin + "/toolkit-viewshed/" + path)
+            for theme, mode in (("default", "light"), ("slate", "dark")):
+                page.evaluate(
+                    "theme => document.body.setAttribute('data-md-color-scheme', theme)", theme
+                )
+                page.evaluate(
+                    "async ()=>{for(const img of document.images){img.loading='eager';} await Promise.all([...document.images].map(img=>img.decode().catch(()=>{})));}"
+                )
+                assert page.locator(".walkthrough figure").count() == figure_count
+                assert page.locator(".walkthrough figure img").evaluate_all(
+                    "imgs=>imgs.every(img=>img.complete && img.naturalWidth>0)"
+                )
+                assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
+                assert "{{" not in page.locator("article").inner_text()
+                if name in {"lime-kiln", "everett", "larrabee", "region"}:
+                    expect(page.locator(".example-tabs a")).to_have_count(4)
+                    expect(page.locator('.example-tabs [aria-current="page"]')).to_have_count(1)
+                if name == "region":
+                    frame = page.frame_locator('iframe[title="Interactive regional viewshed map"]')
+                    expect(frame.locator("body")).to_have_attribute("data-ready", "true")
+                    expect(frame.locator("#map")).to_have_attribute("data-target-count", "13461")
+                    frame.get_by_role("combobox", name="Explore").select_option("lime")
+                    expect(frame.locator("#map")).to_have_attribute("data-zoom", "11")
+                    frame.get_by_role("button", name="Zoom in", exact=True).click()
+                    expect(frame.locator("#map")).to_have_attribute("data-zoom", "12")
+                    frame.get_by_role("button", name="Full region", exact=True).click()
+                    expect(frame.locator("#status")).to_contain_text("13,461 water cells")
+                    page.locator("details").evaluate("node => node.open = true")
+                if name in {"everett", "larrabee"}:
+                    expect(page.locator(".chapter-route a")).to_have_count(7)
+                    assert page.locator(".chapter").count() == 7
+                    assert page.locator(".chapter .atlas-figure").count() == 5
+                    expected = "45 of these 242" if name == "everett" else "0 of these 285"
+                    assert expected in page.locator("#combined").inner_text()
+                if name == "lime-kiln":
+                    expect(page.locator(".chapter-route a")).to_have_count(7)
+                    page.get_by_role("link", name="04 Vegetation", exact=True).click()
+                    expect(page.locator("#vegetation")).to_be_in_viewport()
+                    assert page.locator(".chapter table").count() == 1
+                    assert "661" in page.locator("#study-area").inner_text()
+                    assert "30 km" in page.locator("#distance").inner_text()
+                    assert "35 of these 661" in page.locator("#combined").inner_text()
+                    assert "Dave Sizer" in page.locator(".place-photo").inner_text()
+                    page.get_by_role("link", name="06 Shoreline views", exact=True).click()
+                    expect(page.locator("#shoreline")).to_be_in_viewport()
+                    assert "Chris Light" in page.locator("#shoreline").inner_text()
+                    assert "Chiwauk" in page.locator("#shoreline").inner_text()
+                    page.get_by_role("link", name="See photograph A", exact=True).click()
+                    expect(page.locator("#shore-a")).to_be_in_viewport()
+                for i, figure in enumerate(page.locator(".walkthrough figure").all()):
+                    figure.scroll_into_view_if_needed()
+                    figure.screenshot(
+                        path=str(output / f"{engine}-{device}-{mode}-{name}-{i}.png"),
+                        style=".md-header,.md-tabs{visibility:hidden!important}",
+                    )
+                page.screenshot(
+                    path=str(output / f"{engine}-{device}-{mode}-{name}.png"), full_page=True
+                )
+            page.evaluate("document.documentElement.style.zoom='200%'")
+            assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
+            page.evaluate("document.documentElement.style.zoom='100%'")
+    context = page.context.browser.new_context(
+        java_script_enabled=False, viewport={"width": 390, "height": 844}
+    )
+    context.route(
+        "**/*",
+        lambda route: (
+            route.continue_() if route.request.url.startswith(origin + "/") else route.abort()
+        ),
+    )
+    static = context.new_page()
+    for path, count in (
+        ("examples/", 9),
+        ("examples-everett/", 9),
+        ("examples-larrabee/", 9),
+        ("examples-region/", 2),
+        ("understand/", 3),
+    ):
+        static.goto(origin + "/toolkit-viewshed/" + path)
+        if path == "examples-region/":
+            static.locator("summary").click()
+        for figure in static.locator(".walkthrough figure").all():
+            figure.scroll_into_view_if_needed()
+        assert static.locator(".walkthrough figure").count() == count
+        assert static.locator(".walkthrough figure img").evaluate_all(
+            "imgs=>imgs.every(img=>img.complete && img.naturalWidth>0)"
+        )
+        assert static.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
+    context.close()
+
+
 def run(site: Path, output: Path, engines: list[str]) -> dict:
     presentation = check()
     output.mkdir(parents=True, exist_ok=True)
@@ -73,7 +175,13 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
     try:
         with sync_playwright() as playwright:
             for engine in engines:
-                browser = getattr(playwright, engine).launch()
+                browser = getattr(playwright, engine).launch(
+                    executable_path=(
+                        os.environ.get("VIEWSHED_CHROMIUM_EXECUTABLE")
+                        if engine == "chromium"
+                        else None
+                    )
+                )
                 errors, failed_assets, blocked = [], [], []
                 initial_payload_bytes = None
                 context = browser.new_context(reduced_motion="reduce")
@@ -103,7 +211,7 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                     page.set_viewport_size({"width": width, "height": height})
                     for theme in ("default", "slate"):
                         mode = "light" if theme == "default" else "dark"
-                        for path, name in (("/", "home"), ("/examples/", "examples")):
+                        for path, name in (("/", "home"), ("/sightline-details/", "examples")):
                             page.goto(origin + path)
                             page.evaluate(
                                 "scheme => document.body.setAttribute('data-md-color-scheme', scheme)",
@@ -163,7 +271,7 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                                 path=str(output / f"{engine}-{device}-{mode}-{name}.png"),
                                 full_page=True,
                             )
-                page.goto(origin + "/examples/")
+                page.goto(origin + "/sightline-details/")
                 page.get_by_title("Switch to dark mode", exact=True).click()
                 assert page.locator("body").get_attribute("data-md-color-scheme") == "slate"
                 page.locator(".figure-dark").first.wait_for(state="visible")
@@ -173,12 +281,12 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                 page.screenshot(path=str(output / f"{engine}-mobile-200-percent.png"))
                 page.evaluate("document.documentElement.style.zoom='100%'")
                 page.set_viewport_size({"width": 1440, "height": 1000})
-                page.get_by_role("link", name="Home", exact=True).last.click()
+                page.get_by_role("link", name="Overview", exact=True).last.click()
                 page.wait_for_url(origin + "/")
                 page.get_by_role("heading", name="Viewshed Toolkit", exact=True).wait_for()
                 page.wait_for_load_state("networkidle")
                 page.go_back()
-                page.wait_for_url(lambda url: url.split("#")[0] == origin + "/examples/")
+                page.wait_for_url(lambda url: url.split("#")[0] == origin + "/sightline-details/")
                 page.locator(".chapter").first.wait_for()
                 page.wait_for_load_state("networkidle")
                 assert page.locator(".chapter").count() == 3
@@ -189,7 +297,8 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                     else:
                         page.get_by_role("link", name="guided Examples page", exact=True).click()
                         page.wait_for_url(origin + "/toolkit-viewshed/examples/")
-                    assert page.locator(".chapter figure").count() == 6
+                    assert page.locator(".chapter .atlas-figure").count() == 5
+                check_lime_kiln(page, origin, output, engine)
                 regional_url = origin + "/toolkit-viewshed/regional-viewshed-example/"
                 check_regional_explorer(page, regional_url, output, engine)
                 for width, height, device in ((1440, 1000, "desktop"), (390, 844, "mobile")):
@@ -198,7 +307,7 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                     )
                     fallback.route("**/*", route)
                     static = fallback.new_page()
-                    static.goto(origin + "/examples/")
+                    static.goto(origin + "/sightline-details/")
                     for figure in static.locator(".chapter figure").all():
                         figure.scroll_into_view_if_needed()
                     assert static.locator(".chapter").count() == 3
@@ -230,7 +339,9 @@ def run(site: Path, output: Path, engines: list[str]) -> dict:
                         "engine": engine,
                         "status": "passed",
                         "checks": [
-                            "homepage and all three chapters",
+                            "homepage and all three detailed sightline chapters",
+                            "Lime Kiln five maps and credited photo; How it works schematics",
+                            "Lime Kiln and How it works: desktop/mobile, light/dark, 200% zoom, no JavaScript",
                             "six finished figures and visible comparisons",
                             "fixed pair and contributor results",
                             "desktop/mobile light/dark",

@@ -35,47 +35,51 @@ theme:
     - search.suggest
     - search.highlight
 nav:
-  - Home: index.md
+  - Overview: index.md
+  - How it works:
+      - Sightlines, trees and distance: understand/index.md
+      - Method overview: methodology.md
   - Get started:
       - Installation: getting-started/installation.md
-      - Quick start: getting-started/quick-start.md
+      - Your first result: getting-started/quick-start.md
+      - Run the San Juan model: san-juan-demo.md
       - Troubleshooting: getting-started/troubleshooting.md
-  - Understand:
-      - Viewing concepts: understand/index.md
-      - Method overview: methodology.md
-      - Data sources: data-acquisition.md
-      - San Juan dataset card: dataset-card.md
-  - Products:
-      - Product guide: products/index.md
+  - Examples:
+      - Visual walkthrough: examples.md
+      - Everett port area: examples-everett.md
+      - Larrabee woods: examples-larrabee.md
+      - Putting it all together: examples-region.md
+      - A sightline in detail: sightline-details.md
+      - Completed regional viewshed: regional-viewshed-example.md
+  - Outputs:
+      - Read a result: products/index.md
       - Artifact dictionary: products/artifacts.md
       - Distance products: distance-products.md
-  - Examples:
-      - One sightline to regional support: examples.md
-      - Completed regional viewshed: regional-viewshed-example.md
-      - Choose a workflow: workflows/index.md
-      - San Juan model setup: san-juan-demo.md
-      - Salish Sea case study: salish-sea-case-study.md
-  - API:
-      - API overview: api/overview.md
-      - Python and CLI: api.md
   - Reference:
       - Scientific contracts: scientific-methodology.md
       - Configuration: configuration.md
+      - Python and CLI: api.md
       - Shared study and R7 reporting: shared-study.md
       - Bounded native raster windows: BOUNDED_WINDOWS.md
       - Building obstruction pilot: building-obstruction-pilot.md
       - Direct-ray transmission: direct-transmission.md
       - Retained weight diagnostics: regional-weight-diagnostics.md
       - Pipeline stages: pipelines.md
+      - Data sources: data-acquisition.md
+      - San Juan dataset card: dataset-card.md
+      - Salish Sea case study: salish-sea-case-study.md
       - Performance: performance.md
-  - Development:
-      - Contributing and validation: development/index.md
-      - Architecture: architecture.md
-      - Reproduce the example: documentation-examples.md
-      - Validation evidence: development/evidence.md
-      - Acceptance and releases: development/acceptance.md
+      - Development:
+          - Contributing and validation: development/index.md
+          - Architecture: architecture.md
+          - Rebuild documentation examples: documentation-examples.md
+          - Validation evidence: development/evidence.md
+          - Acceptance and releases: development/acceptance.md
 not_in_nav: |
   reports/**
+  workflows/index.md
+  api/overview.md
+  development/lime-kiln-validation.md
 validation:
   nav:
     omitted_files: warn

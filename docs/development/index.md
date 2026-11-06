@@ -6,11 +6,13 @@ Work from the repository root and read [AGENTS.md](../../AGENTS.md) for the loca
 artifact and validation rules. Keep generated source data and model products out of routine
 documentation changes.
 
-## Documentation development
+## Build the documentation
 
 Install the documentation dependencies separately from the native model environment:
 
 ```bash
+python -m venv .venv-docs
+source .venv-docs/bin/activate
 python -m pip install -r requirements-docs.txt
 python -S scripts/build_documentation_examples.py --check
 python scripts/check_documentation_links.py
@@ -22,14 +24,18 @@ The site build checks the committed bundle and inserts its verified values into 
 example. It does not download inputs or recalculate LOS. For browser checks and bundle export,
 see [reproducing the instructional bundle](../documentation-examples.md).
 
+The GitHub documentation jobs install Chromium and WebKit with their system dependencies.
+On runners that use `/etc/apt/apt-mirrors.txt`, they select the official Ubuntu archive
+over HTTPS before installation to avoid the slow Azure mirror downloads observed on
+November 6, 2026. Package signature verification and all browser checks remain enabled.
+
 ## Design and organization
 
-The documentation follows the reader journeys used by
-[Seascape Toolkit](https://marinecast.github.io/toolkit-seascape/): Home, Get started, Understand,
-Products, Examples, API, Reference and Development. Short entry guides link to the existing
-canonical pages; scientific formulas and lifecycle contracts remain in their owners.
+The reading route is Overview → Lime Kiln walkthrough → first runnable result → Outputs.
+How it works introduces sightlines, canopy, distance and practical uses. Exact methods, APIs
+and development guides remain under Reference. Published compatibility URLs are retained.
 
-Use the shared teal Material theme, full-width banner, entry cards, clear units and explicit
+Use the shared teal Material theme, full-width banner, concise entry points, clear units and explicit
 interpretation boundaries. The banner is decorative artwork. Preserve its full aspect ratio;
 maps and figures need captions that distinguish illustration from modeled evidence.
 
@@ -47,3 +53,7 @@ require a regional run or the package suite.
 
 [Validation evidence](evidence.md) records historical checks and their limitations. A dated
 report is evidence of its stated run, not certification of the current checkout or a new release.
+
+
+Use `python -m mkdocs serve` for local development. The [Lime Kiln revision checks](lime-kiln-validation.md)
+record the November 6 validation scope.

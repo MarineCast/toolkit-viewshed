@@ -15,9 +15,20 @@ def check(root=ROOT):
         root / "CONTRIBUTING.md",
         root / "CHANGELOG.md",
         *sorted((root / "docs").rglob("*.md")),
-        root / "docs/assets/san-juan-demo.html",
+        *sorted((root / "docs/assets").rglob("*.html")),
     ]:
         source = path.read_text()
+        if "{{source_walkthrough}}" in source:
+            from render_source_examples import cases, markdown
+
+            key = next(key for key, case in cases().items() if case["page"] == path.name)
+            source = source.replace("{{source_walkthrough}}", markdown(key))
+            source = source.replace('src="../assets/', 'src="assets/')
+        elif path.name == "examples-region.md":
+            from render_source_examples import tabs
+
+            source = source.replace("{{example_tabs}}", tabs("region"))
+            source = source.replace('src="../assets/', 'src="assets/')
         source = re.sub(r"```.*?```", "", source, flags=re.S)
         targets = re.findall(r"!?\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)", source)
         targets += re.findall(r'(?:src|href)="([^"]+)"', source)

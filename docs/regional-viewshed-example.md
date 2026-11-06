@@ -104,7 +104,34 @@ recorded score of zero for B, while the same source ID in the land role has a po
 score of 0.081333. A blank area has no recorded pair in the displayed role. Outside-candidate
 areas and any missing evidence must remain separate from recorded zeros.
 
-## Read the delivery locally
+## Read the included excerpt
+
+A clone includes a small real-data excerpt. From the repository root, run this with Python's
+standard library—no full `Data/Viewshed` delivery or geospatial installation is required:
+
+```python
+import json
+from pathlib import Path
+
+example = json.loads(Path("docs/assets/examples/regional/targets.json").read_text())
+roles = example["targets"]["8728d1061ffffff"]["roles"]
+for role, summary in roles.items():
+    print(f"{role}: {summary['count']} pairs, {summary['positive']} positive, "
+          f"mean={summary['mean']:.6f}")
+```
+
+Expected saved summaries:
+
+```text
+land: 385 pairs, 13 positive, mean=0.001574
+water: 661 pairs, 67 positive, mean=0.048036
+```
+
+These means include recorded zeros and summarize different source populations and treatments.
+They describe physical support over the recorded pairs, not detection probabilities. This snippet
+reads saved summaries; it does not recalculate a viewshed.
+
+## If you have the full regional delivery
 
 With the validated delivery and PyArrow available, run from the MarineCast workspace root.
 The script reads the selected target from the two static files. It does not run the viewshed

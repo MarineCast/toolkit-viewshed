@@ -43,7 +43,13 @@ jobs:
       - run: python -S scripts/build_documentation_examples.py --check --output docs/assets/examples/san-juan
       - run: python -S scripts/check_documentation_links.py
       - run: node --check docs/assets/examples/explorer.js
+      - run: node --check docs/assets/examples/region-overview/map.js
       - run: python -m mkdocs build --strict
+      - name: Use Ubuntu archive for browser dependencies
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          fi
       - run: python -m playwright install --with-deps chromium webkit
       - run: python scripts/check_documentation_browser.py --engines chromium webkit --output work/browser-qa
       - uses: actions/upload-artifact@v4

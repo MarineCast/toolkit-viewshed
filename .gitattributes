@@ -1,0 +1,2 @@
+# Preserve upstream Leaflet distribution bytes, including its CRLF formatting.
+docs/assets/vendor/leaflet-1.9.4/** -whitespace

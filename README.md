@@ -253,7 +253,7 @@ The `Publish documentation` GitHub Actions workflow validates and builds the sit
 requests and on pushes to `main`. Deploy the built site by running the workflow manually on
 `main`. To enable hosting once, open repository
 **Settings → Pages → Build and deployment → Source** and select **GitHub Actions**.
-After the workflow is merged, it can also be run from **Actions → Publish documentation →
+Deploy from **Actions → Publish documentation →
 Run workflow**, selecting `main`. The site is hosted at
 [marinecast.github.io/toolkit-viewshed](https://marinecast.github.io/toolkit-viewshed/).
 The workflow uses the committed demo bundle and requires only documentation dependencies.
