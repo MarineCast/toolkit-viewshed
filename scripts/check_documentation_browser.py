@@ -97,6 +97,21 @@ def check_lime_kiln(page, origin, output, engine):
                     expect(frame.locator("#map")).to_have_attribute("data-zoom", "11")
                     frame.get_by_role("button", name="Zoom in", exact=True).click()
                     expect(frame.locator("#map")).to_have_attribute("data-zoom", "12")
+                    for layer in ("Terrain", "Vegetation", "Distance", "Combined"):
+                        frame.locator("#weight-options").get_by_text(layer, exact=True).click()
+                        expect(frame.locator("#map")).to_have_attribute(
+                            "data-weight", layer.lower()
+                        )
+                        expect(frame.locator("#map")).to_have_attribute("data-zoom", "12")
+                        if layer == "Vegetation":
+                            expect(frame.locator("#ineligible-key")).to_be_visible()
+                        else:
+                            expect(frame.locator("#ineligible-key")).to_be_hidden()
+                    for palette in ("Ocean", "Amber", "Plum", "Teal"):
+                        frame.locator("#palette-options").get_by_text(palette, exact=True).click()
+                        expect(frame.locator("#map")).to_have_attribute(
+                            "data-palette", palette.lower()
+                        )
                     frame.get_by_role("button", name="Full region", exact=True).click()
                     expect(frame.locator("#status")).to_contain_text("13,461 water cells")
                     page.locator("details").evaluate("node => node.open = true")

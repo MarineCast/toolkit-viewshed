@@ -11,7 +11,7 @@ from pyproj import Transformer
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-from build_regional_overview import aggregate  # noqa: E402
+from build_regional_overview import aggregate, aggregate_components  # noqa: E402
 from render_lime_kiln import METRICS, map_figure, records  # noqa: E402
 from render_source_examples import ASSETS, cases, check, markdown  # noqa: E402
 from build_documentation_examples import read  # noqa: E402
@@ -110,6 +110,25 @@ def test_full_regional_target_population_and_render_integrity():
         row["target_h3"]: row["maximum_valid_combined_weight"] for row in data["rows"]
     }
     assert sum("data-map-layer" in node.attrib for node in svg.iter()) == 1
+
+
+def test_component_maxima_condition_vegetation_on_positive_terrain():
+    table = pa.table(
+        {
+            "target_h3": ["x", "x", "x", "x", "y", "z"],
+            "weight_terrain": [0.0, 0.4, 0.8, None, 0.0, 0.2],
+            "weight_distance": [0.9, 0.6, 0.1, None, 0.7, 0.5],
+            "weight_vegetation": [1.0, 0.3, None, 1.0, 1.0, 0.0],
+        }
+    )
+    rows = aggregate_components(table)
+    assert rows["x"] == {
+        "terrain": {"maximum": 0.8, "valid_count": 3},
+        "distance": {"maximum": 0.9, "valid_count": 3},
+        "vegetation": {"maximum": 0.3, "valid_count": 1, "eligible_count": 2},
+    }
+    assert rows["y"]["vegetation"] == {"maximum": None, "valid_count": 0, "eligible_count": 0}
+    assert rows["z"]["vegetation"] == {"maximum": 0.0, "valid_count": 1, "eligible_count": 1}
 
 
 def test_html_map_preserves_native_boundaries_values_and_valid_geojson_rings():

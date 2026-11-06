@@ -40,6 +40,7 @@ def contents():
     files = {
         "map-targets.geojson": encode({"type": "FeatureCollection", "features": features}),
         "map-coast.geojson": encode(mapping(transform(project.transform, coast))),
+        "map-components.json": (OUTPUT / "map-components.json").read_bytes(),
     }
     files["map-source.json"] = encode(
         {

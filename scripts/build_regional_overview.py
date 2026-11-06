@@ -15,7 +15,7 @@ import pyarrow.parquet as pq
 from pyproj import Transformer
 from shapely.geometry import box, mapping
 
-from build_documentation_examples import encode
+from build_documentation_examples import digest, encode, read
 from export_lime_kiln_regional import checksum
 from documentation_geometry import projected_viewport
 
@@ -66,6 +66,95 @@ def aggregate(table):
             }
         )
     return sorted(result, key=lambda r: r["target_h3"])
+
+
+def aggregate_components(table):
+    """Summarize components separately, conditioning canopy on positive terrain."""
+    terrain = table["weight_terrain"]
+    for name in ("weight_terrain", "weight_distance", "weight_vegetation"):
+        values = pc.drop_null(table[name])
+        if len(values) and (
+            not pc.all(pc.is_finite(values)).as_py()
+            or pc.min(values).as_py() < 0
+            or pc.max(values).as_py() > 1
+        ):
+            raise ValueError(f"Invalid {name}")
+    eligible = pc.greater(terrain, 0)
+    grouped = (
+        table.select(["target_h3", "weight_terrain", "weight_distance"])
+        .append_column("vegetation", pc.if_else(eligible, table["weight_vegetation"], None))
+        .append_column("eligible", pc.cast(pc.fill_null(eligible, False), pa.int8()))
+        .group_by("target_h3")
+        .aggregate(
+            [
+                ("weight_terrain", "max"),
+                ("weight_terrain", "count"),
+                ("weight_distance", "max"),
+                ("weight_distance", "count"),
+                ("vegetation", "max"),
+                ("vegetation", "count"),
+                ("eligible", "sum"),
+            ]
+        )
+    )
+    return {
+        row["target_h3"]: {
+            "terrain": {
+                "maximum": row["weight_terrain_max"],
+                "valid_count": row["weight_terrain_count"],
+            },
+            "distance": {
+                "maximum": row["weight_distance_max"],
+                "valid_count": row["weight_distance_count"],
+            },
+            "vegetation": {
+                "maximum": row["vegetation_max"],
+                "valid_count": row["vegetation_count"],
+                "eligible_count": row["eligible_sum"],
+            },
+        }
+        for row in grouped.to_pylist()
+    }
+
+
+def export_components(delivery):
+    from render_regional_overview import evidence
+
+    summary = evidence()
+    if checksum(delivery / "regional-delivery.json") != summary["delivery_receipt_sha256"]:
+        raise ValueError("Components require the same regional delivery as the combined map")
+    name = read(delivery / "regional-delivery.json")["roles"]["land"]["static"]
+    source_sha = checksum(delivery / name)
+    if source_sha != summary["source_sha256"][name]:
+        raise ValueError("Land weights checksum mismatch")
+    table = pq.read_table(
+        delivery / name,
+        columns=[
+            "source_h3",
+            "target_h3",
+            "weight_static_viewability",
+            "weight_terrain",
+            "weight_distance",
+            "weight_vegetation",
+        ],
+    )
+    if (
+        pc.count_distinct(table["source_h3"]).as_py() != summary["source_count"]
+        or aggregate(table) != summary["rows"]
+    ):
+        raise ValueError("Component source or pair support differs from the combined map")
+    return {
+        "map-components.json": encode(
+            {
+                "contract": "regional_land_component_maxima_v1",
+                "source_type": "land",
+                "source_sha256": {name: source_sha},
+                "target_summary_sha256": digest((OUTPUT / "targets.json").read_bytes()),
+                "aggregation": "Independent valid maxima per target. Vegetation requires positive terrain.",
+                "rows": aggregate_components(table),
+            }
+        )
+    }
 
 
 def export(delivery):
@@ -172,8 +261,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("delivery", type=Path)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument(
+        "--components-only", action="store_true", help="Export map component maxima"
+    )
     args = parser.parse_args()
-    files = export(args.delivery)
+    files = export_components(args.delivery) if args.components_only else export(args.delivery)
     if not args.check:
         OUTPUT.mkdir(exist_ok=True)
     for name, data in files.items():
