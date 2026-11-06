@@ -68,8 +68,9 @@ Continue with the [quick start](quick-start.md). For exact public calls, see
 | Windows | No native acceptance run recorded in this improvement pass |
 | Other Python/dependency combinations | Allowed package constraints do not imply every combination was tested |
 
-A wheel installation check verifies the toolkit package, resources and CLI outside the source
-checkout. It reuses scientific dependencies; it does not prove a fresh native environment solve.
+A wheel installation check builds with the declared build-system dependencies and verifies the
+toolkit package, resources and CLI outside the source checkout. It reuses installed scientific
+dependencies for the runtime check.
 The commands above follow the checked-in CI specification; a new conda/micromamba solve was not
 performed during the local improvement pass.
 

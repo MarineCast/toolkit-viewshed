@@ -27,7 +27,6 @@ def main() -> None:
                 "pip",
                 "wheel",
                 "--no-deps",
-                "--no-build-isolation",
                 "--wheel-dir",
                 str(scratch),
                 str(ROOT),
