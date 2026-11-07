@@ -49,8 +49,11 @@ empirically measured probability of detecting an animal.
 
 <figure class="explain-distance"><img src="../assets/examples/lime-kiln/distance-decay.svg" width="480" height="435" alt="A person looking across increasingly distant water above a normalized logistic distance-decay curve"><figcaption>An illustrative logistic curve with midpoint parameter 9 km, slope parameter 2.7 km and a 30 km cutoff. The view is schematic; the curve is calculated from these settings.</figcaption></figure>
 
-One available choice is a normalized logistic curve. For nonnegative distance within the cutoff,
-its weight is:
+<details markdown="1">
+<summary>Exact distance equation and parameters</summary>
+
+One available choice is a normalized logistic curve. The equation gives the weight for
+nonnegative distances within the cutoff.
 
 <div class="explain-equation">
 <math xmlns="http://www.w3.org/1998/Math/MathML" display="block" aria-label="D of d equals the quantity one plus exp of negative d fifty divided by k, all divided by the quantity one plus exp of d minus d fifty divided by k">
@@ -66,6 +69,8 @@ controls how gradually it declines. Both parameters are positive distances in ki
 “exp” denotes the exponential function. Normalization sets the weight at zero distance to one.
 Beyond the configured cutoff, the weight is zero. Exponential and piecewise curves are also
 available; the choice and its parameters should be recorded with the results.
+
+</details>
 
 For the illustrated settings, the weight is approximately **0.84 at 5 km**, **0.42 at 10 km** and
 **0.017 at 20 km**. Because the curve is normalized, its weight at the 9 km midpoint parameter is

@@ -438,6 +438,10 @@ def check():
     }
 
 
+def pair_weights(pair):
+    return {f"example_{name}": f"{pair[field]:.6f}" for name, (field, _) in METRICS.items()}
+
+
 def page_values():
     family = records()
     chosen = max(
@@ -445,6 +449,7 @@ def page_values():
         key=lambda p: p["distance_adjusted_viewability"],
     )
     values = {
+        **pair_weights(chosen),
         "lime_source": SOURCE,
         "lime_panorama_src": "../assets/examples/lime-kiln/haro-panorama-chris-light.jpg",
         "lime_shoreline": "".join(

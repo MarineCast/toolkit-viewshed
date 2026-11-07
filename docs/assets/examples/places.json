@@ -27,7 +27,7 @@
     "text": "An urban waterfront offers a different setting from Lime Kiln: marinas, developed shore and nearby lowlands. The example uses the land part of a mixed coastal cell near the port; it does not represent a particular pier or viewing platform.\n\nNo installation is needed. For the ideas behind the maps, start with [How it works](understand/index.md).",
     "center_note": "The diamond locates the selected source cell center; it is not a camera position or an additional modeled observer.",
     "selection_note": "The table selects the highest combined score among this source's **non-self** target pairs:",
-    "result_note": "Buildings, cranes, vessels and fences in the photographs are not explicitly modeled as built obstructions by this ground-plus-canopy workflow.",
+    "result_note": "The terrain and canopy inputs describe a developed waterfront. Buildings, cranes, vessels and fences in the photographs are outside the obstruction model. Use the photographs to identify features that can change the view on site.",
     "intro": "The diamond locates the center of native R7 source cell `{{lime_source}}`, approximately **48.0151\u00b0 N, 122.2236\u00b0 W**. Orange shading shows its retained active land; the {{lime_observers}} brown dots are the regional observer samples. **These are area-level results, not a calculation from a photograph's camera or a particular platform.**",
     "photos": [
       {
@@ -81,7 +81,7 @@
     "text": "This example selects an inland cell in the Larrabee / Chuckanut landscape, rather than the beach. The photographs show the wider park setting, not verified camera positions in the selected cell. Compare its canopy effect with the coastal Lime Kiln and Everett examples.\n\nNo installation is needed. For the ideas behind the maps, start with [How it works](understand/index.md).",
     "center_note": "The diamond locates the selected source cell center; it is not a camera position or an additional modeled observer.",
     "selection_note": "All combined scores are zero. To show why, the table selects the **non-self pair with the highest terrain weight**:",
-    "result_note": "**All 285 combined weights are computed zeros.** Terrain support is positive for 201 targets, but the matched canopy factor removes it. This describes the retained inland observer samples under the recorded settings; it does not mean there are no open viewpoints elsewhere in the park.",
+    "result_note": "Terrain alone gives positive support to **{{terrain_positive}} targets**. With canopy included, all **{{lime_count}} candidate targets** have zero combined support for the sampled inland viewpoints. Compare the terrain and combined maps to see the change.",
     "intro": "The diamond locates the center of native R7 source cell `{{lime_source}}`, approximately **48.6601\u00b0 N, 122.4645\u00b0 W**. Orange shading shows its retained active land; the {{lime_observers}} brown dots are the regional observer samples. **These are area-level results, not a calculation from a photograph's camera or a particular platform.**",
     "photos": [
       {

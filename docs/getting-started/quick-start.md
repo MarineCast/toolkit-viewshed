@@ -3,8 +3,9 @@
 This page is an executable **synthetic, distance-only** workflow. To understand the toolkit
 without installing or running anything, read the [real visual walkthrough](../examples.md).
 
-Get a small, validated distance product before acquiring regional terrain or canopy data.
-After [installation](installation.md), run from the repository root:
+After [installation](installation.md), run this command from the repository root.
+If you already ran the example at this path, go straight to
+[What success looks like](#what-success-looks-like) to inspect it.
 
 ```bash
 python examples/offline_distance.py --output work/my-first-distance

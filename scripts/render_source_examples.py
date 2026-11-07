@@ -13,6 +13,7 @@ from render_lime_kiln import (
     map_figure,
     no_baseline,
     page_values,
+    pair_weights,
     records,
     regional_evidence,
     shoreline_figure,
@@ -93,10 +94,12 @@ def source_values(key):
         key=lambda r: (-r[field], r["target_h3"]),
     )[0]
     values = {
+        **pair_weights(chosen),
         "lime_source": c["source"],
         "lime_count": str(len(rows)),
         "lime_positive": str(sum(r["distance_adjusted_viewability"] > 0 for r in rows)),
         "lime_neutral": str(sum(no_baseline(r) for r in rows)),
+        "terrain_positive": str(sum(r["distance_weighted_los_support"] > 0 for r in rows)),
         "lime_target": chosen["target_h3"],
         "lime_km": f'{chosen["distance_km"]:.2f}',
         "lime_generation": evidence["generation_id"],
@@ -159,6 +162,8 @@ def shoreline(key):
 def markdown(key):
     c = cases()[key]
     values = source_values(key)
+    lesson = c["result_note"]
+    secondary = key != "lime-kiln"
     values.update(
         {
             "example_tabs": tabs(key),
@@ -170,7 +175,22 @@ def markdown(key):
             "hero_photo": c.get("hero_html") or photo(key, 0, "", "place-photo"),
             "center_note": c["center_note"],
             "selection_note": c["selection_note"],
-            "site_result_note": c["result_note"],
+            "place_lesson": (
+                f'<div class="takeaway" markdown="1">\n\n**What this example shows.** {lesson}\n\n</div>'
+                if lesson
+                else ""
+            ),
+            "distance_detail_start": (
+                '<details markdown="1">\n<summary>Distance settings and cell centers</summary>'
+                if secondary
+                else ""
+            ),
+            "terrain_detail_start": (
+                '<details markdown="1">\n<summary>How terrain support is calculated</summary>'
+                if secondary
+                else ""
+            ),
+            "secondary_detail_end": "</details>" if secondary else "",
             "shoreline_content": shoreline(key),
         }
     )

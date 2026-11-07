@@ -12,6 +12,8 @@
 
 {{place_text}}
 
+{{place_lesson}}
+
 </div>
 {{hero_photo}}
 </div>
@@ -46,6 +48,10 @@ record the source qualifications. Map labels do not change the modeled observer 
 
 <figure class="atlas-figure">{{lime_distance}}<figcaption><strong><code>weight_distance</code>: the centroid-distance diagnostic.</strong> Darker water cells have a larger assumed distance weight. All maps use a fixed linear 0–1 scale, with gray for a computed zero; the quantities differ between panels.</figcaption></figure>
 
+The diagnostic compares cell centers. It declines with distance and reaches zero beyond 30 km.
+
+{{distance_detail_start}}
+
 This example uses a normalized logistic curve: midpoint parameter **9 km**, slope **2.7 km**,
 and a **30 km** hard cutoff. The curve gives progressively less support to distant water. It is a
 configured assumption, not a fitted probability that a person will detect a whale. At 5 km the regional curve retains about **0.84**, at 10 km **0.42**, and at 20 km **0.017**.
@@ -59,6 +65,8 @@ distance zero even though the modeled person and water pixels are apart. Candida
 also retain cells whose centroids exceed 30 km; their diagnostic is zero. The physical calculation
 uses each observer-to-water distance instead. [See the illustrated decay curve](understand/index.md#distance).
 
+{{secondary_detail_end}}
+
 </section>
 
 <section class="chapter" id="terrain" markdown="1">
@@ -69,8 +77,11 @@ uses each observer-to-water distance instead. [See the illustrated decay curve](
 
 <figure class="atlas-figure">{{lime_terrain}}<figcaption><strong><code>weight_terrain</code>: bare-earth support with distance already integrated.</strong> This is the matched ground-only calculation, before the canopy factor. It is not a distance-free percentage of visible water.</figcaption></figure>
 
-A nearby target can receive little support when intervening ground blocks the sampled viewing
-paths. For each modeled observer, the toolkit evaluates water pixels on the ground surface,
+A nearby target can receive little support when the ground blocks the sampled sightlines.
+
+{{terrain_detail_start}}
+
+For each modeled observer, the toolkit evaluates water pixels on the ground surface,
 weights supported paths by distance, and aggregates over the recorded source–target population.
 Blocked and out-of-range contributions remain zero in that population.
 
@@ -79,6 +90,8 @@ visible. **Do not multiply these two maps together.** Distance has already enter
 weight at the observer-to-water level. The [detailed sightline example](sightline-details.md#one-pair)
 shows a recorded ground/canopy profile from the separate, older 100 m San Juan demonstration.
 That profile is conceptual supporting material, not a trace of these regional results.
+
+{{secondary_detail_end}}
 
 </section>
 
@@ -101,10 +114,15 @@ of a clearing. Regional input qualification and these rows report complete sourc
 under the recorded acceptance policy; that does not establish field accuracy or uniform canopy
 vintage. The configured zero-height fallback remains an assumption, not proof of no trees.
 
+<details markdown="1">
+<summary>How neutral vegetation is recorded</summary>
+
 The regional output records `vegetation_state=positive` for neutral values of 1 as well. Hatching
 is therefore derived from **terrain = 0 and vegetation = 1**, with the original producer state
 preserved in the downloadable records. It prevents neutral bookkeeping from appearing as strong
 viewability.
+
+</details>
 
 </section>
 
@@ -127,8 +145,6 @@ this modeled source–target relationship; it is not the probability of seeing a
 `{{lime_target}}`, with **{{lime_km}} km centroid separation**. This declared selection makes the
 example easy to trace; it is not a recommended wildlife-watching destination.
 
-{{site_result_note}}
-
 {{lime_result}}
 
 Multiply the terrain and vegetation values to recover the combined score (allowing for displayed
@@ -142,7 +158,9 @@ rounding). The distance diagnostic is shown for interpretation and is **not mult
 
 ## 7. Take the result into your work
 
-Read all of this source's rows with Python's standard library, from the repository root:
+The observation-geometry records call the final integrated weight
+`distance_adjusted_viewability`. It corresponds to `weight_static_viewability` in the compact
+weights. From the repository root, use Python's standard library to read the pair shown above.
 
 ```python
 import json
@@ -151,16 +169,27 @@ from pathlib import Path
 example = json.loads(
     Path("docs/assets/examples/{{place_key}}/source-pairs.json").read_text()
 )
-for row in example["rows"]:
-    print(row["target_h3"], row["distance_adjusted_viewability"],
-          row["vegetation_state"])
+row = next(row for row in example["rows"] if row["target_h3"] == "{{lime_target}}")
+print(row["source_h3"], row["target_h3"], f"{row['distance_adjusted_viewability']:.6f}")
 ```
 
-This reads saved results; it does not recalculate sightlines. The
-[downloadable records](assets/examples/{{place_key}}/source-pairs.json) retain the source role,
-source and target IDs, all four weights, states and original generation identity. Shared coverage,
-lineage and vintage fields are retained once in `common_metadata`, rather than repeated per row. The
-[artifact dictionary](products/artifacts.md) maps observation-geometry names to compact weights.
+Expected output is the source ID, target ID and combined weight.
+
+```text
+{{lime_source}} {{lime_target}} {{example_combined}}
+```
+
+The [downloadable records](assets/examples/{{place_key}}/source-pairs.json) contain the saved
+weights and states for all candidate pairs. The [artifact dictionary](products/artifacts.md)
+maps observation-geometry names to compact weights.
+
+<details markdown="1">
+<summary>Where to find the metadata</summary>
+
+The excerpt retains the land source role, pair IDs and original generation identity.
+Shared coverage, lineage and vintage fields appear once in `common_metadata`.
+
+</details>
 
 For **sighting-bias research**, join the physical layer to independently documented observation
 locations and effort. For **land-based lookout selection**, compare publicly accessible source

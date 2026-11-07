@@ -3,7 +3,7 @@
 Choose setup by the result you want. The [Lime Kiln visual walkthrough](../examples.md) and
 [How it works](../understand/index.md) need only a browser.
 
-## Run the offline example {#offline-example}
+## Set up for the offline example {#offline-example}
 
 Use **Python 3.11 or later**. Start in the directory where you keep projects:
 
@@ -13,7 +13,6 @@ cd toolkit-viewshed
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
-python examples/offline_distance.py --output work/my-first-distance
 ```
 
 On Windows, activate with `.venv\Scripts\Activate.ps1` in PowerShell. Native Windows model
@@ -21,8 +20,7 @@ acceptance is not established here. The package still installs geospatial depend
 Rasterio; **the offline example does not require the `osgeo` GDAL Python bindings**, optional
 acquisition extras or source downloads. It creates synthetic geometry and a distance product.
 
-Success prints JSON with `valid: true`, a positive row count and product paths.
-Use a new output directory each time. Continue to [inspect your first result](quick-start.md#what-success-looks-like).
+With the environment active, continue to [Your first result](quick-start.md) to run the example.
 
 ## Calculate a real terrain and canopy viewshed
 
@@ -53,9 +51,8 @@ Next: [Run the San Juan model](../san-juan-demo.md), including input requirement
 
 ## Setup evidence and limits
 
-The documentation improvement checks the offline sequence in a fresh environment; its exact
-platform, dependency versions and outcome are recorded in the
-[documentation validation note](../development/lime-kiln-validation.md).
+The [documentation validation note](../development/lime-kiln-validation.md) records the prior
+fresh-environment offline run, including the platform, dependency versions and outcome.
 The native recipe follows `.github/environment.yml`; no fresh native environment solve or
 regional run is implied by the offline check. Consult CI for the selected revision and
 [troubleshooting](troubleshooting.md) for native imports or stale artifacts.
